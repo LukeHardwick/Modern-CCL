@@ -15,6 +15,7 @@ cigi_add_test(cigi_packet_test SOURCES
     packets/packet_test.cpp
     packets/ig_control_test.cpp
     packets/start_of_frame_test.cpp
+    packets/hat_hot_test.cpp
     packets/random_roundtrip_test.cpp)
 
 cigi_add_test(cigi_message_test SOURCES
