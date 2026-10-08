@@ -59,9 +59,25 @@ if(CIGI_TSHARK)
     target_compile_definitions(cigi_tools_tshark_test PRIVATE CIGI_TSHARK_PATH="${CIGI_TSHARK}")
 endif()
 
+# Corpus generator for the Wireshark verification (tests/interop/wireshark).
+add_executable(make_wireshark_corpus interop/wireshark/make_wireshark_corpus.cpp)
+target_link_libraries(make_wireshark_corpus PRIVATE cigi::cigi cigi::tools)
+cigi_apply_project_options(make_wireshark_corpus)
+
 # Wireshark verification: only when tshark is installed.
 if(CIGI_TSHARK)
     get_filename_component(_cigi_wireshark_bin "${CIGI_TSHARK}" DIRECTORY)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+        # Decode every MVP packet of the corpus with tshark and compare it with what was encoded.
+        add_test(NAME wireshark_corpus
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/interop/wireshark/check_tshark.py
+                    --generator $<TARGET_FILE:make_wireshark_corpus>
+                    --out ${CMAKE_CURRENT_BINARY_DIR}/wireshark_corpus
+                    --tshark ${CIGI_TSHARK})
+        set_tests_properties(wireshark_corpus PROPERTIES LABELS wireshark)
+    endif()
 endif()
 if(TARGET cigi_frames AND CIGI_TSHARK)
     add_test(NAME wireshark_cigi_frames
