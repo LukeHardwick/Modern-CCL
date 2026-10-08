@@ -39,6 +39,11 @@ ICD 3.3 §2.6 (message structure; ordering note), §2.10 and §2.11 rule 3 (unkn
    per-packet event processor registration.
 6. `MessageView` stays independent of dispatch (no new includes in view.hpp).
 
+- **Review notes from T03–T05 (planner):** always call validation as plain `cigi::validate(p)`, never
+  `validate<P>(p)` or `&validate<P>` — some packets (e.g. `EntityControl`) have a non-template
+  `validate` overload with cross-field rules that an explicit template call would skip. If a
+  dispatch table needs a function pointer, wrap it in a lambda that calls `validate(p)`.
+
 ## Tests
 Opcode table correctness for every packet in both sets; mixed message with all MVP packets plus an
 unknown opcode and a user-range opcode → correct order/types; visitor with partial overloads;

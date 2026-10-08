@@ -31,6 +31,10 @@ the strongest interoperability evidence available without a commercial IG.
   2. CCL → ours: the reverse.
   3. Byte-level: for identical field values, compare the two encodings byte-for-byte (reserved bits
      included) and report differences.
+  3a. **Mandatory: Component Control 64-bit word order.** Set an f64 (100.0) and a u64 in component
+     data via the CCL's typed setters (if it has them) and compare data words 3/4 on the wire with
+     ours (we put the low 32 bits in the earlier word, per ICD 4.1.4's procedure and Fig. 46).
+     Record the result in `docs/interop/discrepancies.md`.
   4. Foreign byte order: feed the CCL a message fabricated in swapped order by our library, and vice
      versa.
   5. Record which Minor Version the CCL sends and how it treats our 3 (relevant to the ICD defect).

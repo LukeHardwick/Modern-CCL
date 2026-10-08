@@ -46,6 +46,17 @@ semantics (Database Number handshake, Timestamp Valid rules), §4.2.2/4.2.3 Host
 - `SessionStats`: messages sent/received, lost frames, decode errors, ignored packets, unknown packets.
 - Not thread-safe by design (one session per thread); document it.
 
+- **Version masking (review notes from T03–T05).** Packet decode is version-agnostic, so the
+  session masks by the peer's negotiated minor version:
+  - Receiving from a peer with minor < 2: treat HAT/HOT `update_period` and `host_frame_lsn` as 0
+    (reserved in 3.0/3.1), like IG Control's `last_ig_frame_number`.
+  - Sending to a peer with minor < 3: clear 3.3-only content (Entity Control extrapolation bit;
+    Component Classes 14/15 are not sent — return/log an error). Minor < 2: clear Rate Control's
+    coordinate-system bit and HAT/HOT update period. List exactly what is masked in the design doc.
+- **No automatic `validate()` on send by default** (`SessionConfig::validate_outgoing = false`).
+  Strict ICD ranges (e.g. yaw 0..360) would otherwise reject common host conventions (yaw
+  −180..180). When enabled, failures are returned from `add()`.
+
 ## Tests
 Deterministic scripted exchanges between a HostSession and an IgSession wired back-to-back in memory:
 full start-up (Standby → Operate), mode refusal, database load handshake, frame numbering per §2.3
