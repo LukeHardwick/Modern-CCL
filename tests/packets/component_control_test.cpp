@@ -166,6 +166,40 @@ TEST(ComponentData, PackedSmallValues) {
     }
 }
 
+TEST(ComponentData, SetAndSignedSubWordAccessors) {
+    ComponentData d;
+    d.set_u32(0, 0xFFFFFFFF);
+    d.set_u16(0, 0, 0x1234);
+    EXPECT_EQ(d.u32(0), 0x1234FFFFU);
+    d.set_u16(0, 1, 0xABCD);
+    EXPECT_EQ(d.u32(0), 0x1234ABCDU);
+    d.set_i16(1, 0, -2);
+    d.set_i16(1, 1, 7);
+    EXPECT_EQ(d.i16(1, 0), -2);
+    EXPECT_EQ(d.i16(1, 1), 7);
+    d.set_u32(2, 0);
+    d.set_u8(2, 2, 0x5A);
+    EXPECT_EQ(d.u32(2), 0x00005A00U);
+    d.set_u8(2, 0, 0xFF);
+    d.set_u8(2, 3, 0x01);
+    EXPECT_EQ(d.u32(2), 0xFF005A01U);
+    d.set_i8(3, 1, -128);
+    EXPECT_EQ(d.i8(3, 1), -128);
+    EXPECT_EQ(d.u8(3, 1), 0x80);
+    EXPECT_EQ(d.u8(3, 0), 0);
+}
+
+TEST(ComponentControl, LegacyFourBitClassDecodes) {
+    // CIGI 3.0-3.2: class in bits 3-0, bits 7-4 reserved (zero).
+    Bytes b(32);
+    const ComponentControl defaults;
+    encode(defaults, b);
+    b.at(6) = std::byte{0x0B}; // Celestial Sphere
+    const auto r = decode(std::type_identity<ComponentControl>{}, b, ByteOrder::Native);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->component_class, ComponentClass::CelestialSphere);
+}
+
 TEST(ComponentData, ConstexprAndWordsAccess) {
     constexpr auto d = [] {
         ComponentData c;

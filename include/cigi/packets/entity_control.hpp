@@ -107,8 +107,8 @@ struct EntityControl {
     EntityState entity_state = EntityState::InactiveStandby;
     AttachState attach_state = AttachState::Detach;
     bool collision_detection_enabled = false;
-    bool inherit_alpha = false; ///< Ignored when detached.
-    GroundClamp ground_clamp = GroundClamp::NoClamp;
+    bool inherit_alpha = false;                      ///< Ignored when detached.
+    GroundClamp ground_clamp = GroundClamp::NoClamp; ///< Ignored when attached (Table 7).
     AnimationDirection animation_direction = AnimationDirection::Forward;
     AnimationLoopMode animation_loop_mode = AnimationLoopMode::OneShot;
     AnimationState animation_state = AnimationState::Stop;
@@ -152,6 +152,8 @@ struct EntityControl {
 };
 static_assert(wire::layout_ok<EntityControl>());
 
+/// Call as plain `cigi::validate(p)` (or unqualified): an explicit `validate<EntityControl>` would
+/// select the generic table template and skip the latitude/longitude checks.
 /// Field-table checks (enums defined, angle ranges), then, only for a top-level entity
 /// (Attach State = Detach), latitude -90..90 and longitude -180..180 (ICD 4.1.2). For an attached
 /// entity these fields are X/Y offsets in meters and are not range-checked. Errors carry the

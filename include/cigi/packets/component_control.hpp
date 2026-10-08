@@ -45,6 +45,8 @@ template <> struct EnumTraits<ComponentClass> {
     }
 };
 
+// Legacy: in CIGI 3.0-3.2 Component Class is 4 bits (bits 3-0; bits 7-4 reserved, sent as 0). The
+// 6-bit field here decodes those packets identically because senders zero reserved bits.
 struct ComponentControl {
     static constexpr std::uint8_t opcode = 4;
     static constexpr Direction direction = Direction::HostToIg;
