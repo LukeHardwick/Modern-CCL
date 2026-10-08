@@ -122,12 +122,18 @@ template <class Set, class P>
 template <class Set> struct Table;
 template <Packet... Ps> struct Table<PacketSet<Ps...>> {
     using Fn = DecodeFn<PacketSet<Ps...>>;
-    /// Opcode -> decoder; nullptr for opcodes outside the set.
-    static constexpr std::array<Fn, 256> entries = [] {
-        std::array<Fn, 256> t{};
-        ((std::get<Ps::opcode>(t) = &decode_entry<PacketSet<Ps...>, Ps>), ...);
+    /// Opcode -> 1 + position in the set, 0 for opcodes outside it. (Function pointers are only
+    /// called, never compared: GCC's sanitizers make such comparisons non-constant.)
+    static constexpr std::array<std::uint16_t, 256> index = [] {
+        std::array<std::uint16_t, 256> t{};
+        std::uint16_t next = 1;
+        ((std::get<Ps::opcode>(t) = next++), ...);
         return t;
     }();
+    /// Decoders in set order.
+    static constexpr std::array<Fn, sizeof...(Ps)> decoders{
+        &decode_entry<PacketSet<Ps...>, Ps>...,
+    };
 };
 
 } // namespace detail
@@ -140,8 +146,8 @@ template <Packet... Ps> struct Table<PacketSet<Ps...>> {
 /// opposite-direction packet's opcode is simply not in the set, so it arrives as UnknownPacket.
 template <class Set>
 [[nodiscard]] constexpr Result<AnyPacket<Set>> decode_any(const RawPacket& raw, Direction message) {
-    const auto fn = detail::Table<Set>::entries.at(raw.opcode);
-    if (fn == nullptr) {
+    const std::size_t slot = detail::Table<Set>::index.at(raw.opcode);
+    if (slot == 0) {
         const UnknownPacket unknown{
             .opcode = raw.opcode,
             .bytes = raw.bytes,
@@ -150,7 +156,7 @@ template <class Set>
         };
         return AnyPacket<Set>{std::in_place_type<UnknownPacket>, unknown};
     }
-    return fn(raw, message);
+    return detail::Table<Set>::decoders.at(slot - 1)(raw, message);
 }
 
 /// decode_any without the direction check.
