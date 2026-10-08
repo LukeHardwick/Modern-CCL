@@ -49,12 +49,21 @@ if(CIGI_BUILD_TRANSPORT)
     endif()
 endif()
 
-# Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
 find_program(CIGI_TSHARK tshark)
-find_program(CIGI_TEXT2PCAP text2pcap)
-find_program(CIGI_MERGECAP mergecap)
-if(TARGET cigi_frames AND CIGI_TSHARK AND CIGI_TEXT2PCAP AND CIGI_MERGECAP)
+
+cigi_add_test(cigi_tools_test SOURCES tools/pcap_writer_test.cpp LINK cigi::tools)
+if(CIGI_TSHARK)
+    # Reads the pcap writer's output back with tshark.
+    cigi_add_test(cigi_tools_tshark_test SOURCES tools/pcap_writer_tshark_test.cpp
+        LINK cigi::tools LABELS wireshark)
+    target_compile_definitions(cigi_tools_tshark_test PRIVATE CIGI_TSHARK_PATH="${CIGI_TSHARK}")
+endif()
+
+# Wireshark verification: only when tshark is installed.
+if(CIGI_TSHARK)
     get_filename_component(_cigi_wireshark_bin "${CIGI_TSHARK}" DIRECTORY)
+endif()
+if(TARGET cigi_frames AND CIGI_TSHARK)
     add_test(NAME wireshark_cigi_frames
         COMMAND ${CMAKE_SOURCE_DIR}/examples/wireshark/check_pcap.sh
                 $<TARGET_FILE:cigi_frames> ${CMAKE_CURRENT_BINARY_DIR}/wireshark)
