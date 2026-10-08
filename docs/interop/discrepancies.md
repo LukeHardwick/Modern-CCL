@@ -31,3 +31,9 @@ Packet", `cigi.host`/`cigi.ig` set). "Match" = the value Wireshark shows equals 
 | Version forced to "CIGI 3" | 4.1.1, 4.2.1 | 24-byte packets | assumes the 3.0/3.1 16-byte layout; trailing 8 bytes parsed as a bogus packet, "Malformed: Packet offset does not match packet length" | Wireshark limitation (3.2/3.3 size not supported in this mode); ICD wins |
 
 No library discrepancy was found: every field Wireshark decodes agrees with the ICD-derived layout.
+
+## CIGI 3.3 ICD internal inconsistencies (found in T03)
+
+| Item | ICD section | Issue | Our choice |
+|---|---|---|---|
+| Component Data: word order of a 64-bit value | 4.1.4, Figs. 44-46 | The "m (MSW)" / "m (LSW)" labels in Figs. 44 and 46 (first word = MSW) contradict the ICD's own arithmetic: the procedure takes beta = m truncated after bit 32 (the low bits) and gamma = m >> 32 (the high bits), and Fig. 46 places beta = 0 in word 3 and gamma = 0x40590000 in word 4. Unchanged in 3.0-3.2; no erratum. | Low 32 bits in word i, high 32 bits in word i + 1 (procedure and Fig. 46 placement agree). To be verified against the original CCL in T11. |

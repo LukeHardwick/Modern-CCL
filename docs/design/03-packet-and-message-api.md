@@ -140,3 +140,11 @@ Valid is set, Date must be a valid MMDDYYYY calendar date. View Control: Roll -1
 IG-defined) and Projection Type defined; View Type 0..7; for enabled values only: Near > 0, Far > 0
 and Near < Far (both enabled), each angle strictly inside (-90, 90), Left < Right and Bottom < Top
 (both of a pair enabled).
+
+Entity Control: field ranges (roll -180..180, pitch -90..90, yaw 0..360 per ICD Tables 7 and 12; the
+T03 brief said -180..180 for yaw, which was an error), defined enums, and latitude -90..90 /
+longitude -180..180 only when Attach State is Detach (attached, these are X/Y offsets). Ground Clamp
+is ignored by the IG when attached but still checked for being defined. Articulated Part Control:
+roll, pitch, yaw ranges as above. Rate Control: Coordinate System defined; rates have no ICD range.
+Component Control: Component Class must be 0..15 (16..63 reserved). Call plain `validate(p)`; an
+explicit `validate<EntityControl>` would pick the generic template and skip the lat/lon checks.
