@@ -16,6 +16,7 @@ cigi_add_test(cigi_packet_test SOURCES
     packets/ig_control_test.cpp
     packets/start_of_frame_test.cpp
     packets/celestial_sphere_control_test.cpp
+    packets/hat_hot_test.cpp
     packets/view_control_test.cpp
     packets/view_definition_test.cpp
     packets/random_roundtrip_test.cpp)
