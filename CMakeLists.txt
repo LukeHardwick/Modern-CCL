@@ -17,6 +17,7 @@ option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and platform helpers"
        ${_cigi_top})
+option(CIGI_BUILD_SESSION "Build the Host/IG sessions (fetches spdlog)" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
@@ -123,6 +124,29 @@ if(CIGI_BUILD_TRANSPORT)
         endif()
         cigi_apply_project_options(${_t})
     endforeach()
+endif()
+
+if(CIGI_BUILD_SESSION)
+    # Host / IG sessions: per-peer protocol state on top of the core, transport-agnostic.
+    add_library(cigi_session STATIC src/session/host_session.cpp src/session/ig_session.cpp
+                                    src/session/session.cpp)
+    add_library(cigi::session ALIAS cigi_session)
+    target_sources(cigi_session PUBLIC
+        FILE_SET HEADERS BASE_DIRS include
+        FILES include/cigi/session/detail.hpp
+              include/cigi/session/host_session.hpp
+              include/cigi/session/ig_session.hpp
+              include/cigi/session/session.hpp)
+    target_compile_features(cigi_session PUBLIC cxx_std_23)
+    target_link_libraries(cigi_session PUBLIC cigi::cigi spdlog::spdlog)
+    set_target_properties(cigi_session PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(MSVC)
+        target_compile_options(cigi_session PRIVATE /EHs-c-)
+        target_compile_definitions(cigi_session PRIVATE _HAS_EXCEPTIONS=0)
+    else()
+        target_compile_options(cigi_session PRIVATE -fno-exceptions)
+    endif()
+    cigi_apply_project_options(cigi_session)
 endif()
 
 if(CIGI_BUILD_EXAMPLES)

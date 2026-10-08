@@ -49,6 +49,14 @@ if(CIGI_BUILD_TRANSPORT)
     endif()
 endif()
 
+if(CIGI_BUILD_SESSION)
+    cigi_add_test(cigi_session_test SOURCES
+        session/host_session_test.cpp
+        session/ig_session_test.cpp
+        session/exchange_test.cpp
+        LINK cigi::session)
+endif()
+
 # Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
 find_program(CIGI_TSHARK tshark)
 find_program(CIGI_TEXT2PCAP text2pcap)
