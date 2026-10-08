@@ -24,7 +24,7 @@ namespace cigi {
 /// 10082026 (the ICD calls it a seven- or eight-digit number).
 /// Returns nullopt if the date is not a valid calendar date or its year is outside 0..9999.
 [[nodiscard]] constexpr std::optional<std::uint32_t>
-pack_date(std::chrono::year_month_day d) noexcept {
+pack_celestial_date(std::chrono::year_month_day d) noexcept {
     const int year = static_cast<int>(d.year());
     if (!d.ok() || year < 0 || year > 9999) {
         return std::nullopt;
@@ -34,9 +34,10 @@ pack_date(std::chrono::year_month_day d) noexcept {
                                       static_cast<unsigned>(year));
 }
 
-/// Inverse of pack_date. Returns nullopt for values that are not a valid MMDDYYYY calendar date.
+/// Inverse of pack_celestial_date. Returns nullopt for values that are not a valid MMDDYYYY
+/// calendar date.
 [[nodiscard]] constexpr std::optional<std::chrono::year_month_day>
-unpack_date(std::uint32_t packed) noexcept {
+unpack_celestial_date(std::uint32_t packed) noexcept {
     const std::uint32_t month = packed / 1'000'000U;
     const std::uint32_t day = (packed / 10'000U) % 100U;
     const std::uint32_t year = packed % 10'000U;
@@ -64,8 +65,23 @@ struct CelestialSphereControl {
     bool moon_enabled = false;
     bool star_field_enabled = false;
     bool date_time_valid = false;   ///< Hour, Minute and Date override the IG's date and time.
-    std::uint32_t date = 0;         ///< MMDDYYYY; see pack_date / unpack_date.
+    std::uint32_t date = 0;         ///< MMDDYYYY; see pack_celestial_date / unpack_celestial_date.
     float star_field_intensity = 0; ///< Percent, 0..100; ignored if the star field is disabled.
+
+    /// Store `d` in `date`. Returns false and leaves `date` unchanged if `d` is not encodable.
+    constexpr bool set_date(std::chrono::year_month_day d) noexcept {
+        const auto packed = pack_celestial_date(d);
+        if (packed) {
+            date = *packed;
+        }
+        return packed.has_value();
+    }
+
+    /// `date` as a calendar date; nullopt if it is not a valid MMDDYYYY value.
+    [[nodiscard]] constexpr std::optional<std::chrono::year_month_day>
+    calendar_date() const noexcept {
+        return unpack_celestial_date(date);
+    }
 
     static constexpr auto fields = std::tuple{
         wire::scalar(&CelestialSphereControl::hour, 2).range(0, 23),
@@ -90,7 +106,7 @@ static_assert(wire::layout_ok<CelestialSphereControl>());
     if (auto ok = wire::validate_fields(p); !ok) {
         return ok;
     }
-    if (p.date_time_valid && !unpack_date(p.date)) {
+    if (p.date_time_valid && !unpack_celestial_date(p.date)) {
         return std::unexpected(Error{
             .code = ErrorCode::InvalidFieldValue,
             .offset = 8,

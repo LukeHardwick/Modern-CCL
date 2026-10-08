@@ -51,8 +51,9 @@ static_assert(constexpr_round_trip());
 static_assert(Packet<CelestialSphereControl>);
 static_assert(CelestialSphereControl::wire_size == 16 && CelestialSphereControl::opcode == 9);
 static_assert(CelestialSphereControl::direction == Direction::HostToIg);
-static_assert(unpack_date(pack_date(chr::year{2026} / chr::October / 8).value()) ==
-              chr::year{2026} / chr::October / 8);
+static_assert(
+    unpack_celestial_date(pack_celestial_date(chr::year{2026} / chr::October / 8).value()) ==
+    chr::year{2026} / chr::October / 8);
 
 TEST(CelestialSphereControl, EncodeMatchesGolden) {
     std::array<std::byte, 16> buf{};
@@ -151,35 +152,46 @@ TEST(CelestialSphereControl, DecodeIsTolerantOfOutOfRangeValues) {
 }
 
 TEST(CelestialSphereControl, DateHelperKnownValues) {
-    EXPECT_EQ(pack_date(chr::year{2026} / chr::October / 8), 10082026U);
-    EXPECT_EQ(pack_date(chr::year{1999} / chr::January / 1), 1011999U); // seven digits
-    EXPECT_EQ(pack_date(chr::year{9999} / chr::December / 31), 12319999U);
-    EXPECT_EQ(unpack_date(2292024), chr::year{2024} / chr::February / 29);
+    EXPECT_EQ(pack_celestial_date(chr::year{2026} / chr::October / 8), 10082026U);
+    EXPECT_EQ(pack_celestial_date(chr::year{1999} / chr::January / 1), 1011999U); // seven digits
+    EXPECT_EQ(pack_celestial_date(chr::year{9999} / chr::December / 31), 12319999U);
+    EXPECT_EQ(unpack_celestial_date(2292024), chr::year{2024} / chr::February / 29);
+}
+
+TEST(CelestialSphereControl, SetDateAndCalendarDate) {
+    CelestialSphereControl p;
+    EXPECT_FALSE(p.calendar_date().has_value()); // date 0
+    EXPECT_TRUE(p.set_date(chr::year{2026} / chr::October / 8));
+    EXPECT_EQ(p.date, 10082026U);
+    EXPECT_EQ(p.calendar_date(), chr::year{2026} / chr::October / 8);
+    EXPECT_FALSE(p.set_date(chr::year{2026} / chr::February / 30));
+    EXPECT_FALSE(p.set_date(chr::year{10000} / chr::January / 1));
+    EXPECT_EQ(p.date, 10082026U); // unchanged on failure
 }
 
 TEST(CelestialSphereControl, DateHelperRoundTripsEveryDayOf2000To2030) {
     for (auto d = chr::sys_days{chr::year{2000} / chr::January / 1};
          d < chr::sys_days{chr::year{2031} / chr::January / 1}; d += chr::days{1}) {
         const chr::year_month_day ymd{d};
-        const auto packed = pack_date(ymd);
+        const auto packed = pack_celestial_date(ymd);
         ASSERT_TRUE(packed.has_value());
-        EXPECT_EQ(unpack_date(*packed), ymd);
+        EXPECT_EQ(unpack_celestial_date(*packed), ymd);
     }
 }
 
 TEST(CelestialSphereControl, DateHelperRejectsInvalidDates) {
-    EXPECT_FALSE(pack_date(chr::year{2026} / chr::February / 30).has_value());
-    EXPECT_FALSE(pack_date(chr::year{10000} / chr::January / 1).has_value());
-    EXPECT_FALSE(pack_date(chr::year{-1} / chr::January / 1).has_value());
-    EXPECT_FALSE(unpack_date(0).has_value());
-    EXPECT_FALSE(unpack_date(13012026).has_value()); // month 13
-    EXPECT_FALSE(unpack_date(1002026).has_value());  // day 0
-    EXPECT_FALSE(unpack_date(1322026).has_value());  // day 32
-    EXPECT_FALSE(unpack_date(2302026).has_value());  // 30 Feb
-    EXPECT_FALSE(unpack_date(2292025).has_value());  // 29 Feb, not a leap year
-    EXPECT_FALSE(unpack_date(std::numeric_limits<std::uint32_t>::max()).has_value());
+    EXPECT_FALSE(pack_celestial_date(chr::year{2026} / chr::February / 30).has_value());
+    EXPECT_FALSE(pack_celestial_date(chr::year{10000} / chr::January / 1).has_value());
+    EXPECT_FALSE(pack_celestial_date(chr::year{-1} / chr::January / 1).has_value());
+    EXPECT_FALSE(unpack_celestial_date(0).has_value());
+    EXPECT_FALSE(unpack_celestial_date(13012026).has_value()); // month 13
+    EXPECT_FALSE(unpack_celestial_date(1002026).has_value());  // day 0
+    EXPECT_FALSE(unpack_celestial_date(1322026).has_value());  // day 32
+    EXPECT_FALSE(unpack_celestial_date(2302026).has_value());  // 30 Feb
+    EXPECT_FALSE(unpack_celestial_date(2292025).has_value());  // 29 Feb, not a leap year
+    EXPECT_FALSE(unpack_celestial_date(std::numeric_limits<std::uint32_t>::max()).has_value());
     // A month that would wrap to a valid value if truncated to 8 bits (257 -> 1).
-    EXPECT_FALSE(unpack_date(257'012'026U).has_value());
+    EXPECT_FALSE(unpack_celestial_date(257'012'026U).has_value());
 }
 
 TEST(CelestialSphereControl, ValidateAcceptsSampleAndDefaults) {
