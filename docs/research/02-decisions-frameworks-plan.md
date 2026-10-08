@@ -72,6 +72,7 @@ be `static_assert`s.
 | 0 | T0 Scaffold | CMake presets, FetchContent deps, GoogleTest wired, clang-format/tidy, sanitizer/coverage/fuzz presets, `scripts/check.sh`, Linux GCC Dockerfile; empty test green. |
 | 1 | T1 Wire primitives | ByteReader/Writer, swap, bit-field helpers, UTF-8 safe truncation, `cigi::Error`. 100% unit-tested. |
 | 2 | T2 Vertical slice | IG Control + Start of Frame + MessageBuilder/MessageView; round-trip and cross-endian tests. **Design checkpoint with you.** |
+| 2 | T2b Field-table codec | (Checkpoint outcome.) Fields declared once per packet in a constexpr table; generic encode/decode/validate; compile-time layout checks (bounds, alignment, overlap); `OpcodeMismatch`; `validate()`; `MessageView::validate_all()`. |
 | 3 | T3–T8 Packet batches | T3 entity/component/articulation/rate (2–8); T4 environment (9–15); T5 views/sensors/ERM/trajectory (16–21); T6 collision + requests (22–28); T7 symbology (29–35, errata); T8 IG→Host (102–117). Each packet: spec-derived golden bytes, swapped variant, bounds and reserved-bit tests. |
 | 3 | T9 User-defined packets + Component Control data helpers | Concept + registration; double/16-bit packing per ICD Fig. 46. |
 | 4 | T10 Dispatch | Variant visitor + handler table; tolerance of unknown/oversize packets. |
@@ -95,3 +96,10 @@ diff summary. Opus reviews each diff against the ICD before starting the next ta
 - T0 is committed directly on `main` (it creates the first commit, which worktrees need as a base).
 - From T1 on, each task's sub-agent works in its **own git worktree** on a branch `task/tNN-<slug>`, commits there, and Opus reviews the diff before merging into `main`.
 - Commit at least once per task; larger tasks (packet batches) commit per packet group.
+
+## 8. Design checkpoint outcome (T2, 2026-10-08)
+- Packet codecs: declarative constexpr field tables (offsets written once), compile-time layout verification.
+- MessageBuilder: each `add()` returns `Result<void>`; builder unchanged on failure.
+- Decode stays tolerant of undefined enum values; separate `validate(packet)` for range checks.
+- MessageView: lazy parse plus optional `validate_all()`.
+- Spec defect recorded: 3.3 ICD gives Minor Version "2" in IG Control/SOF; we send 3.
