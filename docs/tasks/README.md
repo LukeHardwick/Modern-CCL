@@ -17,7 +17,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T01](T01-wire-primitives.md) | Wire primitives | Foundation | T00 | ✅ `41158fb` |
 | [T02](T02-vertical-slice.md) | IG Control, Start of Frame, builder, view | Foundation | T01 | ✅ `36e8e1f` |
 | [T02b](T02b-field-table.md) | Declarative field-table codec | Foundation | T02 | ✅ `e819387` |
-| [T02c](T02c-wireshark-frame-example.md) | Example: IG Control/SOF traffic in Wireshark | Foundation | T02b | 🔄 |
+| [T02c](T02c-wireshark-frame-example.md) | Example: IG Control/SOF traffic in Wireshark | Foundation | T02b | ✅ `11cbfd7` |
 | [T03](T03-mvp-entity-packets.md) | Entity, Articulated Part, Rate, Component Control | A (MVP) | T02b | ⏳ |
 | [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ⏳ |
 | [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ⏳ |
