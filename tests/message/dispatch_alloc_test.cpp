@@ -5,6 +5,7 @@
 #include "cigi/dispatch.hpp"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <new>
@@ -15,17 +16,68 @@ std::atomic<std::size_t> allocations{
 } // namespace
 
 // NOLINTBEGIN(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory,misc-use-internal-linkage,readability-inconsistent-declaration-parameter-name)
-void* operator new(std::size_t size) {
+void* counted_alloc(std::size_t size, std::size_t align) noexcept {
     allocations.fetch_add(1, std::memory_order_relaxed);
-    if (void* p = std::malloc(size)) {
-        return p;
+    void* p = nullptr;
+    if (align <= alignof(std::max_align_t)) {
+        p = std::malloc(size);
+    } else if (posix_memalign(&p, align, size) != 0) {
+        p = nullptr;
     }
-    std::abort(); // the library does not use exceptions
+    return p;
+}
+void* checked(void* p) {
+    if (p == nullptr) {
+        std::abort(); // the library does not use exceptions
+    }
+    return p;
+}
+void* operator new(std::size_t size) {
+    return checked(counted_alloc(size, 1));
+}
+void* operator new[](std::size_t size) {
+    return checked(counted_alloc(size, 1));
+}
+void* operator new(std::size_t size, std::align_val_t al) {
+    return checked(counted_alloc(size, static_cast<std::size_t>(al)));
+}
+void* operator new[](std::size_t size, std::align_val_t al) {
+    return checked(counted_alloc(size, static_cast<std::size_t>(al)));
+}
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    return counted_alloc(size, 1);
+}
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+    return counted_alloc(size, 1);
+}
+void* operator new(std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
+    return counted_alloc(size, static_cast<std::size_t>(al));
+}
+void* operator new[](std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
+    return counted_alloc(size, static_cast<std::size_t>(al));
 }
 void operator delete(void* p) noexcept {
     std::free(p);
 }
-void operator delete(void* p, std::size_t /*size*/) noexcept {
+void operator delete[](void* p) noexcept {
+    std::free(p);
+}
+void operator delete(void* p, std::size_t) noexcept {
+    std::free(p);
+}
+void operator delete[](void* p, std::size_t) noexcept {
+    std::free(p);
+}
+void operator delete(void* p, std::align_val_t) noexcept {
+    std::free(p);
+}
+void operator delete[](void* p, std::align_val_t) noexcept {
+    std::free(p);
+}
+void operator delete(void* p, std::size_t, std::align_val_t) noexcept {
+    std::free(p);
+}
+void operator delete[](void* p, std::size_t, std::align_val_t) noexcept {
     std::free(p);
 }
 // NOLINTEND(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory,misc-use-internal-linkage,readability-inconsistent-declaration-parameter-name)
@@ -49,6 +101,20 @@ Bytes message() {
     bad.at(1) = std::byte{8};
     append(m, bad);
     return m;
+}
+
+TEST(DispatchAllocations, CounterSeesEveryNewForm) {
+    const std::size_t before = allocations.load();
+    // NOLINTBEGIN(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc)
+    delete new int(1);
+    delete[] new int[2];
+    struct alignas(64) Aligned {
+        char c;
+    };
+    delete new Aligned;
+    delete new (std::nothrow) int(2);
+    // NOLINTEND(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc)
+    EXPECT_EQ(allocations.load() - before, 4U);
 }
 
 TEST(DispatchAllocations, VisitorAndDispatcherDoNotAllocate) {

@@ -42,6 +42,12 @@ struct DispatchStats {
 
 namespace detail {
 
+template <class Set, class Visitor> struct AcceptsAny;
+template <Packet... Ps, class Visitor> struct AcceptsAny<PacketSet<Ps...>, Visitor> {
+    static constexpr bool value = (std::invocable<Visitor&, const Ps&> || ... ||
+                                   std::invocable<Visitor&, const UnknownPacket&>);
+};
+
 /// The error callback used when the caller gives none.
 struct IgnoreErrors {
     constexpr void operator()(const Error& /*error*/) const noexcept {}
@@ -70,6 +76,16 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
             on_error(item.error());
             break;
         }
+        // A second frame packet is a protocol violation (ICD 4.1.1, 4.2.1): report, don't deliver.
+        if (item->offset != 0 && item->opcode == frame_packet_opcode(view.direction())) {
+            ++stats.errors;
+            on_error(Error{
+                .code = ErrorCode::DuplicateFramePacket,
+                .offset = item->offset,
+                .opcode = item->opcode,
+            });
+            continue;
+        }
         const auto decoded = decode_any<Set>(*item, view.direction());
         if (!decoded) {
             ++stats.errors;
@@ -95,11 +111,15 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
 /// Visit every packet of `view` in order. `visitor(const P&)` is called for each packet type P of
 /// `Set` it accepts; other known packets are skipped (counted as ignored). If the visitor also
 /// accepts `const UnknownPacket&` it receives unknown opcodes. `on_error(const Error&)` is
-/// optional. No allocation.
+/// optional. No allocation. A second IG Control / Start of Frame in a message is reported as
+/// DuplicateFramePacket and skipped. WrongDirection arises only if `Set` and the message direction
+/// disagree; an opposite-direction packet in a matching set is an UnknownPacket.
 // NOLINTBEGIN(cppcoreguidelines-missing-std-forward): both are called repeatedly, never moved.
 template <class Set, class Visitor, class OnError = detail::IgnoreErrors>
 constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
                                  OnError&& on_error = {}) {
+    static_assert(detail::AcceptsAny<Set, Visitor>::value,
+                  "dispatch: the visitor accepts no packet of the set and not UnknownPacket");
     auto on_packet = [&]([[maybe_unused]] const auto& p) {
         if constexpr (std::invocable<Visitor&, const std::remove_cvref_t<decltype(p)>&>) {
             static_cast<void>(visitor(p));
@@ -119,7 +139,8 @@ constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
 
 /// Handlers registered at run time, one slot per packet type of `Set`. Registration may allocate
 /// (std::function); dispatching never does. Registering again replaces the handler. Do not
-/// register from inside a handler. Replaces per-packet event processors.
+/// register from inside a handler. Copies of a Dispatcher share whatever their handlers capture by
+/// reference (or pointer). Replaces per-packet event processors.
 template <class Set> class Dispatcher;
 
 template <Packet... Ps> class Dispatcher<PacketSet<Ps...>> {

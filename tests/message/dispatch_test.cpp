@@ -49,6 +49,24 @@ constexpr Result<AnyPacket<HostToIgPackets>> constexpr_unknown =
 static_assert(std::holds_alternative<UnknownPacket>(*constexpr_unknown));
 static_assert(std::get<UnknownPacket>(*constexpr_unknown).offset == 40);
 
+// constexpr dispatch over a message built at compile time.
+constexpr int constexpr_dispatch() {
+    StaticMessageBuilder<64> b(Direction::HostToIg);
+    if (!b.add(IgControl{}) || !b.add(UserPacket{3})) {
+        return -1;
+    }
+    const auto v = MessageView::parse(b.bytes());
+    if (!v) {
+        return -2;
+    }
+    int n = 0;
+    const auto stats = dispatch<Extend<HostToIgPackets, UserPacket>>(
+        *v,
+        overloaded{[&](const IgControl&) { n += 1; }, [&](const UserPacket& p) { n += p.value; }});
+    return stats.handled == 2 ? n : -3;
+}
+static_assert(constexpr_dispatch() == 4);
+
 // ---- helpers --------------------------------------------------------------------------------
 template <Packet P> Bytes encoded(const P& p) {
     Bytes b(encoded_size(p));
@@ -278,10 +296,11 @@ TEST(Dispatch, ErrorsWithoutACallbackAreStillCounted) {
     EXPECT_EQ(stats.errors, 1U);
 }
 
-TEST(Dispatch, EmptyVisitorIgnoresEverything) {
+TEST(Dispatch, GenericVisitorHandlesEveryKnownPacketAndUnknowns) {
     const Bytes m = host_message();
     const auto stats = dispatch<HostToIgPackets>(parsed(m), [](const auto&) {});
-    // A generic lambda accepts UnknownPacket too: nothing is "ignored" except by absence.
+    // A generic lambda accepts UnknownPacket too, so nothing is ignored.
+    EXPECT_EQ(stats.ignored, 0U);
     EXPECT_EQ(stats.handled, 9U);
     EXPECT_EQ(stats.unknown, 2U);
 }
@@ -295,6 +314,75 @@ TEST(Dispatch, ForeignByteOrderMessage) {
     EXPECT_EQ(frame, 0x01020304U);
     EXPECT_EQ(stats.handled, 1U);
 }
+
+TEST(Dispatch, DuplicateFramePacketIsReportedAndSkipped) {
+    Bytes m = encoded(IgControl{});
+    append(m, encoded(EntityControl{}));
+    append(m, encoded(IgControl{})); // offset 72
+    append(m, encoded(ViewControl{}));
+    std::vector<Error> errors;
+    Recorder rec;
+    const auto stats =
+        dispatch<HostToIgPackets>(parsed(m), rec, [&](const Error& e) { errors.push_back(e); });
+    EXPECT_EQ(rec.seen, (std::vector<int>{1, 2, 16}));
+    ASSERT_EQ(errors.size(), 1U);
+    EXPECT_EQ(errors.front(),
+              (Error{.code = ErrorCode::DuplicateFramePacket, .offset = 72, .opcode = 1}));
+    EXPECT_EQ(stats, (DispatchStats{.handled = 3, .ignored = 0, .unknown = 0, .errors = 1}));
+    EXPECT_EQ(parsed(m).validate_all().error(), errors.front());
+
+    Bytes ig = encoded(StartOfFrame{});
+    append(ig, encoded(StartOfFrame{}));
+    EXPECT_EQ(dispatch<IgToHostPackets>(parsed(ig), Recorder{}).errors, 1U);
+}
+
+TEST(Dispatch, OppositeDirectionPacketInAMatchingSetIsUnknown) {
+    Bytes m = encoded(IgControl{});
+    append(m, encoded(HatHotResponse{}));
+    Recorder rec;
+    const auto stats = dispatch<HostToIgPackets>(parsed(m), rec);
+    EXPECT_EQ(rec.seen, (std::vector<int>{1, 1102}));
+    EXPECT_EQ(stats.unknown, 1U);
+    EXPECT_EQ(stats.errors, 0U);
+}
+
+TEST(Dispatch, BothDirectionPacketInAnIgMessage) {
+    Bytes m = ig_message();
+    append(m, encoded(UserPacket{5}));
+    Recorder rec;
+    const auto stats = dispatch<Extend<IgToHostPackets, UserPacket>>(parsed(m), rec);
+    EXPECT_EQ(rec.seen, (std::vector<int>{101, 102, 103, 1250, 201}));
+    EXPECT_EQ(stats.errors, 0U);
+}
+
+TEST(Dispatch, LegacyThreeOneMessage) {
+    // 16-byte 3.1 IG Control, then a View Control.
+    Bytes m = frame_packet(1, 16, 1);
+    append(m, encoded(ViewControl{}));
+    Recorder rec;
+    const auto stats = dispatch<HostToIgPackets>(parsed(m), rec);
+    EXPECT_EQ(rec.seen, (std::vector<int>{1, 16}));
+    EXPECT_EQ(stats.errors, 0U);
+
+    Bytes ig = frame_packet(101, 16, 1);
+    append(ig, encoded(HatHotResponse{}));
+    const auto s2 = dispatch<IgToHostPackets>(parsed(ig), Recorder{});
+    EXPECT_EQ(s2, (DispatchStats{.handled = 2, .ignored = 0, .unknown = 0, .errors = 0}));
+}
+
+TEST(DecodeAny, OversizeKnownPacketStillDecodes) {
+    Bytes b = encoded(EntityControl{});
+    b.resize(56, std::byte{0});
+    b.at(1) = std::byte{56};
+    const auto r = decode_any<HostToIgPackets>(raw_of(b), Direction::HostToIg);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(std::holds_alternative<EntityControl>(*r));
+}
+
+static_assert(
+    std::is_same_v<Extend<IgToHostPackets, UserPacket>,
+                   PacketSet<StartOfFrame, HatHotResponse, HatHotExtendedResponse, UserPacket>>);
+static_assert(std::is_same_v<Extend<PacketSet<>>, PacketSet<>>);
 
 // ---- Dispatcher -----------------------------------------------------------------------------
 TEST(Dispatcher, CallsRegisteredHandlersAndCounts) {

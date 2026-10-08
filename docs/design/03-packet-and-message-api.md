@@ -126,12 +126,18 @@ iteration ends. Unknown opcodes are yielded normally. The iterator is a true for
 - **Sets.** `PacketSet<Ps...>` is a type list; `static_assert`s require unique opcodes and
   consistent directions (HostToIg and IgToHost may not mix; Both fits either). `HostToIgPackets`
   and `IgToHostPackets` hold every packet implemented so far. Extend with your own packet by
-  `cigi::Concat<HostToIgPackets, PacketSet<MyPacket>>` (or write the full list).
+  `cigi::Extend<HostToIgPackets, MyPacket>` (or write the full list).
 - **`decode_any<Set>(raw, message_direction)`** -> `Result<AnyPacket<Set>>`, a `std::variant` of the
   set's packets plus `UnknownPacket {opcode, bytes, offset, byte_order}` (non-owning, valid while
   the datagram lives). An opcode table built at compile time makes it O(1) with no allocation.
   A packet whose direction contradicts the message gives `WrongDirection`. The one-argument form
-  skips that check. `decode_any` is tolerant like `decode`; it does not call `validate`.
+  skips that check. `WrongDirection` therefore means the *set* and the message disagree (an
+  `IgToHostPackets` set on a Host message); in a matching set an opposite-direction packet's opcode
+  is not in the set and arrives as `UnknownPacket`. A second IG Control / Start of Frame in a
+  message is reported by `dispatch` (and `MessageView::validate_all`) as `DuplicateFramePacket`
+  and not delivered. `Extend<Set, MyPacket...>` adds packets to a set. `UnknownPacket::bytes` is
+  valid while the datagram buffer lives; sessions only guarantee the buffer during the handler
+  call. `decode_any` is tolerant like `decode`; it does not call `validate`.
 - **`dispatch<Set>(view, visitor [, on_error])`** visits packets in order. Use
   `cigi::overloaded{[](const IgControl&){...}, [](const UnknownPacket&){...}}`; packets the visitor
   cannot accept are skipped. Unknown opcodes are never errors; they reach the visitor only if it
@@ -142,7 +148,8 @@ iteration ends. Unknown opcodes are yielded normally. The iterator is a true for
 - **`Dispatcher<Set>`** is the runtime form: `on<P>(fn)`, `on_unknown(fn)`, `on_error(fn)`,
   `clear<P>()`, `dispatch(view)`. Handlers live in one `std::function` per packet type, so
   registering may allocate; dispatching never does (tested with a counting `operator new`).
-  Registering again replaces the handler; do not register from inside a handler.
+  Registering again replaces the handler; do not register from inside a handler. Copies of a
+  `Dispatcher` share whatever their handlers capture by reference.
 
 Validation is separate: call plain `cigi::validate(p)` on a decoded packet if you want the ICD
 range checks (never `validate<P>(p)`, which would skip packets' cross-field overloads).

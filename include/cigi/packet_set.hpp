@@ -19,8 +19,9 @@
 namespace cigi {
 
 /// A packet whose opcode is not in the set being decoded. ICD 2.11 rule 3 says a receiver ignores
-/// such packets, so this is a value, not an error. Non-owning: valid only while the datagram it
-/// points into is alive.
+/// such packets, so this is a value, not an error. Non-owning: `bytes` points into the datagram
+/// buffer and is valid for as long as that buffer lives. (A session hands it to a handler and only
+/// guarantees the buffer for the duration of that call; copy the bytes to keep them longer.)
 struct UnknownPacket {
     std::uint8_t opcode = 0;
     std::span<const std::byte> bytes; ///< The whole packet, header included.
@@ -93,6 +94,9 @@ using HostToIgPackets =
 /// Every IG -> Host packet implemented so far.
 using IgToHostPackets = PacketSet<StartOfFrame, HatHotResponse, HatHotExtendedResponse>;
 
+/// `Set` followed by more packets (your own, T17): `Extend<HostToIgPackets, MyPacket>`.
+template <class Set, Packet... Ps> using Extend = Concat<Set, PacketSet<Ps...>>;
+
 /// std::variant of every packet in `Set`, plus UnknownPacket.
 template <class Set> using AnyPacket = Set::Variant;
 
@@ -131,7 +135,9 @@ template <Packet... Ps> struct Table<PacketSet<Ps...>> {
 /// Decode `raw` as whichever packet of `Set` its opcode names; an opcode outside the set gives
 /// an UnknownPacket. Errors are those of the packet's own decode (offsets relative to the
 /// message), or WrongDirection if `message` is HostToIg/IgToHost and the packet's direction
-/// contradicts it (pass Direction::Both to skip the check).
+/// contradicts it (pass Direction::Both to skip the check). That happens only when the set and
+/// the message disagree (e.g. an IgToHostPackets set on a Host message). In a matching set an
+/// opposite-direction packet's opcode is simply not in the set, so it arrives as UnknownPacket.
 template <class Set>
 [[nodiscard]] constexpr Result<AnyPacket<Set>> decode_any(const RawPacket& raw, Direction message) {
     const auto fn = detail::Table<Set>::entries.at(raw.opcode);
