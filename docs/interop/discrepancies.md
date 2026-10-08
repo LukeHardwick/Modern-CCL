@@ -36,5 +36,4 @@ No library discrepancy was found: every field Wireshark decodes agrees with the 
 
 | Item | ICD section | Issue | Our choice |
 |---|---|---|---|
-| Component Data: word order of a 64-bit value | 4.1.4, Figs. 44-46 | Fig. 44 labels the first word "m (MSW)" and the prose calls the first word the MSW, but the worked example (Fig. 46, m = 100.0 = 0x4059000000000000) puts 0x00000000 in word 3 and 0x40590000 in word 4, i.e. the least significant half first. | Follow the worked example's wire bytes: low 32 bits in word i, high 32 bits in word i + 1. Verify against the original CCL in T11; flip in `component_data.hpp` if it disagrees. |
-| Yaw range | 4.1.2, 4.1.6 | ICD gives Yaw 0..360 while Roll is -180..180 (the T03 brief said -180..180). | `validate()` enforces 0..360 as written, so a negative yaw is rejected; normalise before sending. |
+| Component Data: word order of a 64-bit value | 4.1.4, Figs. 44-46 | The "m (MSW)" / "m (LSW)" labels in Figs. 44 and 46 (first word = MSW) contradict the ICD's own arithmetic: the procedure takes beta = m truncated after bit 32 (the low bits) and gamma = m >> 32 (the high bits), and Fig. 46 places beta = 0 in word 3 and gamma = 0x40590000 in word 4. Unchanged in 3.0-3.2; no erratum. | Low 32 bits in word i, high 32 bits in word i + 1 (procedure and Fig. 46 placement agree). To be verified against the original CCL in T11. |
