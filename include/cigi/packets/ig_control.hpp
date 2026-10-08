@@ -10,6 +10,7 @@
 //
 // Peers older than 3.2 send 16 bytes (no last-IG-frame field; bytes 8-11 are a "frame counter");
 // 3.2 has no extrapolation flag. Both are tolerated on decode, never produced.
+// The field table covers the body; version, magic and legacy rules wrap it in custom codecs.
 
 #include "cigi/packet.hpp"
 #include "cigi/packets/common.hpp"
@@ -17,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <tuple>
 #include <type_traits>
 
 namespace cigi {
@@ -35,8 +37,19 @@ struct IgControl {
     std::uint32_t last_ig_frame_number = 0;
     ProtocolVersion version = protocol_version; ///< Filled by decode; encode always writes 3.3.
 
+    static constexpr auto fields = std::tuple{
+        wire::scalar(&IgControl::database_number, 3).range(0, 127),
+        wire::bits(&IgControl::ig_mode, 4, 0, 2),
+        wire::flag(&IgControl::timestamp_valid, 4, 2),
+        wire::flag(&IgControl::extrapolation_enabled, 4, 3),
+        wire::scalar(&IgControl::host_frame_number, 8),
+        wire::scalar(&IgControl::timestamp, 12),
+        wire::scalar(&IgControl::last_ig_frame_number, 16),
+    };
+
     friend constexpr bool operator==(const IgControl&, const IgControl&) noexcept = default;
 };
+static_assert(wire::layout_ok<IgControl>());
 
 [[nodiscard]] constexpr std::size_t encoded_size(const IgControl& /*p*/) noexcept {
     return IgControl::wire_size;
@@ -44,22 +57,8 @@ struct IgControl {
 
 /// Precondition: out.size() == encoded_size(p).
 constexpr void encode(const IgControl& p, std::span<std::byte> out) noexcept {
-    CIGI_ASSERT(out.size() == IgControl::wire_size);
-    std::ranges::fill(out, std::byte{0});
-    using wire::store;
-    store<std::uint8_t>(out, 0, IgControl::opcode);
-    store<std::uint8_t>(out, 1, IgControl::wire_size);
-    store<std::uint8_t>(out, 2, protocol_version.major);
-    store<std::int8_t>(out, 3, p.database_number);
-    std::uint8_t flags = detail::MinorVersionField::set(0, protocol_version.minor);
-    flags = wire::set_flag(flags, 3, p.extrapolation_enabled);
-    flags = wire::set_flag(flags, detail::timestamp_valid_bit, p.timestamp_valid);
-    flags = detail::IgModeField::set(flags, static_cast<std::uint8_t>(p.ig_mode));
-    store<std::uint8_t>(out, 4, flags);
-    store<std::uint16_t>(out, detail::frame_magic_offset, wire::byte_swap_magic);
-    store<std::uint32_t>(out, 8, p.host_frame_number);
-    store<std::uint32_t>(out, 12, p.timestamp.count());
-    store<std::uint32_t>(out, 16, p.last_ig_frame_number);
+    detail::write_frame_header(out, IgControl::opcode, 4);
+    wire::encode_fields(p, out);
 }
 
 [[nodiscard]] constexpr Result<IgControl> decode(std::type_identity<IgControl> /*tag*/,
@@ -69,21 +68,29 @@ constexpr void encode(const IgControl& p, std::span<std::byte> out) noexcept {
     if (!version) {
         return std::unexpected(version.error());
     }
-    using wire::load;
-    const auto flags = load<std::uint8_t>(bytes, 4, order);
     IgControl p;
+    wire::decode_fields(p, bytes, order);
     p.version = *version;
-    p.database_number = load<std::int8_t>(bytes, 3, order);
-    p.ig_mode = static_cast<IgMode>(detail::IgModeField::get(flags));
-    p.timestamp_valid = wire::get_flag(flags, detail::timestamp_valid_bit);
-    // The extrapolation flag is reserved before 3.3 (ICD 3.2 4.1.1); ignore it there.
-    p.extrapolation_enabled = version->minor >= 3 && wire::get_flag(flags, 3);
-    p.host_frame_number = load<std::uint32_t>(bytes, 8, order);
-    p.timestamp = Timestamp{load<std::uint32_t>(bytes, 12, order)};
-    if (version->minor >= detail::first_modern_minor) {
-        p.last_ig_frame_number = load<std::uint32_t>(bytes, 16, order);
+    // The extrapolation flag is reserved before 3.3 (ICD 3.2 4.1.1); ignore it there. Likewise
+    // the last-IG-frame field only exists from 3.2.
+    p.extrapolation_enabled = p.extrapolation_enabled && version->minor >= 3;
+    if (version->minor < detail::first_modern_minor) {
+        p.last_ig_frame_number = 0;
     }
     return p;
+}
+
+/// Field ranges (Database Number 0..127; negative is not a valid command) plus IG Mode: the Host
+/// cannot command Offline Maintenance (ICD 4.1.1, 2.8). Errors point at the field's byte offset.
+[[nodiscard]] constexpr Result<void> validate(const IgControl& p) noexcept {
+    if (auto ok = wire::validate_fields(p); !ok) {
+        return ok;
+    }
+    if (p.ig_mode == IgMode::OfflineMaintenance) {
+        return std::unexpected(
+            Error{.code = ErrorCode::InvalidFieldValue, .offset = 4, .opcode = IgControl::opcode});
+    }
+    return {};
 }
 
 } // namespace cigi

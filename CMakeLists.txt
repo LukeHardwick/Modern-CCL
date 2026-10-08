@@ -46,6 +46,7 @@ target_sources(cigi PUBLIC
           include/cigi/wire/bits.hpp
           include/cigi/wire/byte_order.hpp
           include/cigi/wire/codec.hpp
+          include/cigi/wire/fields.hpp
           include/cigi/wire/padding.hpp
           include/cigi/wire/utf8.hpp)
 target_include_directories(cigi PUBLIC

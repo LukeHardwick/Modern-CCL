@@ -125,6 +125,18 @@ public:
         return MessageView(datagram, direction, *frame, *order);
     }
 
+    /// Walk every packet header (size and bounds, ICD 2.6) and return the first structural error
+    /// (InvalidPacketSize or Truncated, with the packet's offset and opcode). Bodies are not
+    /// decoded: unknown opcodes and bad field values pass.
+    [[nodiscard]] constexpr Result<void> validate_all() const noexcept {
+        for (const auto& item : *this) {
+            if (!item) {
+                return std::unexpected(item.error());
+            }
+        }
+        return {};
+    }
+
     [[nodiscard]] constexpr Direction direction() const noexcept { return direction_; }
     [[nodiscard]] constexpr ProtocolVersion version() const noexcept { return version_; }
     [[nodiscard]] constexpr wire::ByteOrder byte_order() const noexcept { return order_; }
