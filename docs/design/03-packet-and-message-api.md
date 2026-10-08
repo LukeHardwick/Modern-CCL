@@ -130,3 +130,13 @@ counter"); 3.2 has no extrapolation flag (ignored below minor 3). A 16-byte pack
 IG Control: Database Number 0..127; IG Mode must be Reset/Standby, Operate or Debug (the Host cannot
 command Offline Maintenance, ICD 4.1.1, 2.8). Start of Frame: IG Mode and Earth Reference Model
 defined; every Database Number and IG Status is defined.
+
+Principle: field-local ICD ranges (and defined enums) are always checked, whether or not an enable
+flag is set; cross-field and frustum rules apply only to values whose enable flag is set.
+
+Celestial Sphere Control: Hour 0..23, Minute 0..59, Star Field Intensity 0..100; when Date/Time
+Valid is set, Date must be a valid MMDDYYYY calendar date. View Control: Roll -180..180, Pitch
+-90..90, Yaw 0..360. View Definition: Mirror Mode, Pixel Replication Mode (0..7, 4..7 are
+IG-defined) and Projection Type defined; View Type 0..7; for enabled values only: Near > 0, Far > 0
+and Near < Far (both enabled), each angle strictly inside (-90, 90), Left < Right and Bottom < Top
+(both of a pair enabled).

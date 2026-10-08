@@ -37,9 +37,13 @@ target_sources(cigi PUBLIC
     FILES include/cigi/version.hpp
           include/cigi/error.hpp
           include/cigi/packet.hpp
+          include/cigi/packets.hpp
+          include/cigi/packets/celestial_sphere_control.hpp
           include/cigi/packets/common.hpp
           include/cigi/packets/ig_control.hpp
           include/cigi/packets/start_of_frame.hpp
+          include/cigi/packets/view_control.hpp
+          include/cigi/packets/view_definition.hpp
           include/cigi/message/builder.hpp
           include/cigi/message/view.hpp
           include/cigi/detail/assert.hpp
