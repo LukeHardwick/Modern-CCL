@@ -31,3 +31,10 @@ Packet", `cigi.host`/`cigi.ig` set). "Match" = the value Wireshark shows equals 
 | Version forced to "CIGI 3" | 4.1.1, 4.2.1 | 24-byte packets | assumes the 3.0/3.1 16-byte layout; trailing 8 bytes parsed as a bogus packet, "Malformed: Packet offset does not match packet length" | Wireshark limitation (3.2/3.3 size not supported in this mode); ICD wins |
 
 No library discrepancy was found: every field Wireshark decodes agrees with the ICD-derived layout.
+
+## CIGI 3.3 ICD internal inconsistencies (found in T03)
+
+| Item | ICD section | Issue | Our choice |
+|---|---|---|---|
+| Component Data: word order of a 64-bit value | 4.1.4, Figs. 44-46 | Fig. 44 labels the first word "m (MSW)" and the prose calls the first word the MSW, but the worked example (Fig. 46, m = 100.0 = 0x4059000000000000) puts 0x00000000 in word 3 and 0x40590000 in word 4, i.e. the least significant half first. | Follow the worked example's wire bytes: low 32 bits in word i, high 32 bits in word i + 1. Verify against the original CCL in T11; flip in `component_data.hpp` if it disagrees. |
+| Yaw range | 4.1.2, 4.1.6 | ICD gives Yaw 0..360 while Roll is -180..180 (the T03 brief said -180..180). | `validate()` enforces 0..360 as written, so a negative yaw is rejected; normalise before sending. |

@@ -17,6 +17,12 @@ cigi_add_test(cigi_packet_test SOURCES
     packets/start_of_frame_test.cpp
     packets/random_roundtrip_test.cpp)
 
+cigi_add_test(cigi_entity_packet_test SOURCES
+    packets/articulated_part_control_test.cpp
+    packets/component_control_test.cpp
+    packets/entity_control_test.cpp
+    packets/rate_control_test.cpp)
+
 cigi_add_test(cigi_message_test SOURCES
     message/builder_test.cpp
     message/view_test.cpp)
