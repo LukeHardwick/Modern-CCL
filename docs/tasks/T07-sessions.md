@@ -53,6 +53,11 @@ semantics (Database Number handshake, Timestamp Valid rules), §4.2.2/4.2.3 Host
   - Sending to a peer with minor < 3: clear 3.3-only content (Entity Control extrapolation bit;
     Component Classes 14/15 are not sent — return/log an error). Minor < 2: clear Rate Control's
     coordinate-system bit and HAT/HOT update period. List exactly what is masked in the design doc.
+- **Dispatch (T06 review note):** the session handles the frame packet itself and must hand only the
+  remaining packets to the application's `Dispatcher` (and, for `IgSession` in Reset/Standby, only
+  IG Control). Filter in a session-side wrapper or add an offset/iterator-start `dispatch` overload
+  in `dispatch.hpp` — choose and document. `UnknownPacket` data is only guaranteed for the handler
+  call because the receive buffer is reused.
 - **No automatic `validate()` on send by default** (`SessionConfig::validate_outgoing = false`).
   Strict ICD ranges (e.g. yaw 0..360) would otherwise reject common host conventions (yaw
   −180..180). When enabled, failures are returned from `add()`.
