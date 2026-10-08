@@ -29,7 +29,13 @@ cigi_add_test(cigi_entity_packet_test SOURCES
 
 cigi_add_test(cigi_message_test SOURCES
     message/builder_test.cpp
+    message/dispatch_test.cpp
     message/view_test.cpp)
+
+# Replaces the global operator new to prove dispatch is allocation-free.
+cigi_add_test(cigi_dispatch_alloc_test SOURCES message/dispatch_alloc_test.cpp)
+# clang-tidy cannot accept a user-provided operator new: libc++ declares its parameter as __sz.
+set_target_properties(cigi_dispatch_alloc_test PROPERTIES CXX_CLANG_TIDY "")
 
 # Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
 find_program(CIGI_TSHARK tshark)
