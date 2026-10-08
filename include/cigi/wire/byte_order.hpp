@@ -32,7 +32,7 @@ detect_byte_order(std::uint16_t magic_as_read_natively) noexcept {
     if (magic_as_read_natively == std::byteswap(byte_swap_magic)) {
         return ByteOrder::Swapped;
     }
-    return std::unexpected(Error{ErrorCode::InvalidByteSwapMagic});
+    return std::unexpected(Error{.code = ErrorCode::InvalidByteSwapMagic});
 }
 
 } // namespace cigi::wire

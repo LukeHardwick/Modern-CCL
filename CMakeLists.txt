@@ -13,6 +13,7 @@ else()
     set(_cigi_top OFF)
 endif()
 
+option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
@@ -35,6 +36,12 @@ target_sources(cigi PUBLIC
     BASE_DIRS include
     FILES include/cigi/version.hpp
           include/cigi/error.hpp
+          include/cigi/packet.hpp
+          include/cigi/packets/common.hpp
+          include/cigi/packets/ig_control.hpp
+          include/cigi/packets/start_of_frame.hpp
+          include/cigi/message/builder.hpp
+          include/cigi/message/view.hpp
           include/cigi/detail/assert.hpp
           include/cigi/wire/bits.hpp
           include/cigi/wire/byte_order.hpp
@@ -61,6 +68,10 @@ else()
 endif()
 
 cigi_apply_project_options(cigi)
+
+if(CIGI_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 if(CIGI_BUILD_TESTS)
     enable_testing()

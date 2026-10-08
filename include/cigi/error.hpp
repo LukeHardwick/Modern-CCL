@@ -17,6 +17,8 @@ enum class ErrorCode : std::uint8_t {
     UnexpectedFirstPacket, ///< Message does not start with IG Control / Start of Frame (ICD 2.6).
     UnsupportedVersion,    ///< Peer CIGI version is not supported.
     UnknownOpcode,         ///< Opcode is not recognised.
+    WrongDirection,        ///< Packet cannot travel in this message's direction (ICD 2.3).
+    DuplicateFramePacket,  ///< A second IG Control / Start of Frame in one message (ICD 2.6).
 };
 
 /// Error details.

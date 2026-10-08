@@ -15,15 +15,17 @@ namespace detail {
 /// Extract `width` bits starting at bit `lsb`. Precondition: width >= 1, lsb + width <= 8.
 [[nodiscard]] constexpr std::uint8_t get_bits(std::uint8_t byte, unsigned lsb,
                                               unsigned width) noexcept {
-    return static_cast<std::uint8_t>((byte >> lsb) & detail::mask(width));
+    return static_cast<std::uint8_t>((static_cast<unsigned>(byte) >> lsb) &
+                                     static_cast<unsigned>(detail::mask(width)));
 }
 
 /// Replace `width` bits at `lsb` with `value` (masked to width); other bits are preserved.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 [[nodiscard]] constexpr std::uint8_t set_bits(std::uint8_t byte, unsigned lsb, unsigned width,
                                               std::uint8_t value) noexcept {
-    const auto field_mask = static_cast<std::uint8_t>(detail::mask(width) << lsb);
-    const auto shifted = static_cast<std::uint8_t>((value << lsb) & field_mask);
-    return static_cast<std::uint8_t>((byte & ~field_mask) | shifted);
+    const unsigned field_mask = static_cast<unsigned>(detail::mask(width)) << lsb;
+    const unsigned shifted = (static_cast<unsigned>(value) << lsb) & field_mask;
+    return static_cast<std::uint8_t>((static_cast<unsigned>(byte) & ~field_mask) | shifted);
 }
 
 /// Compile-time described bit field; cannot be declared across a byte boundary.
