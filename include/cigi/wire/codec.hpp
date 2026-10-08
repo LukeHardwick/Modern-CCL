@@ -36,9 +36,7 @@ template <WireScalar T>
                                ByteOrder order) noexcept {
     CIGI_ASSERT(fits(bytes, offset, sizeof(T)));
     std::array<std::byte, sizeof(T)> raw{};
-    for (std::size_t i = 0; i < sizeof(T); ++i) {
-        raw[i] = bytes[offset + i];
-    }
+    std::ranges::copy(bytes.subspan(offset, sizeof(T)), raw.begin());
     if (order == ByteOrder::Swapped) {
         std::ranges::reverse(raw);
     }
@@ -56,9 +54,7 @@ constexpr void store(std::span<std::byte> bytes, std::size_t offset, T value,
     if (order == ByteOrder::Swapped) {
         std::ranges::reverse(raw);
     }
-    for (std::size_t i = 0; i < sizeof(T); ++i) {
-        bytes[offset + i] = raw[i];
-    }
+    std::ranges::copy(raw, bytes.subspan(offset, sizeof(T)).begin());
 }
 
 } // namespace cigi::wire

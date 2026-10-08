@@ -35,6 +35,10 @@ target_sources(cigi PUBLIC
     BASE_DIRS include
     FILES include/cigi/version.hpp
           include/cigi/error.hpp
+          include/cigi/packet.hpp
+          include/cigi/packets/common.hpp
+          include/cigi/packets/ig_control.hpp
+          include/cigi/packets/start_of_frame.hpp
           include/cigi/detail/assert.hpp
           include/cigi/wire/bits.hpp
           include/cigi/wire/byte_order.hpp

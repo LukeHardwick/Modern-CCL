@@ -16,6 +16,8 @@ TEST(Error, ToStringCoversAllCodes) {
     EXPECT_EQ(cigi::to_string(ErrorCode::UnexpectedFirstPacket), "UnexpectedFirstPacket");
     EXPECT_EQ(cigi::to_string(ErrorCode::UnsupportedVersion), "UnsupportedVersion");
     EXPECT_EQ(cigi::to_string(ErrorCode::UnknownOpcode), "UnknownOpcode");
+    EXPECT_EQ(cigi::to_string(ErrorCode::WrongDirection), "WrongDirection");
+    EXPECT_EQ(cigi::to_string(ErrorCode::DuplicateFramePacket), "DuplicateFramePacket");
 }
 
 TEST(Error, ToStringUnknownValue) {

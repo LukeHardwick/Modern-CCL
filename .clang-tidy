@@ -19,8 +19,9 @@ Checks: >
   -readability-function-cognitive-complexity,
   -readability-uppercase-literal-suffix
 WarningsAsErrors: '*'
-# Only this repo's own headers (include/ and src/); never _deps/ or the build dir.
-HeaderFilterRegex: '.*/Modern-CCL/(include|src)/.*'
+# Only this repo's own public headers; never _deps/ or the build dir. (Not anchored on the repo
+# directory name, so it also matches inside worktrees.)
+HeaderFilterRegex: '.*/include/cigi/.*'
 FormatStyle: file
 CheckOptions:
   readability-identifier-naming.NamespaceCase: lower_case

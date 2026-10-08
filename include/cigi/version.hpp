@@ -1,12 +1,14 @@
 #pragma once
 
+#include "cigi/packet.hpp"
+
 #include <string_view>
 
 namespace cigi {
 
-/// CIGI protocol version implemented for sending.
-inline constexpr int protocol_version_major = 3;
-inline constexpr int protocol_version_minor = 3;
+/// CIGI protocol version implemented for sending (see cigi::protocol_version).
+inline constexpr int protocol_version_major = protocol_version.major;
+inline constexpr int protocol_version_minor = protocol_version.minor;
 
 /// Library version string.
 inline constexpr std::string_view library_version = "0.1.0";

@@ -9,3 +9,9 @@ cigi_add_test(cigi_wire_test SOURCES
     wire/error_test.cpp
     wire/padding_test.cpp
     wire/utf8_test.cpp)
+
+cigi_add_test(cigi_packet_test SOURCES
+    packets/packet_test.cpp
+    packets/ig_control_test.cpp
+    packets/start_of_frame_test.cpp
+    packets/random_roundtrip_test.cpp)

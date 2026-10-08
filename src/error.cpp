@@ -20,6 +20,10 @@ std::string_view to_string(ErrorCode code) noexcept {
         return "UnsupportedVersion";
     case ErrorCode::UnknownOpcode:
         return "UnknownOpcode";
+    case ErrorCode::WrongDirection:
+        return "WrongDirection";
+    case ErrorCode::DuplicateFramePacket:
+        return "DuplicateFramePacket";
     }
     return "Unknown";
 }
