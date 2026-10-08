@@ -20,3 +20,17 @@ cigi_add_test(cigi_packet_test SOURCES
 cigi_add_test(cigi_message_test SOURCES
     message/builder_test.cpp
     message/view_test.cpp)
+
+# Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
+find_program(CIGI_TSHARK tshark)
+find_program(CIGI_TEXT2PCAP text2pcap)
+find_program(CIGI_MERGECAP mergecap)
+if(TARGET cigi_frames AND CIGI_TSHARK AND CIGI_TEXT2PCAP AND CIGI_MERGECAP)
+    get_filename_component(_cigi_wireshark_bin "${CIGI_TSHARK}" DIRECTORY)
+    add_test(NAME wireshark_cigi_frames
+        COMMAND ${CMAKE_SOURCE_DIR}/examples/wireshark/check_pcap.sh
+                $<TARGET_FILE:cigi_frames> ${CMAKE_CURRENT_BINARY_DIR}/wireshark)
+    set_tests_properties(wireshark_cigi_frames PROPERTIES
+        LABELS wireshark
+        ENVIRONMENT "PATH=${_cigi_wireshark_bin}:$ENV{PATH}")
+endif()

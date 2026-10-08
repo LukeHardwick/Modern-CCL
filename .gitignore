@@ -9,3 +9,4 @@ third_party/spec/*
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/
+*.pcap
