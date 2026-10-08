@@ -52,10 +52,15 @@ FramePacer::FramePacer(std::chrono::nanoseconds period, Clock::time_point start)
     : period_(std::max(period, std::chrono::nanoseconds{1})), next_(start + period_) {}
 
 FramePacer FramePacer::from_hz(double hz, Clock::time_point start) {
-    const double seconds = hz > 0.0 ? 1.0 / hz : 1.0;
-    return FramePacer{std::chrono::duration_cast<std::chrono::nanoseconds>(
-                          std::chrono::duration<double>(seconds)),
-                      start};
+    constexpr double min_ns = 1.0;
+    constexpr double max_ns = 3.6e12; // 1 hour
+    double ns = 1e9;                  // NaN, zero and negative rates fall back to 1 s
+    if (hz > 0.0) {
+        ns = std::clamp(1e9 / hz, min_ns, max_ns);
+    }
+    return FramePacer{
+        std::chrono::round<std::chrono::nanoseconds>(std::chrono::duration<double, std::nano>(ns)),
+        start};
 }
 
 FramePacer::Tick FramePacer::wait_next() {

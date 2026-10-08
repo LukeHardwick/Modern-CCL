@@ -31,7 +31,8 @@ public:
     /// `period` is clamped to at least 1 ns. The first tick is due one period after `start`.
     explicit FramePacer(std::chrono::nanoseconds period, Clock::time_point start = Clock::now());
 
-    /// Pacer for a rate in Hz (a non-positive rate gives a 1 s period).
+    /// Pacer for a rate in Hz. The period is `round(1 s / hz)` clamped to [1 ns, 1 h]; a rate that
+    /// is NaN, zero or negative gives a 1 s period, and an infinite rate the 1 ns minimum.
     [[nodiscard]] static FramePacer from_hz(double hz, Clock::time_point start = Clock::now());
 
     /// Sleep until the next tick is due and account for it.

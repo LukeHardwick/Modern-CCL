@@ -31,10 +31,12 @@ struct Error {
     ErrorCode code;          ///< What went wrong.
     std::size_t offset = 0;  ///< Byte offset into the message where it was detected.
     std::uint8_t opcode = 0; ///< Packet opcode if known, otherwise 0.
-    int os_error = 0;        ///< Operating-system error number (transport errors), otherwise 0.
+    int os_error = 0;        ///< errno (POSIX) or WSA code (Windows) for transport errors, else 0.
 
     friend constexpr bool operator==(const Error&, const Error&) noexcept = default;
 };
+
+static_assert(sizeof(Error) <= 24, "Error is returned by value everywhere; keep it small");
 
 /// Result of a fallible operation.
 template <class T> using Result = std::expected<T, Error>;

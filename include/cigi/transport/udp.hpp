@@ -31,7 +31,7 @@ struct UdpConfig {
     std::uint16_t local_port = 0;  ///< 0 = pick an ephemeral port (see `local_port()`).
     std::string remote_address;    ///< Where `send` goes; empty = set later with `set_remote`.
     std::uint16_t remote_port = 0; ///< Must be non-zero when `remote_address` is given.
-    std::size_t receive_buffer_size = 0; ///< SO_RCVBUF in bytes; 0 = leave the OS default.
+    std::size_t receive_buffer_size = 0; ///< SO_RCVBUF in bytes (<= INT_MAX); 0 = OS default.
 };
 
 /// A peer's IP address (numeric text) and port.
@@ -42,9 +42,14 @@ struct UdpPeer {
 
 /// A bound UDP socket with an optional default destination. Move-only; not thread-safe.
 ///
-/// Failures are reported with `ErrorCode::TransportError` (OS number in `Error::os_error`),
+/// Failures are reported with `ErrorCode::TransportError` (errno / WSA code in `Error::os_error`),
 /// `ErrorCode::Timeout`, `ErrorCode::BufferTooSmall` or `ErrorCode::InvalidFieldValue` (bad
-/// address); nothing throws.
+/// address, or a send with no destination); nothing throws.
+///
+/// Limits of the no-exceptions build: a few rare OS failures inside Asio cannot be reported and
+/// abort the process instead (the library installs an aborting `boost::throw_exception`):
+/// creating the internal io_context when the process is out of file descriptors, a failing
+/// `run()` inside `receive()`, and similar. Ordinary socket errors are returned as a Result.
 class UdpEndpoint {
 public:
     /// Create, configure and bind the socket.
@@ -59,6 +64,13 @@ public:
     /// Send one datagram to the configured remote. Datagrams larger than the OS allows fail with
     /// `TransportError` (the limit is 65507 bytes, and lower on some systems, e.g. 9216 on macOS).
     Result<void> send(std::span<const std::byte> datagram);
+
+    /// Send one datagram to an explicit peer (numeric address), ignoring the configured remote.
+    Result<void> send_to(const UdpPeer& peer, std::span<const std::byte> datagram);
+
+    /// Send one datagram to the source of the most recently delivered datagram. No allocation.
+    /// `InvalidFieldValue` if nothing has been received yet.
+    Result<void> reply(std::span<const std::byte> datagram);
 
     /// Wait up to `timeout` for one datagram and copy it into `buffer`; returns its size.
     /// A zero (or negative) timeout polls without waiting. `Timeout` if nothing arrived.

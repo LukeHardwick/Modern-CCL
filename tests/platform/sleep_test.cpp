@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace {
 
@@ -69,6 +70,10 @@ TEST(FramePacer, PeriodClampedAndFromHz) {
     EXPECT_EQ(FramePacer::from_hz(100.0).period(), 10ms);
     EXPECT_EQ(FramePacer::from_hz(0.0).period(), 1s);
     EXPECT_EQ(FramePacer::from_hz(-3.0).period(), 1s);
+    EXPECT_EQ(FramePacer::from_hz(std::numeric_limits<double>::quiet_NaN()).period(), 1s);
+    EXPECT_EQ(FramePacer::from_hz(std::numeric_limits<double>::infinity()).period(), 1ns);
+    EXPECT_EQ(FramePacer::from_hz(1e-300).period(), 1h);
+    EXPECT_EQ(FramePacer::from_hz(60.0).period(), 16666667ns); // rounded, not truncated
 }
 
 TEST(FramePacer, SixtyHertzMeanPeriod) {

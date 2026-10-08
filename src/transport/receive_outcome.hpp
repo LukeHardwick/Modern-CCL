@@ -11,6 +11,12 @@
 
 namespace cigi::transport::detail {
 
+/// OS error number for `Error::os_error`: only errors from the system category carry one
+/// (errno on POSIX, the WSA code on Windows); Asio's own categories (netdb, misc...) give 0.
+inline int os_error_of(const boost::system::error_code& ec) {
+    return ec.category() == boost::system::system_category() ? ec.value() : 0;
+}
+
 enum class ReceiveAction : unsigned char {
     Deliver, ///< A datagram that fits was received.
     Retry,   ///< Spurious notification (see below): receive again.
@@ -38,7 +44,7 @@ inline ReceiveOutcome classify_receive(const boost::system::error_code& ec, std:
     }
     if (ec) {
         return {.action = ReceiveAction::Fail,
-                .error = {.code = ErrorCode::TransportError, .os_error = ec.value()}};
+                .error = {.code = ErrorCode::TransportError, .os_error = os_error_of(ec)}};
     }
     return {};
 }

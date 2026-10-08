@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -83,12 +84,12 @@ TEST(Udp, OpenWithDefaultAnyAddressAndRecvBuffer) {
     EXPECT_NE(e->local_port(), 0);
 }
 
-TEST(Udp, ImpossibleReceiveBufferSizeFails) {
+TEST(Udp, ReceiveBufferSizeAboveIntMaxRejected) {
     UdpConfig c = cfg("127.0.0.1");
-    c.receive_buffer_size = static_cast<std::size_t>(-1); // becomes a negative SO_RCVBUF
+    c.receive_buffer_size = static_cast<std::size_t>(std::numeric_limits<int>::max()) + 1;
     auto e = UdpEndpoint::open(c);
     ASSERT_FALSE(e);
-    EXPECT_EQ(e.error().code, ErrorCode::TransportError);
+    EXPECT_EQ(e.error().code, ErrorCode::InvalidFieldValue);
 }
 
 TEST(Udp, LoopbackRoundTrip) {
@@ -260,12 +261,55 @@ TEST(Udp, PortAlreadyInUseFails) {
     EXPECT_EQ(second.error().code, ErrorCode::TransportError);
 }
 
+TEST(Udp, SendToAndReply) {
+    Pair p;
+    // reply() before anything was received has no destination.
+    EXPECT_EQ(p.a.reply(pattern(8)).error().code, ErrorCode::InvalidFieldValue);
+
+    const cigi::transport::UdpPeer to_b{.address = "127.0.0.1", .port = p.b.local_port()};
+    ASSERT_TRUE(p.a.send_to(to_b, pattern(24)));
+    std::array<std::byte, 64> buf{};
+    auto n = p.b.receive(buf, wait);
+    ASSERT_TRUE(n);
+    EXPECT_EQ(*n, 24U);
+
+    ASSERT_TRUE(p.b.reply(pattern(16)));
+    auto back = p.a.receive(buf, wait);
+    ASSERT_TRUE(back);
+    EXPECT_EQ(*back, 16U);
+
+    EXPECT_EQ(p.a.send_to({.address = "junk", .port = 5}, pattern(8)).error().code,
+              ErrorCode::InvalidFieldValue);
+    EXPECT_EQ(p.a.send_to({.address = "127.0.0.1", .port = 0}, pattern(8)).error().code,
+              ErrorCode::InvalidFieldValue);
+}
+
+TEST(Udp, DroppedDatagramDoesNotChangeLastSender) {
+    Pair p;
+    auto third = UdpEndpoint::open(cfg("127.0.0.1"));
+    ASSERT_TRUE(third);
+    ASSERT_TRUE(third->set_remote("127.0.0.1", p.b.local_port()));
+
+    std::array<std::byte, 16> buf{};
+    ASSERT_TRUE(p.a.send(pattern(8)));
+    ASSERT_TRUE(p.b.receive(buf, wait));
+    const auto first = p.b.last_sender();
+    ASSERT_TRUE(first);
+    ASSERT_EQ(first->port, p.a.local_port());
+
+    ASSERT_TRUE(third->send(pattern(64))); // too big for buf: dropped
+    EXPECT_EQ(p.b.receive(buf, wait).error().code, ErrorCode::BufferTooSmall);
+    const auto after = p.b.last_sender();
+    ASSERT_TRUE(after);
+    EXPECT_EQ(after->port, p.a.local_port()); // still the last delivered sender
+}
+
 TEST(Udp, SendWithoutRemoteFails) {
     auto e = UdpEndpoint::open(cfg("127.0.0.1"));
     ASSERT_TRUE(e);
     auto r = e->send(pattern(8));
     ASSERT_FALSE(r);
-    EXPECT_EQ(r.error().code, ErrorCode::TransportError);
+    EXPECT_EQ(r.error().code, ErrorCode::InvalidFieldValue);
 }
 
 TEST(Udp, IcmpUnreachableIsIgnoredByReceive) {
@@ -305,6 +349,9 @@ TEST(Udp, MovedEndpointAndMovedFromBehaviour) {
     EXPECT_FALSE(e->last_sender());
     std::array<std::byte, 8> buf{};
     EXPECT_EQ(e->send(buf).error().code, ErrorCode::TransportError);
+    EXPECT_EQ(e->send_to({.address = "127.0.0.1", .port = 9}, buf).error().code,
+              ErrorCode::TransportError);
+    EXPECT_EQ(e->reply(buf).error().code, ErrorCode::TransportError);
     EXPECT_EQ(e->receive(buf, 0ms).error().code, ErrorCode::TransportError);
     EXPECT_EQ(e->set_remote("127.0.0.1", 9).error().code, ErrorCode::TransportError);
     // NOLINTEND(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
