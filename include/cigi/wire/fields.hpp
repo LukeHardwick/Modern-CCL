@@ -110,7 +110,7 @@ template <class M> struct Validity {
     M hi{};
 
     [[nodiscard]] constexpr bool ok(const M& v) const noexcept {
-        if (has_range && (v < lo || hi < v)) {
+        if (has_range && !(lo <= v && v <= hi)) {
             return false;
         }
         if constexpr (HasIsDefined<M>) {

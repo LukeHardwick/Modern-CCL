@@ -7,6 +7,7 @@ cigi_add_test(cigi_wire_test SOURCES
     wire/byte_order_test.cpp
     wire/codec_test.cpp
     wire/error_test.cpp
+    wire/fields_test.cpp
     wire/padding_test.cpp
     wire/utf8_test.cpp)
 
