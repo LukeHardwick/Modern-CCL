@@ -1,6 +1,6 @@
 # T18 — Benchmarks vs the original CCL, and network performance
 
-Phase B · Depends on T11 (CCL build), T07, T08 · Branch `task/t18-benchmarks`
+Phase B · Depends on T11 (CCL build), T07, T08, T09a · Branch `task/t18-benchmarks`
 Follow the shared rules in [README.md](README.md) (rule 2 exception as in T11: the CCL is a
 black-box comparison target under `bench/` only).
 
@@ -61,6 +61,9 @@ that uses the actual stack (T07 sessions + T08 `UdpEndpoint` + `FramePacer`), no
   - Record machine, OS, compiler, build type, CPU governor/power mode, and run length (≥ 60 s per
     configuration, ≥ 3 runs; report median of runs).
   - Note sync vs async mode results separately.
+- `net_perf` drives the low-level session + `UdpEndpoint` API directly (measures the stack without
+  facade scheduling) and adds one `--use-facade` run of the host role via `cigi::Host` for
+  comparison; report the difference.
 - Not a ctest gate (results are machine-dependent); a 2-second loopback run is registered under
   label `network` only to check the tool works.
 - No CCL comparison here (network cost dominates and the CCL has no transport); the CCL comparison

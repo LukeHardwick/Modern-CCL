@@ -1,6 +1,6 @@
 # T09 — Demo apps: `demo_host` and mock `demo_ig`
 
-Phase A (MVP) · Depends on T07, T08, T10 (pcap writer) · Branch `task/t09-demo-apps`
+Phase A (MVP) · Depends on T09a (facade), T10 (pcap writer) · Branch `task/t09-demo-apps`
 Follow the shared rules in [README.md](README.md).
 
 ## Goal
@@ -8,11 +8,14 @@ Let a person trial the library **without a real IG**: a mock IG and a demo Host 
 over UDP on one machine, log everything readably, and can record traffic for Wireshark.
 
 ## Design (planner decision)
+- Both apps are built on the T09a facade (`cigi::Host`, `cigi::Ig`), so `demo_host` doubles as
+  the facade's worked example; drop to sessions/UDP only where the facade can't express something
+  (report any such gap — it is a facade bug).
 - `apps/demo_ig` (mock IG): CLI11 (FetchContent, pinned, latest release at least two weeks old) +
   spdlog. Options: `--listen-port`, `--host-addr`, `--host-port`, `--rate` (Hz, default 60),
   `--load-frames` (frames spent "loading" in Standby before accepting Operate), `--pcap <file>`,
   `--duration`, `--log-level`.
-  Behaviour: sends Start of Frame every frame via `IgSession` + `FramePacer`; follows the §2.8
+  Behaviour: sends Start of Frame every frame via `cigi::Ig`; follows the §2.8
   start-up sequence; keeps an entity table from Entity Control (logs creation/destruction/attach);
   logs articulated parts, rates, components, views, celestial time; answers HAT/HOT requests with a
   synthetic, deterministic terrain `h(lat, lon) = 100 + 50·sin(lat)·cos(lon)` metres (extended
