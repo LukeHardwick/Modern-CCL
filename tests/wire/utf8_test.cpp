@@ -18,6 +18,12 @@ static_assert(utf8_truncate("hello", 0) == 0);
 static_assert(utf8_truncate("\xC3\xA9", 1) == 0);  // e-acute cut in half
 static_assert(utf8_truncate("a\xC3\xA9", 2) == 1); // keeps 'a' only
 static_assert(utf8_truncate("a\xC3\xA9", 3) == 3);
+static_assert(utf8_truncate("a\x80\x80\x80", 2) == 2);
+static_assert(utf8_truncate("a\x80\x80\x80\x80\x80", 5) == 5);
+static_assert(utf8_truncate("\xF0\x9F\x98\x80z", 1) == 0);
+static_assert(utf8_truncate("\xF0\x9F\x98\x80z", 2) == 0);
+static_assert(utf8_truncate("\xF0\x9F\x98\x80z", 3) == 0);
+static_assert(utf8_truncate("\xF0\x9F\x98\x80z", 4) == 4);
 static_assert(is_valid_utf8(""));
 static_assert(is_valid_utf8("abc\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80"));
 static_assert(!is_valid_utf8("\xC0\xAF"));
@@ -66,9 +72,16 @@ TEST(Utf8Truncate, MaxZero) {
 }
 
 TEST(Utf8Truncate, Malformed) {
-    // Lone continuation bytes: backs off to the start, never out of range.
-    EXPECT_EQ(utf8_truncate("\x80\x80\x80\x80"sv, 2), 0U);
-    EXPECT_EQ(utf8_truncate("a\x80\x80\x80"sv, 2), 0U); // conservative: drops the whole run
+    // Stray continuation bytes belong to no lead: nothing valid is split, the cut is kept.
+    EXPECT_EQ(utf8_truncate("\x80\x80\x80\x80"sv, 2), 2U);
+    EXPECT_EQ(utf8_truncate("a\x80\x80\x80"sv, 2), 2U);
+    EXPECT_EQ(utf8_truncate("a\x80\x80\x80\x80\x80"sv, 5), 5U);
+    EXPECT_EQ(utf8_truncate("\xF0\x80\x80\x80\x80"sv, 4), 4U); // lead > 3 bytes back
+    // Malformed: 3-byte lead followed by ASCII; the lead's declared length crosses the cut.
+    EXPECT_EQ(utf8_truncate("\xE2zz"sv, 1), 0U);
+    EXPECT_EQ(utf8_truncate("\xE2zz"sv, 2), 2U); // nearest non-continuation is 'z': no back-off
+    // Invalid lead bytes (F8..FF) have length 1.
+    EXPECT_EQ(utf8_truncate("\xFF\x80\x80"sv, 2), 2U);
     // Truncated lead byte at the end (input shorter than max): returned as-is.
     EXPECT_EQ(utf8_truncate("ab\xE2"sv, 10), 3U);
     // Truncated sequence cut by max_bytes.

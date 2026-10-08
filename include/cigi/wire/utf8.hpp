@@ -12,19 +12,35 @@ namespace detail {
 }
 } // namespace detail
 
-/// Length of the longest prefix of `text` that is at most `max_bytes` long and does not end in
-/// the middle of a UTF-8 code point (ICD 2.7.2). Malformed input is handled by backing off over
-/// continuation bytes only; it never reads out of range and always terminates.
+/// Length of the longest prefix of `text` that is at most `max_bytes` long and does not split a
+/// UTF-8 code point (ICD 2.7.2). Looks back at most 3 bytes from the cut for the nearest
+/// non-continuation byte p. If there is none, the bytes before the cut are stray continuation
+/// bytes (no valid code point is split) and the cut is kept. If text[p] is a lead byte whose
+/// declared sequence (C0-DF: 2, E0-EF: 3, F0-F7: 4 bytes) extends past the cut, returns p. ASCII
+/// and invalid lead bytes (F8-FF) have length 1 and never cause a back-off. Malformed input never
+/// reads out of range and is handled by this same rule (a lead byte followed by too few
+/// continuation bytes counts as split if the cut falls inside its declared length).
 [[nodiscard]] constexpr std::size_t utf8_truncate(std::string_view text,
                                                   std::size_t max_bytes) noexcept {
     if (max_bytes >= text.size()) {
         return text.size();
     }
-    std::size_t n = max_bytes;
-    // text[n] is the first byte that would be cut off; if it continues a code point, the code
-    // point straddles the cut, so drop it entirely.
-    while (n > 0 && detail::is_continuation(text[n])) {
-        --n;
+    const std::size_t n = max_bytes;
+    for (std::size_t k = 1; k <= 3 && k <= n; ++k) {
+        const std::size_t p = n - k;
+        const auto byte = static_cast<std::uint8_t>(text[p]);
+        if (detail::is_continuation(text[p])) {
+            continue;
+        }
+        std::size_t length = 1;
+        if (byte >= 0xF0 && byte <= 0xF7) {
+            length = 4;
+        } else if (byte >= 0xE0 && byte <= 0xEF) {
+            length = 3;
+        } else if (byte >= 0xC0 && byte <= 0xDF) {
+            length = 2;
+        }
+        return p + length > n ? p : n;
     }
     return n;
 }
