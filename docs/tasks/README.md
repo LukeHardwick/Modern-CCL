@@ -18,9 +18,9 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T02](T02-vertical-slice.md) | IG Control, Start of Frame, builder, view | Foundation | T01 | ✅ `36e8e1f` |
 | [T02b](T02b-field-table.md) | Declarative field-table codec | Foundation | T02 | ✅ `e819387` |
 | [T02c](T02c-wireshark-frame-example.md) | Example: IG Control/SOF traffic in Wireshark | Foundation | T02b | ✅ `11cbfd7` |
-| [T03](T03-mvp-entity-packets.md) | Entity, Articulated Part, Rate, Component Control | A (MVP) | T02b | ⏳ |
+| [T03](T03-mvp-entity-packets.md) | Entity, Articulated Part, Rate, Component Control | A (MVP) | T02b | ✅ `e040dd0` |
 | [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ✅ `d7f3779` |
-| [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ⏳ |
+| [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ✅ `315d0a7` |
 | [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ⏳ |
 | [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ⏳ |
 | [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ⏳ |
