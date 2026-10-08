@@ -10,7 +10,7 @@ docker run --rm -v "$root":/src:ro -v modern-ccl-linux-build:/work "$image" bash
   for p in linux-gcc-debug linux-gcc-asan; do
     echo "=== $p ==="
     cmake -S /src -B "/work/$p" -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_CXX_COMPILER=g++ \
+      -DCMAKE_CXX_COMPILER=g++ -DCIGI_DEPS_CACHE=/work/deps-cache \
       $([ "$p" = linux-gcc-asan ] && echo -DCIGI_ENABLE_SANITIZERS=ON)
     cmake --build "/work/$p"
     ctest --test-dir "/work/$p" --output-on-failure
