@@ -23,6 +23,7 @@ enum class ErrorCode : std::uint8_t {
                            ///< holds the opcode found in the data.
     TransportError,        ///< A socket operation failed; Error::os_error holds the OS code.
     Timeout,               ///< No datagram arrived within the allowed time.
+    NotOperational,        ///< The start-up sequence (ICD 2.8) forbids sending this packet yet.
 };
 
 /// Error details.

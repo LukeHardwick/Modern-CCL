@@ -21,6 +21,7 @@ TEST(Error, ToStringCoversAllCodes) {
     EXPECT_EQ(cigi::to_string(ErrorCode::OpcodeMismatch), "OpcodeMismatch");
     EXPECT_EQ(cigi::to_string(ErrorCode::TransportError), "TransportError");
     EXPECT_EQ(cigi::to_string(ErrorCode::Timeout), "Timeout");
+    EXPECT_EQ(cigi::to_string(ErrorCode::NotOperational), "NotOperational");
 }
 
 TEST(Error, ToStringUnknownValue) {

@@ -463,3 +463,29 @@ TEST(Dispatcher, ExtendedSetHandlesUserPackets) {
 }
 
 } // namespace
+
+namespace {
+
+TEST(Dispatcher, DeliverCallsTheHandlerDirectly) {
+    Dispatcher<HostToIgPackets> d;
+    EntityControl got;
+    EXPECT_FALSE(d.deliver(EntityControl{}));
+    d.on<EntityControl>([&](const EntityControl& e) { got = e; });
+    EntityControl sent;
+    sent.entity_id = 77;
+    EXPECT_TRUE(d.deliver(sent));
+    EXPECT_EQ(got.entity_id, 77);
+
+    EXPECT_FALSE(d.deliver(UnknownPacket{}));
+    EXPECT_FALSE(d.deliver(Error{.code = ErrorCode::Truncated}));
+    std::uint8_t unknown_opcode = 0;
+    ErrorCode code{};
+    d.on_unknown([&](const UnknownPacket& u) { unknown_opcode = u.opcode; });
+    d.on_error([&](const Error& e) { code = e.code; });
+    EXPECT_TRUE(d.deliver(UnknownPacket{.opcode = 99, .bytes = {}}));
+    EXPECT_TRUE(d.deliver(Error{.code = ErrorCode::Truncated}));
+    EXPECT_EQ(unknown_opcode, 99);
+    EXPECT_EQ(code, ErrorCode::Truncated);
+}
+
+} // namespace
