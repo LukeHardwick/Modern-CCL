@@ -1,6 +1,11 @@
-include(GoogleTest)
+include(Testing)
 
-add_executable(cigi_smoke_test smoke_test.cpp)
-target_link_libraries(cigi_smoke_test PRIVATE cigi::cigi GTest::gmock_main)
-cigi_apply_project_options(cigi_smoke_test)
-gtest_discover_tests(cigi_smoke_test)
+cigi_add_test(cigi_smoke_test SOURCES smoke_test.cpp)
+
+cigi_add_test(cigi_wire_test SOURCES
+    wire/bits_test.cpp
+    wire/byte_order_test.cpp
+    wire/codec_test.cpp
+    wire/error_test.cpp
+    wire/padding_test.cpp
+    wire/utf8_test.cpp)
