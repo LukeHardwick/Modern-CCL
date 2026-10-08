@@ -21,7 +21,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T03](T03-mvp-entity-packets.md) | Entity, Articulated Part, Rate, Component Control | A (MVP) | T02b | ✅ `e040dd0` |
 | [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ✅ `d7f3779` |
 | [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ✅ `315d0a7` |
-| [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ⏳ |
+| [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ✅ `6dede26` |
 | [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ⏳ |
 | [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ✅ `fd5b167` |
 | [T09a](T09a-host-ig-facade.md) | High-level `cigi::Host` / `cigi::Ig` facade | A (MVP) | T07, T08 | ⏳ |
