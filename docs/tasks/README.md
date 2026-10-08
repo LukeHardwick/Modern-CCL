@@ -23,7 +23,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ✅ `315d0a7` |
 | [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ⏳ |
 | [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ⏳ |
-| [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ⏳ |
+| [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ✅ `fd5b167` |
 | [T09a](T09a-host-ig-facade.md) | High-level `cigi::Host` / `cigi::Ig` facade | A (MVP) | T07, T08 | ⏳ |
 | [T09](T09-demo-apps.md) | `demo_host` + mock `demo_ig` | A (MVP) | T09a, T10 | ⏳ |
 | [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ⏳ |
