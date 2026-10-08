@@ -66,12 +66,12 @@ public:
 
     /// Words `word` (low 32 bits) and `word + 1` (high 32 bits).
     constexpr void set_u64(std::size_t word, std::uint64_t v) noexcept {
-        CIGI_ASSERT(word + 1 < word_count);
+        CIGI_ASSERT(word < word_count - 1);
         at(word) = static_cast<std::uint32_t>(v);
         at(word + 1) = static_cast<std::uint32_t>(v >> 32U);
     }
     [[nodiscard]] constexpr std::uint64_t u64(std::size_t word) const noexcept {
-        CIGI_ASSERT(word + 1 < word_count);
+        CIGI_ASSERT(word < word_count - 1);
         return (static_cast<std::uint64_t>(at(word + 1)) << 32U) | at(word);
     }
 
@@ -96,7 +96,19 @@ public:
     /// Slot 0 (most significant) or 1.
     [[nodiscard]] constexpr std::uint16_t u16(std::size_t word, std::size_t slot) const noexcept {
         CIGI_ASSERT(slot < 2);
-        return static_cast<std::uint16_t>(u32(word) >> (16U * (1U - slot)));
+        return static_cast<std::uint16_t>(u32(word) >> (16U * (1U - (slot & 1U))));
+    }
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    constexpr void set_u16(std::size_t word, std::size_t slot, std::uint16_t v) noexcept {
+        CIGI_ASSERT(slot < 2);
+        const unsigned shift = 16U * (1U - (slot & 1U));
+        set_u32(word, (u32(word) & ~(0xFFFFU << shift)) | (static_cast<std::uint32_t>(v) << shift));
+    }
+    [[nodiscard]] constexpr std::int16_t i16(std::size_t word, std::size_t slot) const noexcept {
+        return std::bit_cast<std::int16_t>(u16(word, slot));
+    }
+    constexpr void set_i16(std::size_t word, std::size_t slot, std::int16_t v) noexcept {
+        set_u16(word, slot, std::bit_cast<std::uint16_t>(v));
     }
 
     /// Four 8-bit values in one word; `b0` is the most significant byte.
@@ -111,13 +123,26 @@ public:
     /// Slot 0 (most significant) to 3.
     [[nodiscard]] constexpr std::uint8_t u8(std::size_t word, std::size_t slot) const noexcept {
         CIGI_ASSERT(slot < 4);
-        return static_cast<std::uint8_t>(u32(word) >> (8U * (3U - slot)));
+        return static_cast<std::uint8_t>(u32(word) >> (8U * (3U - (slot & 3U))));
+    }
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    constexpr void set_u8(std::size_t word, std::size_t slot, std::uint8_t v) noexcept {
+        CIGI_ASSERT(slot < 4);
+        const unsigned shift = 8U * (3U - (slot & 3U));
+        set_u32(word, (u32(word) & ~(0xFFU << shift)) | (static_cast<std::uint32_t>(v) << shift));
+    }
+    [[nodiscard]] constexpr std::int8_t i8(std::size_t word, std::size_t slot) const noexcept {
+        return std::bit_cast<std::int8_t>(u8(word, slot));
+    }
+    constexpr void set_i8(std::size_t word, std::size_t slot, std::int8_t v) noexcept {
+        set_u8(word, slot, std::bit_cast<std::uint8_t>(v));
     }
 
     friend constexpr bool operator==(const ComponentData&, const ComponentData&) noexcept = default;
 
 private:
-    // The single place that indexes the array; callers assert their bounds beforehand.
+    // The single place that indexes the array. Precondition: i < word_count (every caller
+    // debug-asserts it; there is no check in release builds).
     // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
     //             cppcoreguidelines-pro-bounds-constant-array-index)
     [[nodiscard]] constexpr std::uint32_t& at(std::size_t i) noexcept { return words_[i]; }
