@@ -58,9 +58,14 @@ TEST(Packet, ReadHeaderTruncatedCarriesOffset) {
 
 TEST(Packet, ValidatePacketOrder) {
     const auto short_one = bytes_of(201);
-    EXPECT_EQ(detail::validate_packet(short_one, 201, 8).error().code, ErrorCode::Truncated);
+    const auto truncated = detail::validate_packet(short_one, 201, 8);
+    EXPECT_EQ(truncated.error().code, ErrorCode::Truncated);
+    EXPECT_EQ(truncated.error().opcode, 201); // a single byte is still readable
+    EXPECT_EQ(detail::validate_packet({}, 201, 8).error().opcode, 0);
     auto b = bytes_of(200, 8, 0, 0, 0, 0, 0, 0);
-    EXPECT_EQ(detail::validate_packet(b, 201, 8).error().code, ErrorCode::InvalidFieldValue);
+    const auto mismatch = detail::validate_packet(b, 201, 8);
+    EXPECT_EQ(mismatch.error().code, ErrorCode::OpcodeMismatch);
+    EXPECT_EQ(mismatch.error().opcode, 200);
     b.at(0) = std::byte{201};
     EXPECT_TRUE(detail::validate_packet(b, 201, 8).has_value());
     EXPECT_EQ(detail::validate_packet(b, 201, 16).error().code, ErrorCode::InvalidPacketSize);

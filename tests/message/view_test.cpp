@@ -80,7 +80,7 @@ TEST(MessageView, ParsesHostMessageAndYieldsEveryPacket) {
     EXPECT_EQ(*items.at(2)->decode_as<UserPacket>(), UserPacket{0xBEEF});
     const auto wrong = items.at(1)->decode_as<IgControl>();
     ASSERT_FALSE(wrong.has_value());
-    EXPECT_EQ(wrong.error().code, ErrorCode::InvalidFieldValue);
+    EXPECT_EQ(wrong.error().code, ErrorCode::OpcodeMismatch);
     EXPECT_EQ(wrong.error().offset, 24U);
     EXPECT_EQ(wrong.error().opcode, 150);
 }
@@ -261,6 +261,58 @@ TEST(MessageView, FirstPacketIsFullyValidated) {
     Bytes m = host_message();
     m.at(1) = std::byte{12}; // not a multiple of 8
     EXPECT_EQ(MessageView::parse(m).error().code, ErrorCode::InvalidPacketSize);
+}
+
+TEST(MessageView, ValidateAllAcceptsGoodMessages) {
+    const Bytes m = host_message();
+    const auto v = MessageView::parse(m);
+    ASSERT_TRUE(v.has_value());
+    EXPECT_TRUE(v->validate_all().has_value());
+    // Only the first packet: trivially fine. Unknown opcodes and undecoded bodies pass too.
+    const Bytes lone = encoded(control);
+    EXPECT_TRUE(MessageView::parse(lone)->validate_all().has_value());
+    Bytes ig = encoded(sof);
+    append(ig, opaque(250, 8));
+    EXPECT_TRUE(MessageView::parse(ig)->validate_all().has_value());
+}
+
+TEST(MessageView, ValidateAllReportsBadThirdHeader) {
+    Bytes m = encoded(control);
+    append(m, opaque(150, 16));
+    append(m, opaque(201, 8));
+    m.at(41) = std::byte{12}; // third packet (offset 40): size 12 is not a multiple of 8
+    const auto v = MessageView::parse(m);
+    ASSERT_TRUE(v.has_value()); // parse only checks the first packet
+    EXPECT_EQ(v->validate_all().error(),
+              (Error{.code = ErrorCode::InvalidPacketSize, .offset = 40, .opcode = 201}));
+    m.at(41) = std::byte{16}; // overruns the datagram
+    EXPECT_EQ(MessageView::parse(m)->validate_all().error(),
+              (Error{.code = ErrorCode::Truncated, .offset = 40, .opcode = 201}));
+    m.at(41) = std::byte{0};
+    EXPECT_EQ(MessageView::parse(m)->validate_all().error().code, ErrorCode::InvalidPacketSize);
+}
+
+TEST(MessageView, ValidateAllReportsTrailingByte) {
+    Bytes m = host_message();
+    m.push_back(std::byte{0x55});
+    const auto v = MessageView::parse(m);
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->validate_all().error(),
+              (Error{.code = ErrorCode::Truncated, .offset = m.size() - 1}));
+}
+
+TEST(MessageView, DecodeAsOpcodeMismatchReportsTheOpcodeFound) {
+    const Bytes m = host_message();
+    const auto v = MessageView::parse(m);
+    ASSERT_TRUE(v.has_value());
+    const auto items = collect(*v);
+    const auto as_sof = items.at(2)->decode_as<StartOfFrame>(); // opcode 201 data, SOF asked for
+    ASSERT_FALSE(as_sof.has_value());
+    EXPECT_EQ(as_sof.error(),
+              (Error{.code = ErrorCode::OpcodeMismatch, .offset = 40, .opcode = 201}));
+    const auto as_user = items.at(0)->decode_as<UserPacket>();
+    EXPECT_EQ(as_user.error(),
+              (Error{.code = ErrorCode::OpcodeMismatch, .offset = 0, .opcode = 1}));
 }
 
 } // namespace

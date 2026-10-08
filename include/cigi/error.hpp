@@ -19,9 +19,12 @@ enum class ErrorCode : std::uint8_t {
     UnknownOpcode,         ///< Opcode is not recognised.
     WrongDirection,        ///< Packet cannot travel in this message's direction (ICD 2.3).
     DuplicateFramePacket,  ///< A second IG Control / Start of Frame in one message (ICD 2.6).
+    OpcodeMismatch,        ///< Packet's opcode byte differs from the type asked for; Error::opcode
+                           ///< holds the opcode found in the data.
 };
 
 /// Error details.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): `code` is always given (aggregate).
 struct Error {
     ErrorCode code;          ///< What went wrong.
     std::size_t offset = 0;  ///< Byte offset into the message where it was detected.

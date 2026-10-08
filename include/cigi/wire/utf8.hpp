@@ -28,8 +28,10 @@ namespace detail {
     const std::size_t n = max_bytes;
     for (std::size_t k = 1; k <= 3 && k <= n; ++k) {
         const std::size_t p = n - k;
+        // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         const auto byte = static_cast<std::uint8_t>(text[p]);
         if (detail::is_continuation(text[p])) {
+            // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             continue;
         }
         std::size_t length = 1;
@@ -52,6 +54,7 @@ namespace detail {
     std::size_t i = 0;
     const std::size_t size = text.size();
     while (i < size) {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         const auto lead = static_cast<std::uint8_t>(text[i]);
         if (lead < 0x80) {
             ++i;
@@ -82,11 +85,13 @@ namespace detail {
         if (size - i <= extra) {
             return false; // truncated
         }
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         const auto first = static_cast<std::uint8_t>(text[i + 1]);
         if (first < lo || first > hi) {
             return false;
         }
         for (std::size_t k = 2; k <= extra; ++k) {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (!detail::is_continuation(text[i + k])) {
                 return false;
             }

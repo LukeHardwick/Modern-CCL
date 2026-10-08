@@ -24,6 +24,8 @@ std::string_view to_string(ErrorCode code) noexcept {
         return "WrongDirection";
     case ErrorCode::DuplicateFramePacket:
         return "DuplicateFramePacket";
+    case ErrorCode::OpcodeMismatch:
+        return "OpcodeMismatch";
     }
     return "Unknown";
 }

@@ -22,12 +22,13 @@ struct RawPacket {
     std::size_t offset = 0;           ///< Offset of the packet within the message.
     wire::ByteOrder byte_order = wire::ByteOrder::Native;
 
-    /// Decode as `P`. InvalidFieldValue if the opcode is not P::opcode; otherwise P's decode
-    /// errors, with offset rewritten to the position in the message.
+    /// Decode as `P`. OpcodeMismatch (Error::opcode = the opcode found) if the opcode is not
+    /// P::opcode; otherwise P's decode errors, with offset rewritten to the position in the
+    /// message.
     template <Packet P> [[nodiscard]] constexpr Result<P> decode_as() const noexcept {
         if (opcode != P::opcode) {
             return std::unexpected(
-                Error{.code = ErrorCode::InvalidFieldValue, .offset = offset, .opcode = opcode});
+                Error{.code = ErrorCode::OpcodeMismatch, .offset = offset, .opcode = opcode});
         }
         auto r = decode(std::type_identity<P>{}, bytes, byte_order);
         if (!r) {
@@ -122,6 +123,18 @@ public:
             return std::unexpected(frame.error());
         }
         return MessageView(datagram, direction, *frame, *order);
+    }
+
+    /// Walk every packet header (size and bounds, ICD 2.6) and return the first structural error
+    /// (InvalidPacketSize or Truncated, with the packet's offset and opcode). Bodies are not
+    /// decoded: unknown opcodes and bad field values pass.
+    [[nodiscard]] constexpr Result<void> validate_all() const noexcept {
+        for (const auto& item : *this) {
+            if (!item) {
+                return std::unexpected(item.error());
+            }
+        }
+        return {};
     }
 
     [[nodiscard]] constexpr Direction direction() const noexcept { return direction_; }

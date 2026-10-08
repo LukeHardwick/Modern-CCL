@@ -155,7 +155,9 @@ TEST(StartOfFrame, BadMagicAndWrongOpcode) {
     Bytes b = frame_packet(101, 24, 3);
     wire::store<std::uint16_t>(std::span<std::byte>{b}, 6, 0);
     EXPECT_EQ(decode_sof(b).error().code, ErrorCode::InvalidByteSwapMagic);
-    EXPECT_EQ(decode_sof(frame_packet(1, 24, 3)).error().code, ErrorCode::InvalidFieldValue);
+    const auto wrong = decode_sof(frame_packet(1, 24, 3));
+    EXPECT_EQ(wrong.error().code, ErrorCode::OpcodeMismatch);
+    EXPECT_EQ(wrong.error().opcode, 1); // the opcode found, not the one expected
 }
 
 TEST(StartOfFrame, TruncatedAndSizeMismatch) {
@@ -163,6 +165,35 @@ TEST(StartOfFrame, TruncatedAndSizeMismatch) {
     EXPECT_EQ(decode_sof({}).error().code, ErrorCode::Truncated);
     EXPECT_EQ(decode_sof(std::span<const std::byte>{good}.first(23)).error().code,
               ErrorCode::InvalidPacketSize);
+}
+
+TEST(StartOfFrame, ValidateAcceptsEveryDatabaseNumberStatusAndDefinedEnum) {
+    EXPECT_TRUE(validate(sample).has_value());
+    EXPECT_TRUE(validate(StartOfFrame{}).has_value());
+    for (int db = -128; db <= 127; ++db) {
+        EXPECT_TRUE(
+            validate(StartOfFrame{.database_number = static_cast<std::int8_t>(db)}).has_value());
+    }
+    EXPECT_TRUE(validate(StartOfFrame{.ig_status = 0xFF}).has_value());
+    for (const auto mode :
+         {IgMode::ResetStandby, IgMode::Operate, IgMode::Debug, IgMode::OfflineMaintenance}) {
+        EXPECT_TRUE(validate(StartOfFrame{.ig_mode = mode}).has_value());
+    }
+}
+
+TEST(StartOfFrame, ValidateRejectsUndefinedEnums) {
+    const auto bad_mode = validate(StartOfFrame{.ig_mode = static_cast<IgMode>(4)});
+    EXPECT_EQ(bad_mode.error(),
+              (Error{.code = ErrorCode::InvalidFieldValue, .offset = 5, .opcode = 101}));
+    const auto bad_earth =
+        validate(StartOfFrame{.earth_reference_model = static_cast<EarthReferenceModel>(2)});
+    EXPECT_EQ(bad_earth.error(),
+              (Error{.code = ErrorCode::InvalidFieldValue, .offset = 5, .opcode = 101}));
+}
+
+TEST(StartOfFrame, EnumTraitsKnowTheDefinedModels) {
+    EXPECT_TRUE(EnumTraits<EarthReferenceModel>::is_defined(EarthReferenceModel::HostDefined));
+    EXPECT_FALSE(EnumTraits<EarthReferenceModel>::is_defined(static_cast<EarthReferenceModel>(2)));
 }
 
 } // namespace

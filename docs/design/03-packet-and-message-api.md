@@ -1,110 +1,132 @@
-# 03 - Packet and message API (T2 vertical slice)
+# 03 - Packet and message API (T2 / T2b)
 
-Status: for review at the T2 checkpoint. Scope: `IgControl`, `StartOfFrame`, `MessageBuilder`,
-`MessageView`. About 56 more packets will copy this pattern, so this is the moment to object.
+Status: T2 design approved at its checkpoint; T2b added field tables. Scope: `IgControl`,
+`StartOfFrame`, `MessageBuilder`, `MessageView`, `wire/fields.hpp`. About 56 more packets follow.
+
+## Decisions recorded at the T2 checkpoint
+
+1. **Field tables.** Each packet declares every field once (member, offset, wire encoding); generic
+   code encodes, decodes, validates and layout-checks it. Hand-written codecs stay possible.
+2. **Builder: a `Result` per `add()`.** The first error is not latched; a failed `add` leaves the
+   builder unchanged, so the caller can react (flush, retry) per packet.
+3. **Tolerant decode + `validate()`.** Decode never rejects a value the ICD does not define (undefined
+   enums, out-of-range numbers survive); `validate(const P&)` is the opt-in strict check.
+4. **Lazy parse + `validate_all()`.** `MessageView::parse` checks only the first packet;
+   `validate_all()` walks every header (sizes, bounds) and returns the first error, no bodies.
 
 ## Packets are values, not objects
 
-A packet is a plain struct of fields with defaults, plus three free functions found by ADL. There
-is no base class, no virtual dispatch, no heap, and no hidden state (the original CCL models each
-packet as a class in a hierarchy with a virtual interface, which forces allocation and makes
-packets non-constexpr and hard to compare).
-
-```cpp
-struct IgControl {
-    static constexpr std::uint8_t opcode = 1;
-    static constexpr Direction direction = Direction::HostToIg;
-    static constexpr std::size_t wire_size = 24;   // fixed-size packets only
-    std::int8_t database_number = 0;  /* ...fields... */
-    friend constexpr bool operator==(const IgControl&, const IgControl&) = default;
-};
-constexpr std::size_t encoded_size(const IgControl&) noexcept;
-constexpr void encode(const IgControl&, std::span<std::byte>) noexcept;   // size == encoded_size
-constexpr Result<IgControl> decode(std::type_identity<IgControl>, std::span<const std::byte>,
-                                   wire::ByteOrder) noexcept;
-```
-
-`concept Packet<P>` checks exactly this. A user-defined packet (opcodes 201-255, direction `Both`)
-satisfies it the same way, so builder and view treat built-in and user packets alike. Variable-size
-packets (strings, arrays) return a dynamic `encoded_size`; `wire_size` is then absent. Everything
-is `constexpr`, which is why the golden-byte tests are partly `static_assert`s.
+A packet is a plain struct with defaults and a few free functions. No base class, no virtuals, no
+heap (the original CCL uses a class hierarchy, which forces allocation and defeats `constexpr`).
+`concept Packet<P>` needs static `opcode` and `direction` plus: `encoded_size(p)`, `encode(p, span)`,
+`decode(std::type_identity<P>, span, ByteOrder) -> Result<P>` and `validate(p) -> Result<void>`.
+User packets (opcodes 201-255, direction `Both`) satisfy it identically, so builder and view treat
+built-in and user packets alike. Everything is `constexpr`.
 
 ## Codec conventions (every packet follows these)
 
-a. encode writes reserved bytes/bits as 0, masks each value to its field width, and always writes
-   host byte order and version 3.3.
-b. decode checks, in order: span >= 2 bytes (Truncated); opcode matches (InvalidFieldValue); size
-   byte equals span size and is >= the packet minimum (InvalidPacketSize). Bytes past the known
-   layout are ignored (ICD 2.11 rule 4).
-c. decode is tolerant of enum values the ICD does not define: enums are `enum class X :
-   std::uint8_t` and the raw value is stored. Range policy belongs to the application.
-d. decode ignores reserved bits.
-e. Errors carry the opcode. Packet-level errors have offset 0; `RawPacket::decode_as` rewrites the
-   offset to the position inside the message.
+a. encode writes reserved bytes/bits as 0, masks values to their width, always writes host byte
+   order and version 3.3.
+b. decode checks, in order: span >= 2 bytes (`Truncated`); opcode matches (`OpcodeMismatch`); size
+   byte equals span size and is >= the minimum (`InvalidPacketSize`). Bytes past the known layout
+   are ignored (ICD 2.11 rule 4).
+c. decode is tolerant (decision 3); d. decode ignores reserved bits.
+e. Every error carries the opcode actually *found* in the data (not the one expected). Packet-level
+   offsets are 0; `RawPacket::decode_as` rewrites them to the position in the message.
 
-Byte order: a sender always writes native order (ICD 2.5). The receiver reads the magic number at
-bytes 6-7 once per message (`wire::detect_byte_order`) and passes `ByteOrder` into every decode.
-`decode` of the frame packets re-checks the magic under the order it was given.
+Byte order: senders write native order (ICD 2.5). The receiver detects it once from the magic number
+at bytes 6-7 and passes `ByteOrder` into every decode.
+
+## Field tables (`cigi/wire/fields.hpp`)
+
+| Descriptor | Meaning |
+|---|---|
+| `scalar(&P::m, off)` | whole-byte field; M = WireScalar, enum over one, or `std::chrono::duration` over one |
+| `scalar<WireT>(&P::m, off)` | explicit wire type (e.g. a `bool` stored in a full byte) |
+| `bits(&P::m, off, lsb, width)` | sub-byte field (ICD 2.7.3); M = enum, unsigned int or bool |
+| `flag(&P::m, off, bit)` | one-bit `bool` |
+| `.range(lo, hi)` | validate() requires `lo <= v <= hi` (NaN fails) |
+
+Enums are validated through an opt-in `cigi::EnumTraits<E>::is_defined(E)`. Generic operations:
+`encode_fields`, `decode_fields` (reads a field only if it lies wholly inside the received bytes,
+so 16-byte 3.0/3.1 frame packets leave the newer fields at their defaults) and `validate_fields`
+(first failing field in table order: `InvalidFieldValue`, `.offset` = field offset, `.opcode`).
+`wire::layout_check<P>()` returns a `LayoutError` (`None`, `BadWireSize`, `OutOfBounds`,
+`BadBitRange`, `Misaligned`, `HeaderOverlap`, `Overlap`); `layout_ok<P>()` is the boolean. Rules: inside
+`wire_size` (a multiple of 8, at most 255), natural alignment (ICD 2.6), no byte/bit shared by two
+fields, nothing in bytes 0-1. Every table-driven header ends with `static_assert(wire::layout_ok<P>());`
+and the generic codecs assert it again.
+
+**Selection.** The generic `encoded_size/encode/decode/validate` are templates constrained on
+`TableDrivenPacket<P>` (opcode, direction, `wire_size`, `fields`, default-constructible), declared in
+namespace `cigi` before the `Packet` concept. Callers inside `cigi` (concept, builder, view) find
+them by ordinary lookup for a packet in any namespace; ADL adds a packet's own overloads. A packet
+with a custom codec declares **non-template** overloads, which beat the templates in overload
+resolution, so no opt-out trait is needed and customisation is per function (IgControl customises
+`encode`, `decode`, `validate`). Code outside `cigi` should call `cigi::encode(...)` or use the
+builder / view.
+
+## How to add a packet
+
+A fixed-size packet is the struct and nothing else:
+
+```cpp
+// Example: a 24-byte Host -> IG packet (illustrative layout, not an ICD packet).
+struct Widget {
+    static constexpr std::uint8_t opcode = 42;
+    static constexpr Direction direction = Direction::HostToIg;
+    static constexpr std::size_t wire_size = 24;
+
+    std::uint16_t entity_id = 0;
+    WidgetState state = WidgetState::Off;   // enum class : std::uint8_t, + EnumTraits
+    bool visible = false;
+    float scale = 1.0F;
+    double altitude = 0;
+
+    static constexpr auto fields = std::tuple{
+        wire::scalar(&Widget::entity_id, 2),
+        wire::bits(&Widget::state, 4, 0, 2),
+        wire::flag(&Widget::visible, 4, 2),
+        wire::scalar(&Widget::scale, 8).range(0.0F, 100.0F),
+        wire::scalar(&Widget::altitude, 16),
+    };
+    friend constexpr bool operator==(const Widget&, const Widget&) noexcept = default;
+};
+static_assert(wire::layout_ok<Widget>());
+```
+
+Steps: pick `opcode`/`direction`/`wire_size` from the ICD packet table; list fields at their
+ICD byte offsets (leave reserved ones out); add `EnumTraits` for new enums; end with the
+`static_assert`; test against golden bytes derived by hand from the ICD, never from the table.
+Add extra rules (version, legacy sizes, cross-field checks) with non-template `decode`/`validate`
+that call `wire::decode_fields` / `wire::validate_fields` inside.
 
 ## Building and reading messages
 
 ```cpp
-cigi::StaticMessageBuilder<1024> msg(cigi::Direction::HostToIg);   // or MessageBuilder over a span
-msg.add(cigi::IgControl{.ig_mode = cigi::IgMode::Operate, .host_frame_number = n});  // first
-msg.add(entity_control);                                            // later packets
-send(msg.bytes());                                                  // add() is [[nodiscard]]
-
-auto view = cigi::MessageView::parse(datagram);          // checks first packet, byte order, version
-if (!view) return view.error();
-for (const auto& item : *view) {                         // Result<RawPacket>
-    if (!item) { log(item.error()); break; }             // yielded once, then iteration ends
-    if (item->opcode == cigi::StartOfFrame::opcode) { auto sof = item->decode_as<cigi::StartOfFrame>(); }
+cigi::StaticMessageBuilder<1024> msg(cigi::Direction::HostToIg);
+if (!msg.add(cigi::IgControl{.ig_mode = cigi::IgMode::Operate})) { /* handle */ }   // first
+auto view = cigi::MessageView::parse(datagram);   // first packet, byte order, version
+if (view && view->validate_all()) {
+    for (const auto& item : *view) { /* Result<RawPacket>; item->decode_as<P>() */ }
 }
 ```
 
-Builder rules: first packet must be the frame packet for its direction (UnexpectedFirstPacket), only
-once (DuplicateFramePacket), packet direction must fit (WrongDirection; `Both` always fits), and a
-failed `add` leaves the builder untouched (BufferTooSmall). The caller owns storage; no allocation.
-`StaticMessageBuilder<N>` owns an array and is deliberately non-copyable/non-movable (its span
-would dangle).
-
-View rules: iteration walks header sizes. Size 0 or not a multiple of 8 gives InvalidPacketSize,
-overrun or a lone trailing byte gives Truncated; each error is yielded once and iteration ends, so
-there is no infinite loop and no out-of-bounds read. Unknown opcodes are yielded normally; the
-dispatch layer (T10) decides to ignore them. The iterator's whole state is a byte offset, so it is
-a true multipass `std::forward_iterator`, and `MessageView` is a `std::ranges::forward_range`.
+Builder: first packet must be the frame packet (`UnexpectedFirstPacket`), only once
+(`DuplicateFramePacket`), direction must fit (`WrongDirection`), `BufferTooSmall` otherwise;
+failure leaves it untouched. View: iteration walks header sizes; size 0 / not a multiple of 8 is
+`InvalidPacketSize`, an overrun or lone trailing byte `Truncated`; each error is yielded once then
+iteration ends. Unknown opcodes are yielded normally. The iterator is a true forward iterator.
 
 ## Versions and older peers
 
-We send 3.3 and tolerate 3.0-3.2 on receive only. IG Control / Start of Frame from 3.0 and 3.1
-peers are 16 bytes: no last-frame field, and "Frame Counter" in bytes 8-11 maps to the host / IG
-frame number. 3.2 has the 24-byte layout; its reserved bit where 3.3 puts the IG Control
-Extrapolation flag is ignored. A 16-byte packet claiming minor >= 2 is InvalidPacketSize. The peer's
-version is exposed as `IgControl::version`, `StartOfFrame::version` and `MessageView::version()`.
+We send 3.3 and accept 3.0-3.2. 3.0/3.1 frame packets are 16 bytes (bytes 8-11 are a "frame
+counter"); 3.2 has no extrapolation flag (ignored below minor 3). A 16-byte packet claiming minor
+>= 2 is `InvalidPacketSize`. **Spec defect:** the 3.3 tables say Minor Version "2" (copied from
+3.2); we send 3 and accept any minor.
 
-**Spec defect.** The 3.3 ICD tables give Minor Version "Value: 2" for both IG Control and Start of
-Frame. This was copied from 3.2 and is not corrected by Appendix C. We send minor 3 (the
-document's own version) and accept any minor on receive; a peer that insists on 2 would be reading
-the defective table literally.
+## validate() rules implemented
 
-## Decisions taken without asking (change if you disagree)
-
-- `MessageView::end()` returns an iterator, not a distinct sentinel type (`sentinel` is an alias).
-- Decode of a wrong opcode reports the *expected* opcode in `Error::opcode`.
-- `IgMode` is one enum shared by both packets; `OfflineMaintenance` (3) is only defined for Start
-  of Frame, but IG Control decodes it without complaint (convention c).
-- `ErrorCode` gained `WrongDirection` and `DuplicateFramePacket` (appended).
-- `.clang-tidy` `HeaderFilterRegex` was anchored on the directory name `Modern-CCL`, so headers
-  were silently unchecked inside git worktrees. It is now `.*/include/cigi/.*`; this surfaced
-  latent findings in the T1 headers, fixed in this task (no behaviour change).
-
-## Open questions for the checkpoint
-
-1. Is `Result<void> add()` (error per packet) right, or should the builder latch the first error?
-2. Should decode reject enum values outside the ICD (strict mode), or stay tolerant (current)?
-3. Fixed-size packets repeat ~25 lines each. A `FixedPacket` helper/CRTP could shrink that, at the
-   cost of hiding the layout. Current preference: stay explicit, one layout comment per packet.
-4. Should `MessageView::parse` verify nothing beyond the first packet (current), or validate the
-   whole message eagerly?
-5. Timestamp is a 32-bit 10 us `std::chrono::duration` (wraps at ~11.9 h); wrap handling is left to
-   the application.
+IG Control: Database Number 0..127; IG Mode must be Reset/Standby, Operate or Debug (the Host cannot
+command Offline Maintenance, ICD 4.1.1, 2.8). Start of Frame: IG Mode and Earth Reference Model
+defined; every Database Number and IG Status is defined.

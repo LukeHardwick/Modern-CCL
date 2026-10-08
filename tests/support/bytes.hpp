@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <tuple>
 #include <vector>
 
 namespace cigi::test {
@@ -72,32 +73,18 @@ inline Bytes frame_packet(std::uint8_t opcode, std::size_t size, std::uint8_t mi
 }
 
 /// A user-defined-style packet (Direction::Both), opcode 201, 8 bytes: u16 value at bytes 2-3.
+/// Table-driven: this is all a fixed-size packet needs.
 struct UserPacket {
     static constexpr std::uint8_t opcode = 201;
     static constexpr Direction direction = Direction::Both;
     static constexpr std::size_t wire_size = 8;
     std::uint16_t value = 0;
+    static constexpr auto fields = std::tuple{wire::scalar(&UserPacket::value, 2).range(0, 0xFFFE)};
     friend constexpr bool operator==(const UserPacket&, const UserPacket&) noexcept = default;
 };
-constexpr std::size_t encoded_size(const UserPacket& /*p*/) noexcept {
-    return UserPacket::wire_size;
-}
-constexpr void encode(const UserPacket& p, std::span<std::byte> out) noexcept {
-    std::ranges::fill(out, std::byte{0});
-    wire::store<std::uint8_t>(out, 0, UserPacket::opcode);
-    wire::store<std::uint8_t>(out, 1, UserPacket::wire_size);
-    wire::store<std::uint16_t>(out, 2, p.value);
-}
-constexpr Result<UserPacket> decode(std::type_identity<UserPacket> /*tag*/,
-                                    std::span<const std::byte> bytes,
-                                    wire::ByteOrder order) noexcept {
-    if (auto ok = detail::validate_packet(bytes, UserPacket::opcode, UserPacket::wire_size); !ok) {
-        return std::unexpected(ok.error());
-    }
-    return UserPacket{wire::load<std::uint16_t>(bytes, 2, order)};
-}
+static_assert(wire::layout_ok<UserPacket>());
 
-/// A Host-to-IG-only packet, opcode 150, 8 bytes.
+/// A Host-to-IG-only packet, opcode 150, 8 bytes, with hand-written (custom) codecs.
 struct HostOnlyPacket {
     static constexpr std::uint8_t opcode = 150;
     static constexpr Direction direction = Direction::HostToIg;
@@ -117,6 +104,9 @@ constexpr Result<HostOnlyPacket> decode(std::type_identity<HostOnlyPacket> /*tag
         return std::unexpected(ok.error());
     }
     return HostOnlyPacket{};
+}
+constexpr Result<void> validate(const HostOnlyPacket& /*p*/) noexcept {
+    return {};
 }
 
 } // namespace cigi::test

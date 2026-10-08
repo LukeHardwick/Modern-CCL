@@ -211,8 +211,8 @@ TEST(IgControl, WrongOpcode) {
     b.at(0) = std::byte{2};
     const auto r = decode_ig(b);
     ASSERT_FALSE(r.has_value());
-    EXPECT_EQ(r.error().code, ErrorCode::InvalidFieldValue);
-    EXPECT_EQ(r.error().opcode, 1);
+    EXPECT_EQ(r.error().code, ErrorCode::OpcodeMismatch);
+    EXPECT_EQ(r.error().opcode, 2); // the opcode found, not the one expected
 }
 
 TEST(IgControl, TruncatedAndSizeMismatch) {
@@ -231,6 +231,58 @@ TEST(IgControl, EqualityComparesEveryField) {
     EXPECT_EQ(a, sample);
     a.version = version_of(3, 0);
     EXPECT_NE(a, sample);
+}
+
+constexpr Error invalid_at(std::size_t offset) {
+    return {.code = ErrorCode::InvalidFieldValue, .offset = offset, .opcode = 1};
+}
+
+TEST(IgControl, ValidateAcceptsCommandableValues) {
+    EXPECT_TRUE(validate(sample).has_value());
+    EXPECT_TRUE(validate(IgControl{}).has_value());
+    for (const auto mode : {IgMode::ResetStandby, IgMode::Operate, IgMode::Debug}) {
+        EXPECT_TRUE(validate(IgControl{.ig_mode = mode}).has_value());
+    }
+    for (const std::int8_t db : {std::int8_t{0}, std::int8_t{1}, std::int8_t{127}}) {
+        EXPECT_TRUE(validate(IgControl{.database_number = db}).has_value());
+    }
+}
+
+TEST(IgControl, ValidateRejectsNegativeDatabaseNumber) {
+    for (const std::int8_t db : {std::int8_t{-1}, std::int8_t{-128}}) {
+        EXPECT_EQ(validate(IgControl{.database_number = db}).error(), invalid_at(3));
+    }
+}
+
+TEST(IgControl, ValidateRejectsModesTheHostCannotCommand) {
+    // Offline Maintenance (3) exists only for Start of Frame (ICD 4.1.1, 2.8); the rest of the
+    // 2-bit space is undefined but can still be decoded.
+    EXPECT_EQ(validate(IgControl{.ig_mode = IgMode::OfflineMaintenance}).error(), invalid_at(4));
+    EXPECT_EQ(validate(IgControl{.ig_mode = static_cast<IgMode>(7)}).error(), invalid_at(4));
+}
+
+TEST(IgControl, DecodedOfflineMaintenanceFailsOnlyValidate) {
+    Bytes b = to_vec(native_of(golden_le, golden_be));
+    b.at(4) = std::byte{0x3F}; // mode 3
+    const auto r = decode_ig(b);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->ig_mode, IgMode::OfflineMaintenance);
+    EXPECT_FALSE(validate(*r).has_value());
+}
+
+TEST(IgControl, TableDrivenFunctionsAreGenericAndCustomOverloadsAreChosen) {
+    // IgControl has its own non-template codec; the Packet concept still holds.
+    static_assert(TableDrivenPacket<IgControl> && Packet<IgControl>);
+    EXPECT_TRUE(wire::validate_fields(IgControl{.database_number = 3}).has_value());
+    // The generic validate_fields does not know the Offline Maintenance rule; validate() does.
+    const IgControl offline{.ig_mode = IgMode::OfflineMaintenance};
+    EXPECT_TRUE(wire::validate_fields(offline).has_value());
+    EXPECT_FALSE(validate(offline).has_value());
+}
+
+TEST(IgControl, EnumTraitsKnowTheDefinedModes) {
+    EXPECT_TRUE(EnumTraits<IgMode>::is_defined(IgMode::OfflineMaintenance));
+    EXPECT_FALSE(EnumTraits<IgMode>::is_defined(static_cast<IgMode>(4)));
 }
 
 } // namespace
