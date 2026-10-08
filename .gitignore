@@ -1,0 +1,10 @@
+build/
+.cache/
+/compile_commands.json
+# CIGI ICD PDFs must never be committed.
+third_party/spec/*
+!third_party/spec/README.md
+*.profraw
+*.profdata
+.DS_Store
+.claude/settings.local.json
