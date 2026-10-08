@@ -13,6 +13,7 @@ else()
     set(_cigi_top OFF)
 endif()
 
+option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
@@ -67,6 +68,10 @@ else()
 endif()
 
 cigi_apply_project_options(cigi)
+
+if(CIGI_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 if(CIGI_BUILD_TESTS)
     enable_testing()

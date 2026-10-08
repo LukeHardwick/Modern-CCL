@@ -1,0 +1,3 @@
+add_executable(minimal_roundtrip minimal_roundtrip.cpp)
+target_link_libraries(minimal_roundtrip PRIVATE cigi::cigi)
+cigi_apply_project_options(minimal_roundtrip)
