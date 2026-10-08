@@ -7,9 +7,12 @@
 #include <array>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <limits>
 #include <random>
 #include <span>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -44,14 +47,14 @@ TEST(FrameLsn, KeepsOnlyTheLowNybble) {
 // --- HAT/HOT Request ---------------------------------------------------------------------------
 
 constexpr HatHotRequest request{
-    .id = 0x1234,
+    .hat_hot_id = 0x1234,
     .request_type = HatHotRequestType::Extended,
     .coordinate_system = HatHotCoordinateSystem::Entity,
     .update_period = 5,
     .entity_id = 0xABCD,
-    .latitude_x = 1.0,
-    .longitude_y = -2.0,
-    .altitude_z = 0.5,
+    .latitude_or_x = 1.0,
+    .longitude_or_y = -2.0,
+    .altitude_or_z = 0.5,
 };
 
 // Hand-derived from 4.1.24: opcode 24 = 0x18, size 32 = 0x20; byte 4 = entity coordinate system
@@ -116,13 +119,14 @@ TEST(HatHotRequest, DecodeIgnoresReservedBitsAndTrailingBytes) {
     EXPECT_EQ(*r, request);
 }
 
-TEST(HatHotRequest, LegacyPeerReservedByteMeansOneShot) {
-    // CIGI 3.0/3.1 reserved byte 5; their senders write zero, which reads as a one-shot request.
+TEST(HatHotRequest, ReservedByteFromLegacyPeerPassesThroughDecode) {
+    // CIGI 3.0/3.1 reserved byte 5. Decode is version-agnostic: a non-conforming legacy peer's
+    // non-zero value is read as the update period; sessions mask it by the peer's minor version.
     Bytes b = to_vec(native_of(request_le, request_be));
-    b.at(5) = std::byte{0};
+    b.at(5) = std::byte{0x7B};
     const auto r = decode_native<HatHotRequest>(b);
     ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(r->update_period, 0);
+    EXPECT_EQ(r->update_period, 0x7B);
 }
 
 TEST(HatHotRequest, AllTypesAndSystemsRoundTrip) {
@@ -130,14 +134,14 @@ TEST(HatHotRequest, AllTypesAndSystemsRoundTrip) {
          {HatHotRequestType::Hat, HatHotRequestType::Hot, HatHotRequestType::Extended}) {
         for (const auto sys : {HatHotCoordinateSystem::Geodetic, HatHotCoordinateSystem::Entity}) {
             const HatHotRequest p{
-                .id = 0xFFFF,
+                .hat_hot_id = 0xFFFF,
                 .request_type = type,
                 .coordinate_system = sys,
                 .update_period = 255,
                 .entity_id = 0xFFFF,
-                .latitude_x = -90.0,
-                .longitude_y = 180.0,
-                .altitude_z = std::numeric_limits<double>::max(),
+                .latitude_or_x = -90.0,
+                .longitude_or_y = 180.0,
+                .altitude_or_z = std::numeric_limits<double>::max(),
             };
             std::array<std::byte, 32> buf{};
             encode(p, buf);
@@ -182,24 +186,26 @@ TEST(HatHotRequest, DecodeKeepsUndefinedRequestType) {
 TEST(HatHotRequest, ValidateGeodeticRanges) {
     EXPECT_TRUE(validate(request).has_value());
     EXPECT_TRUE(validate(HatHotRequest{}).has_value());
-    EXPECT_TRUE(validate(HatHotRequest{.latitude_x = 90.0, .longitude_y = -180.0}).has_value());
-    EXPECT_TRUE(validate(HatHotRequest{.latitude_x = -90.0, .longitude_y = 180.0}).has_value());
-    const auto lat = validate(HatHotRequest{.latitude_x = 90.5});
+    EXPECT_TRUE(
+        validate(HatHotRequest{.latitude_or_x = 90.0, .longitude_or_y = -180.0}).has_value());
+    EXPECT_TRUE(
+        validate(HatHotRequest{.latitude_or_x = -90.0, .longitude_or_y = 180.0}).has_value());
+    const auto lat = validate(HatHotRequest{.latitude_or_x = 90.5});
     EXPECT_EQ(lat.error(),
               (Error{.code = ErrorCode::InvalidFieldValue, .offset = 8, .opcode = 24}));
-    const auto lon = validate(HatHotRequest{.longitude_y = -180.5});
+    const auto lon = validate(HatHotRequest{.longitude_or_y = -180.5});
     EXPECT_EQ(lon.error(),
               (Error{.code = ErrorCode::InvalidFieldValue, .offset = 16, .opcode = 24}));
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    EXPECT_FALSE(validate(HatHotRequest{.latitude_x = nan}).has_value());
-    EXPECT_FALSE(validate(HatHotRequest{.longitude_y = nan}).has_value());
+    EXPECT_FALSE(validate(HatHotRequest{.latitude_or_x = nan}).has_value());
+    EXPECT_FALSE(validate(HatHotRequest{.longitude_or_y = nan}).has_value());
 }
 
 TEST(HatHotRequest, EntityOffsetsAreNotRangeChecked) {
     const HatHotRequest p{
         .coordinate_system = HatHotCoordinateSystem::Entity,
-        .latitude_x = 1000.0,
-        .longitude_y = -5000.0,
+        .latitude_or_x = 1000.0,
+        .longitude_or_y = -5000.0,
     };
     EXPECT_TRUE(validate(p).has_value());
 }
@@ -221,7 +227,7 @@ TEST(HatHotRequest, EnumTraits) {
 // --- HAT/HOT Response --------------------------------------------------------------------------
 
 constexpr HatHotResponse response{
-    .id = 0x0102,
+    .hat_hot_id = 0x0102,
     .valid = true,
     .response_type = HatHotResponseType::Hot,
     .host_frame_lsn = 0xA,
@@ -282,13 +288,14 @@ TEST(HatHotResponse, DecodeIgnoresReservedAndTrailing) {
     EXPECT_EQ(*r, response);
 }
 
-TEST(HatHotResponse, LegacyPeerHasNoFrameLsn) {
-    // 3.0/3.1 reserved bits 7-4 of byte 4: they write zero, so the LSN reads as 0.
+TEST(HatHotResponse, ReservedNybbleFromLegacyPeerPassesThroughDecode) {
+    // 3.0/3.1 reserved bits 7-4 of byte 4. Decode is version-agnostic: a non-zero value is read
+    // as the LSN; sessions mask it by the peer's minor version.
     Bytes b = to_vec(native_of(response_le, response_be));
-    b.at(4) = std::byte{0x03};
+    b.at(4) = std::byte{0x93};
     const auto r = decode_native<HatHotResponse>(b);
     ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(r->host_frame_lsn, 0);
+    EXPECT_EQ(r->host_frame_lsn, 9);
     EXPECT_TRUE(r->valid);
     EXPECT_EQ(r->response_type, HatHotResponseType::Hot);
 }
@@ -298,7 +305,7 @@ TEST(HatHotResponse, EveryLsnAndFlagCombinationRoundTrips) {
         for (const bool valid : {false, true}) {
             for (const auto type : {HatHotResponseType::Hat, HatHotResponseType::Hot}) {
                 const HatHotResponse p{
-                    .id = 7,
+                    .hat_hot_id = 7,
                     .valid = valid,
                     .response_type = type,
                     .host_frame_lsn = lsn,
@@ -353,7 +360,7 @@ TEST(HatHotResponse, EnumTraits) {
 // --- HAT/HOT Extended Response -----------------------------------------------------------------
 
 constexpr HatHotExtendedResponse extended{
-    .id = 0x0304,
+    .hat_hot_id = 0x0304,
     .valid = true,
     .host_frame_lsn = 5,
     .hat = -1.5,
@@ -426,12 +433,13 @@ TEST(HatHotExtendedResponse, DecodeIgnoresReservedAndTrailing) {
     EXPECT_EQ(*r, extended);
 }
 
-TEST(HatHotExtendedResponse, LegacyPeerHasNoFrameLsn) {
+TEST(HatHotExtendedResponse, ReservedNybbleFromLegacyPeerPassesThroughDecode) {
+    // As for HatHotResponse: decode is version-agnostic, sessions mask by the peer's minor version.
     Bytes b = to_vec(native_of(extended_le, extended_be));
-    b.at(4) = std::byte{0x01};
+    b.at(4) = std::byte{0xC1};
     const auto r = decode_native<HatHotExtendedResponse>(b);
     ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(r->host_frame_lsn, 0);
+    EXPECT_EQ(r->host_frame_lsn, 12);
     EXPECT_TRUE(r->valid);
 }
 
@@ -489,24 +497,24 @@ TEST(HatHotRandomRoundTrip, AllThreePackets) {
         };
 
         const HatHotRequest rq{
-            .id = static_cast<std::uint16_t>(u64()),
+            .hat_hot_id = static_cast<std::uint16_t>(u64()),
             .request_type = static_cast<HatHotRequestType>(u64() % 3),
             .coordinate_system = static_cast<HatHotCoordinateSystem>(u64() & 1U),
             .update_period = static_cast<std::uint8_t>(u64()),
             .entity_id = static_cast<std::uint16_t>(u64()),
-            .latitude_x = f64(),
-            .longitude_y = f64(),
-            .altitude_z = f64(),
+            .latitude_or_x = f64(),
+            .longitude_or_y = f64(),
+            .altitude_or_z = f64(),
         };
         const HatHotResponse rs{
-            .id = static_cast<std::uint16_t>(u64()),
+            .hat_hot_id = static_cast<std::uint16_t>(u64()),
             .valid = (u64() & 1U) != 0,
             .response_type = static_cast<HatHotResponseType>(u64() & 1U),
             .host_frame_lsn = static_cast<std::uint8_t>(u64() & 0xFU),
             .height = f64(),
         };
         const HatHotExtendedResponse ex{
-            .id = static_cast<std::uint16_t>(u64()),
+            .hat_hot_id = static_cast<std::uint16_t>(u64()),
             .valid = (u64() & 1U) != 0,
             .host_frame_lsn = static_cast<std::uint8_t>(u64() & 0xFU),
             .hat = f64(),
@@ -519,21 +527,20 @@ TEST(HatHotRandomRoundTrip, AllThreePackets) {
         check_round_trip(rs);
         check_round_trip(ex);
 
-        // Foreign order: byte-reverse every multi-byte field of the encoded request.
-        Bytes b(32);
-        encode(rq, b);
-        const auto rev = [&](std::size_t off, std::size_t n) {
-            std::reverse(b.begin() + static_cast<std::ptrdiff_t>(off),
-                         b.begin() + static_cast<std::ptrdiff_t>(off + n));
+        // Foreign order: byte-reverse every multi-byte field of the encoded packet.
+        const auto check_foreign = [](const auto& p, std::initializer_list<std::pair<int, int>> f) {
+            Bytes b(encoded_size(p));
+            encode(p, b);
+            for (const auto& [off, n] : f) {
+                std::reverse(b.begin() + off, b.begin() + off + n);
+            }
+            const auto r = decode_p<std::remove_cvref_t<decltype(p)>>(b, ByteOrder::Swapped);
+            ASSERT_TRUE(r.has_value());
+            EXPECT_EQ(*r, p);
         };
-        rev(2, 2);
-        rev(6, 2);
-        rev(8, 8);
-        rev(16, 8);
-        rev(24, 8);
-        const auto r = decode_p<HatHotRequest>(b, ByteOrder::Swapped);
-        ASSERT_TRUE(r.has_value());
-        EXPECT_EQ(*r, rq);
+        check_foreign(rq, {{2, 2}, {6, 2}, {8, 8}, {16, 8}, {24, 8}});
+        check_foreign(rs, {{2, 2}, {8, 8}});
+        check_foreign(ex, {{2, 2}, {8, 8}, {16, 8}, {24, 4}, {28, 4}, {32, 4}});
     }
 }
 
@@ -544,8 +551,8 @@ TEST(HatHotMessages, RequestInHostMessage) {
     ASSERT_TRUE(
         msg.add(IgControl{.ig_mode = IgMode::Operate, .host_frame_number = 33}).has_value());
     ASSERT_TRUE(msg.add(request).has_value());
-    ASSERT_TRUE(
-        msg.add(HatHotRequest{.id = 2, .request_type = HatHotRequestType::Hot}).has_value());
+    ASSERT_TRUE(msg.add(HatHotRequest{.hat_hot_id = 2, .request_type = HatHotRequestType::Hot})
+                    .has_value());
     EXPECT_EQ(msg.size(), 24U + 32U + 32U);
     // An IG-to-Host packet is refused in a Host message.
     EXPECT_EQ(msg.add(response).error().code, ErrorCode::WrongDirection);
@@ -563,7 +570,7 @@ TEST(HatHotMessages, RequestInHostMessage) {
     EXPECT_EQ(items.at(1).offset, 24U);
     EXPECT_EQ(*items.at(1).decode_as<HatHotRequest>(), request);
     EXPECT_EQ(items.at(2).decode_as<HatHotRequest>()->request_type, HatHotRequestType::Hot);
-    EXPECT_EQ(items.at(2).decode_as<HatHotRequest>()->id, 2);
+    EXPECT_EQ(items.at(2).decode_as<HatHotRequest>()->hat_hot_id, 2);
 }
 
 TEST(HatHotMessages, ResponsesInIgMessage) {

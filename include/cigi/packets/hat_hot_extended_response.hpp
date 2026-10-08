@@ -6,9 +6,10 @@
 //   bytes 5-7 reserved     bytes 8-15 HAT   16-23 HOT   24-27 material code
 //   bytes 28-31 normal azimuth   32-35 normal elevation   36-39 reserved
 //
-// CIGI 3.0/3.1 reserved the LSN nybble (added in 3.2, ICD Appendix B); it decodes as 0 from such
-// peers. Table-driven; the normal's angle ranges only bind when Valid is set, so validate() is
-// custom.
+// CIGI 3.0/3.1 reserved the LSN nybble (added in 3.2, ICD Appendix B). A conforming 3.0/3.1 peer
+// writes 0 there; decode itself is version-agnostic and passes any value through, so sessions
+// (T07) mask the field by the peer's minor version. Table-driven; the normal's angle ranges only
+// bind when Valid is set, so validate() is custom.
 
 #include "cigi/packet.hpp"
 
@@ -23,8 +24,8 @@ struct HatHotExtendedResponse {
     static constexpr Direction direction = Direction::IgToHost;
     static constexpr std::size_t wire_size = 40;
 
-    std::uint16_t id = 0; ///< HAT/HOT ID of the request being answered.
-    bool valid = false;   ///< False: the test point was outside the database; data fields unset.
+    std::uint16_t hat_hot_id = 0; ///< HAT/HOT ID of the request being answered.
+    bool valid = false; ///< False: the test point was outside the database; data fields unset.
     std::uint8_t host_frame_lsn = 0; ///< 0..15, see host_frame_lsn(); 3.2+, ignore if one-shot.
     double hat = 0;                  ///< Height above terrain, metres (negative: below).
     double hot = 0;                  ///< Height of terrain, metres above MSL.
@@ -33,7 +34,7 @@ struct HatHotExtendedResponse {
     float normal_elevation = 0; ///< Degrees above the geodetic reference plane, -90..90.
 
     static constexpr auto fields = std::tuple{
-        wire::scalar(&HatHotExtendedResponse::id, 2),
+        wire::scalar(&HatHotExtendedResponse::hat_hot_id, 2),
         wire::flag(&HatHotExtendedResponse::valid, 4, 0),
         wire::bits(&HatHotExtendedResponse::host_frame_lsn, 4, 4, 4).range(0, 15),
         wire::scalar(&HatHotExtendedResponse::hat, 8),
