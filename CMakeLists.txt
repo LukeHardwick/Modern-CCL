@@ -37,8 +37,10 @@ target_sources(cigi PUBLIC
     FILE_SET HEADERS
     BASE_DIRS include
     FILES include/cigi/version.hpp
+          include/cigi/dispatch.hpp
           include/cigi/error.hpp
           include/cigi/packet.hpp
+          include/cigi/packet_set.hpp
           include/cigi/packets.hpp
           include/cigi/packets/articulated_part_control.hpp
           include/cigi/packets/celestial_sphere_control.hpp

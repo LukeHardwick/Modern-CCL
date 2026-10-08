@@ -127,11 +127,20 @@ public:
 
     /// Walk every packet header (size and bounds, ICD 2.6) and return the first structural error
     /// (InvalidPacketSize or Truncated, with the packet's offset and opcode). Bodies are not
-    /// decoded: unknown opcodes and bad field values pass.
+    /// decoded: unknown opcodes and bad field values pass. A second IG Control / Start of Frame
+    /// after the first packet is DuplicateFramePacket (ICD 4.1.1, 4.2.1); iteration itself stays
+    /// purely structural and still yields it.
     [[nodiscard]] constexpr Result<void> validate_all() const noexcept {
         for (const auto& item : *this) {
             if (!item) {
                 return std::unexpected(item.error());
+            }
+            if (item->offset != 0 && item->opcode == frame_packet_opcode(direction_)) {
+                return std::unexpected(Error{
+                    .code = ErrorCode::DuplicateFramePacket,
+                    .offset = item->offset,
+                    .opcode = item->opcode,
+                });
             }
         }
         return {};
