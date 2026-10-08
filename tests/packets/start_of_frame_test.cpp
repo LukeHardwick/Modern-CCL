@@ -155,7 +155,9 @@ TEST(StartOfFrame, BadMagicAndWrongOpcode) {
     Bytes b = frame_packet(101, 24, 3);
     wire::store<std::uint16_t>(std::span<std::byte>{b}, 6, 0);
     EXPECT_EQ(decode_sof(b).error().code, ErrorCode::InvalidByteSwapMagic);
-    EXPECT_EQ(decode_sof(frame_packet(1, 24, 3)).error().code, ErrorCode::InvalidFieldValue);
+    const auto wrong = decode_sof(frame_packet(1, 24, 3));
+    EXPECT_EQ(wrong.error().code, ErrorCode::OpcodeMismatch);
+    EXPECT_EQ(wrong.error().opcode, 1); // the opcode found, not the one expected
 }
 
 TEST(StartOfFrame, TruncatedAndSizeMismatch) {

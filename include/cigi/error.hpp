@@ -19,6 +19,8 @@ enum class ErrorCode : std::uint8_t {
     UnknownOpcode,         ///< Opcode is not recognised.
     WrongDirection,        ///< Packet cannot travel in this message's direction (ICD 2.3).
     DuplicateFramePacket,  ///< A second IG Control / Start of Frame in one message (ICD 2.6).
+    OpcodeMismatch,        ///< Packet's opcode byte differs from the type asked for; Error::opcode
+                           ///< holds the opcode found in the data.
 };
 
 /// Error details.

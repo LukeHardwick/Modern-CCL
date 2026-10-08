@@ -80,7 +80,7 @@ TEST(MessageView, ParsesHostMessageAndYieldsEveryPacket) {
     EXPECT_EQ(*items.at(2)->decode_as<UserPacket>(), UserPacket{0xBEEF});
     const auto wrong = items.at(1)->decode_as<IgControl>();
     ASSERT_FALSE(wrong.has_value());
-    EXPECT_EQ(wrong.error().code, ErrorCode::InvalidFieldValue);
+    EXPECT_EQ(wrong.error().code, ErrorCode::OpcodeMismatch);
     EXPECT_EQ(wrong.error().offset, 24U);
     EXPECT_EQ(wrong.error().opcode, 150);
 }

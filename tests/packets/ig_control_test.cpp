@@ -211,8 +211,8 @@ TEST(IgControl, WrongOpcode) {
     b.at(0) = std::byte{2};
     const auto r = decode_ig(b);
     ASSERT_FALSE(r.has_value());
-    EXPECT_EQ(r.error().code, ErrorCode::InvalidFieldValue);
-    EXPECT_EQ(r.error().opcode, 1);
+    EXPECT_EQ(r.error().code, ErrorCode::OpcodeMismatch);
+    EXPECT_EQ(r.error().opcode, 2); // the opcode found, not the one expected
 }
 
 TEST(IgControl, TruncatedAndSizeMismatch) {

@@ -22,12 +22,13 @@ struct RawPacket {
     std::size_t offset = 0;           ///< Offset of the packet within the message.
     wire::ByteOrder byte_order = wire::ByteOrder::Native;
 
-    /// Decode as `P`. InvalidFieldValue if the opcode is not P::opcode; otherwise P's decode
-    /// errors, with offset rewritten to the position in the message.
+    /// Decode as `P`. OpcodeMismatch (Error::opcode = the opcode found) if the opcode is not
+    /// P::opcode; otherwise P's decode errors, with offset rewritten to the position in the
+    /// message.
     template <Packet P> [[nodiscard]] constexpr Result<P> decode_as() const noexcept {
         if (opcode != P::opcode) {
             return std::unexpected(
-                Error{.code = ErrorCode::InvalidFieldValue, .offset = offset, .opcode = opcode});
+                Error{.code = ErrorCode::OpcodeMismatch, .offset = offset, .opcode = opcode});
         }
         auto r = decode(std::type_identity<P>{}, bytes, byte_order);
         if (!r) {

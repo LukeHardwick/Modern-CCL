@@ -8,14 +8,15 @@
 //   a. encode() writes every reserved byte/bit as 0 and masks each value to its field width. It
 //      always writes the host's native byte order and the library's own protocol version.
 //   b. decode() validates, in this order: the span holds at least the 2-byte header; the opcode
-//      byte matches (else InvalidFieldValue); the size byte equals the span size and is at least
+//      byte matches (else OpcodeMismatch); the size byte equals the span size and is at least
 //      the packet's minimum (else InvalidPacketSize). Bytes beyond the known layout are ignored
 //      (ICD 2.11 rule 4), so a larger packet from a newer peer still decodes.
 //   c. decode() is tolerant of enum values the ICD does not define: enums are
 //      `enum class X : std::uint8_t` and the raw value is stored without error. Whether a value
 //      is acceptable is the application's decision.
 //   d. decode() ignores reserved bits and bytes.
-//   e. Errors carry the packet's opcode. A packet-level error has offset 0 (relative to the
+//   e. Errors carry the opcode byte found in the data (equal to the packet's own once it matched).
+//   A packet-level error has offset 0 (relative to the
 //      packet); the message layer rewrites it to the offset within the datagram.
 
 #include "cigi/detail/assert.hpp"
@@ -106,15 +107,19 @@ namespace detail {
 [[nodiscard]] constexpr Result<void> validate_packet(std::span<const std::byte> bytes,
                                                      std::uint8_t opcode,
                                                      std::size_t min_size) noexcept {
+    // Every error reports the opcode byte actually found, when there is one to read.
+    const std::uint8_t found = bytes.empty()
+                                   ? std::uint8_t{0}
+                                   : wire::load<std::uint8_t>(bytes, 0, wire::ByteOrder::Native);
     const auto header = read_header(bytes, 0);
     if (!header) {
-        return std::unexpected(Error{.code = ErrorCode::Truncated, .opcode = opcode});
+        return std::unexpected(Error{.code = ErrorCode::Truncated, .opcode = found});
     }
     if (header->opcode != opcode) {
-        return std::unexpected(Error{.code = ErrorCode::InvalidFieldValue, .opcode = opcode});
+        return std::unexpected(Error{.code = ErrorCode::OpcodeMismatch, .opcode = found});
     }
     if (header->size != bytes.size() || bytes.size() < min_size) {
-        return std::unexpected(Error{.code = ErrorCode::InvalidPacketSize, .opcode = opcode});
+        return std::unexpected(Error{.code = ErrorCode::InvalidPacketSize, .opcode = found});
     }
     return {};
 }
