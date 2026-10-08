@@ -21,6 +21,8 @@ enum class ErrorCode : std::uint8_t {
     DuplicateFramePacket,  ///< A second IG Control / Start of Frame in one message (ICD 2.6).
     OpcodeMismatch,        ///< Packet's opcode byte differs from the type asked for; Error::opcode
                            ///< holds the opcode found in the data.
+    TransportError,        ///< A socket operation failed; Error::os_error holds the OS code.
+    Timeout,               ///< No datagram arrived within the allowed time.
 };
 
 /// Error details.
@@ -29,6 +31,7 @@ struct Error {
     ErrorCode code;          ///< What went wrong.
     std::size_t offset = 0;  ///< Byte offset into the message where it was detected.
     std::uint8_t opcode = 0; ///< Packet opcode if known, otherwise 0.
+    int os_error = 0;        ///< Operating-system error number (transport errors), otherwise 0.
 
     friend constexpr bool operator==(const Error&, const Error&) noexcept = default;
 };
