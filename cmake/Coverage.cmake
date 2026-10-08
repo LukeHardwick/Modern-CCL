@@ -21,11 +21,11 @@ if(CIGI_ENABLE_COVERAGE)
         COMMAND ${LLVM_COV} show -format=html "-output-dir=${_cov_dir}/html"
                 "-instr-profile=${_cov_dir}/merged.profdata"
                 "-ignore-filename-regex=(tests/|_deps/)"
-                $<TARGET_FILE:cigi_smoke_test>
+                $<TARGET_FILE:cigi_smoke_test> -object $<TARGET_FILE:cigi_wire_test>
         COMMAND ${LLVM_COV} report "-instr-profile=${_cov_dir}/merged.profdata"
                 "-ignore-filename-regex=(tests/|_deps/)"
-                $<TARGET_FILE:cigi_smoke_test>
+                $<TARGET_FILE:cigi_smoke_test> -object $<TARGET_FILE:cigi_wire_test>
         COMMAND ${CMAKE_COMMAND} -E echo "Coverage report: ${_cov_dir}/html/index.html"
-        DEPENDS cigi_smoke_test
+        DEPENDS cigi_smoke_test cigi_wire_test
         VERBATIM USES_TERMINAL)
 endif()

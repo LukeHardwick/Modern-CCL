@@ -28,12 +28,19 @@ include(Dependencies)
 
 include(GenerateExportHeader)
 
-add_library(cigi src/version.cpp)
+add_library(cigi src/version.cpp src/error.cpp)
 add_library(cigi::cigi ALIAS cigi)
 target_sources(cigi PUBLIC
     FILE_SET HEADERS
     BASE_DIRS include
-    FILES include/cigi/version.hpp)
+    FILES include/cigi/version.hpp
+          include/cigi/error.hpp
+          include/cigi/detail/assert.hpp
+          include/cigi/wire/bits.hpp
+          include/cigi/wire/byte_order.hpp
+          include/cigi/wire/codec.hpp
+          include/cigi/wire/padding.hpp
+          include/cigi/wire/utf8.hpp)
 target_include_directories(cigi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
