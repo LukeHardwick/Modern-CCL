@@ -196,6 +196,12 @@ TEST(ViewDefinition, ValidateRejectsUndefinedEnums) {
     }
 }
 
+TEST(ViewDefinition, ValidateViewTypeRange) {
+    EXPECT_TRUE(validate(ViewDefinition{.view_type = 7}));
+    EXPECT_EQ(validate(ViewDefinition{.view_type = 8}).error(), err(6));
+    EXPECT_EQ(validate(ViewDefinition{.view_type = 255}).error(), err(6));
+}
+
 TEST(ViewDefinition, ValidateNearFar) {
     const auto v = [](float n, float f) {
         return validate(ViewDefinition{

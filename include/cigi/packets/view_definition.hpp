@@ -97,7 +97,7 @@ struct ViewDefinition {
         wire::bits(&ViewDefinition::pixel_replication_mode, 6, 0, 3),
         wire::bits(&ViewDefinition::projection_type, 6, 3, 1),
         wire::flag(&ViewDefinition::reorder, 6, 4),
-        wire::bits(&ViewDefinition::view_type, 6, 5, 3),
+        wire::bits(&ViewDefinition::view_type, 6, 5, 3).range(0, 7),
         wire::scalar(&ViewDefinition::near_plane, 8),
         wire::scalar(&ViewDefinition::far_plane, 12),
         wire::scalar(&ViewDefinition::left, 16),
