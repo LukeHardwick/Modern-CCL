@@ -24,8 +24,8 @@ cigi_add_test(cigi_message_test SOURCES
 if(CIGI_BUILD_TRANSPORT)
     cigi_add_test(cigi_platform_test SOURCES platform/sleep_test.cpp LINK cigi::platform)
     cigi_add_test(cigi_transport_test SOURCES transport/udp_test.cpp transport/internal_test.cpp
-        LINK cigi::transport Boost::asio LABELS network)
-    target_include_directories(cigi_transport_test PRIVATE ${CMAKE_SOURCE_DIR}/src/transport)
+        LINK cigi::transport Boost::asio_core LABELS network)
+    target_include_directories(cigi_transport_test PRIVATE ${PROJECT_SOURCE_DIR}/src/transport)
     # The internal tests exercise Boost's no-exceptions hook, so they are built like the library.
     if(NOT MSVC)
         set_source_files_properties(transport/internal_test.cpp PROPERTIES

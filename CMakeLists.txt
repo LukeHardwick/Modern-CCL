@@ -90,9 +90,16 @@ if(CIGI_BUILD_TRANSPORT)
     target_sources(cigi_transport PUBLIC
         FILE_SET HEADERS BASE_DIRS include FILES include/cigi/transport/udp.hpp)
     target_compile_features(cigi_transport PUBLIC cxx_std_23)
-    target_link_libraries(cigi_transport PUBLIC cigi::cigi PRIVATE Boost::asio)
+    target_link_libraries(cigi_transport PUBLIC cigi::cigi PRIVATE Boost::asio_core)
+
+    if(WIN32)
+        # PLATFORM: Asio needs the Windows 10 API level and the Winsock libraries.
+        target_compile_definitions(cigi_transport PRIVATE _WIN32_WINNT=0x0A00)
+        target_link_libraries(cigi_transport PRIVATE ws2_32 mswsock)
+    endif()
 
     foreach(_t cigi_platform cigi_transport)
+        set_target_properties(${_t} PROPERTIES POSITION_INDEPENDENT_CODE ON)
         if(MSVC)
             target_compile_options(${_t} PRIVATE /EHs-c-)
             target_compile_definitions(${_t} PRIVATE _HAS_EXCEPTIONS=0)
