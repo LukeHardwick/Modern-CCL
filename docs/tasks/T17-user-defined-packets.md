@@ -14,7 +14,7 @@ user-defined packets).
   table for fixed layouts (which also gives correct byte swapping for free — the reason CCL needed
   user-supplied swap code), or custom codecs for variable layouts.
 - Registration = extending a packet set: `using MyHostPackets = cigi::Extend<cigi::HostToIgPackets,
-  MyPacket>` (T06 provides `Extend` and `Concat``; dispatch and sessions accept any set (sessions become templates on the set or take it
+  MyPacket>` (T06 provides `Extend` and `Concat`); dispatch and sessions accept any set (sessions become templates on the set or take it
   as a parameter — choose the least intrusive change to T07's API and document it).
 - `SessionConfig::ignore_user_packets` (default false) per §4.3.
 - Validation: builder rejects user packets whose size violates §4.3.
