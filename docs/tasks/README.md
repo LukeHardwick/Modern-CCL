@@ -19,7 +19,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T02b](T02b-field-table.md) | Declarative field-table codec | Foundation | T02 | ✅ `e819387` |
 | [T02c](T02c-wireshark-frame-example.md) | Example: IG Control/SOF traffic in Wireshark | Foundation | T02b | ✅ `11cbfd7` |
 | [T03](T03-mvp-entity-packets.md) | Entity, Articulated Part, Rate, Component Control | A (MVP) | T02b | ⏳ |
-| [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ⏳ |
+| [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ✅ `d7f3779` |
 | [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ⏳ |
 | [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ⏳ |
 | [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ⏳ |
