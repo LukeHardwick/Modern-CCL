@@ -32,10 +32,23 @@ cigi_add_test(cigi_message_test SOURCES
     message/dispatch_test.cpp
     message/view_test.cpp)
 
+
 # Replaces the global operator new to prove dispatch is allocation-free.
 cigi_add_test(cigi_dispatch_alloc_test SOURCES message/dispatch_alloc_test.cpp)
 # clang-tidy cannot accept a user-provided operator new: libc++ declares its parameter as __sz.
 set_target_properties(cigi_dispatch_alloc_test PROPERTIES CXX_CLANG_TIDY "")
+
+if(CIGI_BUILD_TRANSPORT)
+    cigi_add_test(cigi_platform_test SOURCES platform/sleep_test.cpp LINK cigi::platform)
+    cigi_add_test(cigi_transport_test SOURCES transport/udp_test.cpp transport/internal_test.cpp
+        LINK cigi::transport Boost::asio_core LABELS network)
+    target_include_directories(cigi_transport_test PRIVATE ${PROJECT_SOURCE_DIR}/src/transport)
+    # The internal tests exercise Boost's no-exceptions hook, so they are built like the library.
+    if(NOT MSVC)
+        set_source_files_properties(transport/internal_test.cpp PROPERTIES
+            COMPILE_OPTIONS -fno-exceptions)
+    endif()
+endif()
 
 # Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
 find_program(CIGI_TSHARK tshark)

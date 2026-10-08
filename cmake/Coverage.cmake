@@ -38,10 +38,10 @@ function(cigi_define_coverage_target)
                 -P "${CMAKE_SOURCE_DIR}/cmake/CoverageMerge.cmake"
         COMMAND ${LLVM_COV} show -format=html "-output-dir=${_cov_dir}/html"
                 "-instr-profile=${_cov_dir}/merged.profdata"
-                "-ignore-filename-regex=(tests/|_deps/)"
+                "-ignore-filename-regex=(tests/|_deps/|transport/no_exceptions\\.cpp)"
                 ${_objects}
         COMMAND ${LLVM_COV} report "-instr-profile=${_cov_dir}/merged.profdata"
-                "-ignore-filename-regex=(tests/|_deps/)"
+                "-ignore-filename-regex=(tests/|_deps/|transport/no_exceptions\\.cpp)"
                 ${_objects}
         COMMAND ${CMAKE_COMMAND} -E echo "Coverage report: ${_cov_dir}/html/index.html"
         DEPENDS ${_all_tests}

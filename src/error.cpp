@@ -26,6 +26,10 @@ std::string_view to_string(ErrorCode code) noexcept {
         return "DuplicateFramePacket";
     case ErrorCode::OpcodeMismatch:
         return "OpcodeMismatch";
+    case ErrorCode::TransportError:
+        return "TransportError";
+    case ErrorCode::Timeout:
+        return "Timeout";
     }
     return "Unknown";
 }

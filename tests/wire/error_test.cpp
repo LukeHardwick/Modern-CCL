@@ -19,6 +19,8 @@ TEST(Error, ToStringCoversAllCodes) {
     EXPECT_EQ(cigi::to_string(ErrorCode::WrongDirection), "WrongDirection");
     EXPECT_EQ(cigi::to_string(ErrorCode::DuplicateFramePacket), "DuplicateFramePacket");
     EXPECT_EQ(cigi::to_string(ErrorCode::OpcodeMismatch), "OpcodeMismatch");
+    EXPECT_EQ(cigi::to_string(ErrorCode::TransportError), "TransportError");
+    EXPECT_EQ(cigi::to_string(ErrorCode::Timeout), "Timeout");
 }
 
 TEST(Error, ToStringUnknownValue) {
@@ -31,6 +33,7 @@ TEST(Error, EqualityAndDefaults) {
     static_assert(a == Error{.code = ErrorCode::Truncated});
     static_assert(a != Error{.code = ErrorCode::Truncated, .offset = 1});
     static_assert(a != Error{.code = ErrorCode::Truncated, .opcode = 1});
+    static_assert(a != Error{.code = ErrorCode::Truncated, .os_error = 1});
     static_assert(a != Error{.code = ErrorCode::BufferTooSmall});
     EXPECT_EQ(a, (Error{.code = ErrorCode::Truncated}));
 }
