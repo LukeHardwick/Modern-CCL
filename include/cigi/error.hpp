@@ -24,6 +24,7 @@ enum class ErrorCode : std::uint8_t {
 };
 
 /// Error details.
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init): `code` is always given (aggregate).
 struct Error {
     ErrorCode code;          ///< What went wrong.
     std::size_t offset = 0;  ///< Byte offset into the message where it was detected.

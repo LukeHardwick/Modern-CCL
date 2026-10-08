@@ -79,7 +79,7 @@ struct UserPacket {
     static constexpr Direction direction = Direction::Both;
     static constexpr std::size_t wire_size = 8;
     std::uint16_t value = 0;
-    static constexpr auto fields = std::tuple{wire::scalar(&UserPacket::value, 2)};
+    static constexpr auto fields = std::tuple{wire::scalar(&UserPacket::value, 2).range(0, 0xFFFE)};
     friend constexpr bool operator==(const UserPacket&, const UserPacket&) noexcept = default;
 };
 static_assert(wire::layout_ok<UserPacket>());

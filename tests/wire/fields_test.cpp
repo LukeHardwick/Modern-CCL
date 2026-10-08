@@ -2,6 +2,7 @@
 #include "cigi/message/builder.hpp"
 #include "cigi/packet.hpp"
 #include "cigi/packets/ig_control.hpp"
+#include "cigi/packets/start_of_frame.hpp"
 #include "cigi/wire/fields.hpp"
 
 #include <array>
@@ -10,14 +11,18 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
+#include <numbers>
 #include <tuple>
 
-// Test-only enums live in a named namespace so EnumTraits can be specialised for them.
+// Test-only enums (internal linkage); EnumTraits is specialised for them in namespace cigi.
 namespace cigi::test {
+namespace {
 
+// NOLINTNEXTLINE(performance-enum-size): a 2-byte enum on purpose
 enum class FtColor : std::uint16_t { Red = 1, Green = 2, Blue = 3 };
 enum class FtMode : std::uint8_t { A = 0, B = 1, C = 2, D = 3, E = 4, F = 5 };
 
+} // namespace
 } // namespace cigi::test
 
 namespace cigi {
@@ -68,7 +73,14 @@ static_assert(wire::layout_ok<FtGolden>());
 static_assert(TableDrivenPacket<FtGolden> && Packet<FtGolden>);
 
 constexpr FtGolden golden_value{
-    .u = 0x0102, .s = -2, .mode = FtMode::F, .on = true, .nibble = 0xA, .w = 0x0A0B0C0D, .d = 1.0};
+    .u = 0x0102,
+    .s = -2,
+    .mode = FtMode::F,
+    .on = true,
+    .nibble = 0xA,
+    .w = 0x0A0B0C0D,
+    .d = 1.0,
+};
 
 // Byte 6: nibble 0xA<<4 | mode 5<<1 (0x0A) | flag 1 = 0xAB. 1.0 = 0x3FF0000000000000.
 constexpr auto golden_le = bytes_of(210, 24, 0x02, 0x01, 0xFE, 0xFF, 0xAB, 0, //
@@ -130,25 +142,27 @@ struct FtAll {
 };
 static_assert(wire::layout_ok<FtAll>());
 
-constexpr FtAll all_value{.u8 = 0xFE,
-                          .i8 = -3,
-                          .u16 = 0xBEEF,
-                          .i16 = -12345,
-                          .u32 = 0xDEADBEEF,
-                          .i32 = -123456789,
-                          .u64 = 0x0123456789ABCDEFULL,
-                          .i64 = -1234567890123LL,
-                          .f32 = -2.5F,
-                          .color = FtColor::Blue,
-                          .byte_flag = true,
-                          .f64 = 3.141592653589793,
-                          .millis = Millis{-77},
-                          .stamp = Timestamp{4000000000U},
-                          .lone_flag = true,
-                          .mode = FtMode::E,
-                          .nibble = 0x9,
-                          .top_flag = true,
-                          .small = 5};
+constexpr FtAll all_value{
+    .u8 = 0xFE,
+    .i8 = -3,
+    .u16 = 0xBEEF,
+    .i16 = -12345,
+    .u32 = 0xDEADBEEF,
+    .i32 = -123456789,
+    .u64 = 0x0123456789ABCDEFULL,
+    .i64 = -1234567890123LL,
+    .f32 = -2.5F,
+    .color = FtColor::Blue,
+    .byte_flag = true,
+    .f64 = std::numbers::pi,
+    .millis = Millis{-77},
+    .stamp = Timestamp{4000000000U},
+    .lone_flag = true,
+    .mode = FtMode::E,
+    .nibble = 0x9,
+    .top_flag = true,
+    .small = 5,
+};
 
 constexpr bool all_round_trip() {
     std::array<std::byte, FtAll::wire_size> buf{};
@@ -168,12 +182,12 @@ static_assert(golden_round_trip());
 
 // --- Traits ---------------------------------------------------------------------------------
 
-static_assert(std::same_as<wire::WireRepr<double>::type, double>);
-static_assert(std::same_as<wire::WireRepr<FtColor>::type, std::uint16_t>);
-static_assert(std::same_as<wire::WireRepr<Timestamp>::type, std::uint32_t>);
-static_assert(std::same_as<wire::WireRepr<Millis>::type, std::int32_t>);
+static_assert(std::same_as<wire::WireRepr<double>::Type, double>);
+static_assert(std::same_as<wire::WireRepr<FtColor>::Type, std::uint16_t>);
+static_assert(std::same_as<wire::WireRepr<Timestamp>::Type, std::uint32_t>);
+static_assert(std::same_as<wire::WireRepr<Millis>::Type, std::int32_t>);
 template <class M>
-concept HasWireRepr = requires { typename wire::WireRepr<M>::type; };
+concept HasWireRepr = requires { typename wire::WireRepr<M>::Type; };
 static_assert(HasWireRepr<double> && !HasWireRepr<bool> && !HasWireRepr<char> &&
               !HasWireRepr<long double>);
 static_assert(!HasWireRepr<std::chrono::duration<char>>);
@@ -283,7 +297,8 @@ TEST(Fields, BitFieldsAreMaskedToTheirWidth) {
 
 TEST(Fields, BoolStoredInAByteDecodesAnyNonZeroAsTrue) {
     Bytes buf(FtAll::wire_size);
-    cigi::encode(FtAll{}, buf);
+    const FtAll blank;
+    cigi::encode(blank, buf);
     buf.at(38) = std::byte{0x7F};
     const auto r = cigi::decode(std::type_identity<FtAll>{}, buf, ByteOrder::Native);
     ASSERT_TRUE(r.has_value());
@@ -292,7 +307,8 @@ TEST(Fields, BoolStoredInAByteDecodesAnyNonZeroAsTrue) {
 
 TEST(Fields, DecodeToleratesUndefinedEnumValues) {
     Bytes buf(FtAll::wire_size);
-    cigi::encode(FtAll{}, buf);
+    const FtAll blank;
+    cigi::encode(blank, buf);
     wire::store<std::uint16_t>(std::span<std::byte>{buf}, 36, 999);
     buf.at(56) = std::byte{0x0E}; // mode 7
     const auto r = cigi::decode(std::type_identity<FtAll>{}, buf, ByteOrder::Native);
@@ -486,7 +502,7 @@ struct FtStamped {
     static constexpr Direction direction = Direction::Both;
     static constexpr std::size_t wire_size = 8;
     std::uint16_t value = 0;
-    static constexpr auto fields = std::tuple{wire::scalar(&FtStamped::value, 2)};
+    static constexpr auto fields = std::tuple{wire::scalar(&FtStamped::value, 2).range(0, 0xFFFE)};
 };
 constexpr void encode(const FtStamped& p, std::span<std::byte> out) noexcept {
     std::ranges::fill(out, std::byte{0});
@@ -532,73 +548,65 @@ using wire::scalar;
 
 constexpr auto lay = [](auto... fields) { return std::tuple{fields...}; };
 
-static_assert(layout_check(lay(scalar(&Lay::a, 2), scalar(&Lay::b, 4), scalar(&Lay::c, 8),
-                               scalar(&Lay::d, 16)),
-                           24) == LayoutError::None);
-static_assert(layout_check(lay(), 8) == LayoutError::None);
-static_assert(layout_check(lay(scalar(&Lay::a, 7)), 8) == LayoutError::None);
-static_assert(layout_check(lay(scalar(&Lay::d, 248)), 256) == LayoutError::BadWireSize);
-static_assert(layout_check(lay(scalar(&Lay::d, 240)), 248) == LayoutError::None);
-
-// Wire size must be 8..255 and a multiple of 8.
-static_assert(layout_check(lay(), 0) == LayoutError::BadWireSize);
-static_assert(layout_check(lay(), 12) == LayoutError::BadWireSize);
-static_assert(layout_check(lay(), 256) == LayoutError::BadWireSize);
-
-// Fields must lie inside the packet.
-static_assert(layout_check(lay(scalar(&Lay::c, 8)), 8) == LayoutError::OutOfBounds);
-static_assert(layout_check(lay(scalar(&Lay::c, 4)), 8) == LayoutError::None);
-static_assert(layout_check(lay(scalar(&Lay::a, 8)), 8) == LayoutError::OutOfBounds);
-static_assert(layout_check(lay(scalar(&Lay::a, std::numeric_limits<std::size_t>::max())), 8) ==
-              LayoutError::OutOfBounds);
-
-// Natural alignment (ICD 2.6): offsets are multiples of the field size.
-static_assert(layout_check(lay(scalar(&Lay::b, 3)), 16) == LayoutError::Misaligned);
-static_assert(layout_check(lay(scalar(&Lay::c, 6)), 16) == LayoutError::Misaligned);
-static_assert(layout_check(lay(scalar(&Lay::d, 12)), 24) == LayoutError::Misaligned);
-static_assert(layout_check(lay(scalar(&Lay::d, 8)), 16) == LayoutError::None);
-static_assert(layout_check(lay(scalar(&Lay::a, 3), scalar(&Lay::e, 5)), 8) == LayoutError::None);
-
-// Nothing may touch the opcode and size bytes.
-static_assert(layout_check(lay(scalar(&Lay::a, 0)), 8) == LayoutError::HeaderOverlap);
-static_assert(layout_check(lay(scalar(&Lay::a, 1)), 8) == LayoutError::HeaderOverlap);
-static_assert(layout_check(lay(scalar(&Lay::b, 0)), 8) == LayoutError::HeaderOverlap);
-static_assert(layout_check(lay(flag(&Lay::f, 1, 3)), 8) == LayoutError::HeaderOverlap);
-
-// Scalars may not share bytes.
-static_assert(layout_check(lay(scalar(&Lay::a, 4), scalar(&Lay::a, 4)), 8) == LayoutError::Overlap);
-static_assert(layout_check(lay(scalar(&Lay::b, 4), scalar(&Lay::a, 5)), 8) == LayoutError::Overlap);
-static_assert(layout_check(lay(scalar(&Lay::c, 4), scalar(&Lay::b, 6)), 8) == LayoutError::Overlap);
-static_assert(layout_check(lay(scalar(&Lay::d, 8), scalar(&Lay::c, 12)), 16) ==
-              LayoutError::Overlap);
-static_assert(layout_check(lay(scalar(&Lay::b, 4), scalar(&Lay::b, 6)), 8) == LayoutError::None);
-
-// Bit fields: no shared bits in a byte, but distinct bits of one byte are fine.
-static_assert(layout_check(lay(bits(&Lay::a, 2, 0, 4), bits(&Lay::a, 2, 4, 4)), 8) ==
-              LayoutError::None);
-static_assert(layout_check(lay(bits(&Lay::a, 2, 0, 4), bits(&Lay::a, 2, 3, 2)), 8) ==
-              LayoutError::Overlap);
-static_assert(layout_check(lay(flag(&Lay::f, 2, 7), flag(&Lay::f, 2, 7)), 8) ==
-              LayoutError::Overlap);
-static_assert(layout_check(lay(flag(&Lay::f, 2, 0), flag(&Lay::f, 3, 0)), 8) == LayoutError::None);
-static_assert(layout_check(lay(scalar(&Lay::a, 2), flag(&Lay::f, 2, 0)), 8) ==
-              LayoutError::Overlap);
-static_assert(layout_check(lay(flag(&Lay::f, 4, 0), scalar(&Lay::b, 4)), 8) ==
-              LayoutError::Overlap);
-
-// Bit fields may not be empty or cross a byte boundary (ICD 2.7.3).
-static_assert(layout_check(lay(bits(&Lay::a, 2, 6, 3)), 8) == LayoutError::BadBitRange);
-static_assert(layout_check(lay(bits(&Lay::a, 2, 5, 3)), 8) == LayoutError::None);
-static_assert(layout_check(lay(bits(&Lay::a, 2, 0, 0)), 8) == LayoutError::BadBitRange);
-static_assert(layout_check(lay(bits(&Lay::a, 2, 0, 9)), 8) == LayoutError::BadBitRange);
-static_assert(layout_check(lay(bits(&Lay::a, 2, 8, 1)), 8) == LayoutError::BadBitRange);
-static_assert(layout_check(lay(flag(&Lay::f, 2, 8)), 8) == LayoutError::BadBitRange);
-
-// The first failing field decides, in table order.
-static_assert(layout_check(lay(scalar(&Lay::b, 3), scalar(&Lay::c, 12)), 8) ==
-              LayoutError::Misaligned);
-static_assert(layout_check(lay(scalar(&Lay::c, 12), scalar(&Lay::b, 3)), 8) ==
-              LayoutError::OutOfBounds);
+// Every negative case, as one constexpr function: checked at compile time here and run again at
+// run time by FieldsLayout.AllCasesAtRunTime (so the code is covered, not only compiled).
+// Cases: wire size 8..255 and a multiple of 8; fields inside the packet; natural alignment
+// (ICD 2.6); nothing in the header; no shared bytes or bits; bit fields inside one byte (ICD
+// 2.7.3); the first failing field in table order decides.
+constexpr bool layout_cases() {
+    return (layout_check(lay(scalar(&Lay::a, 2), scalar(&Lay::b, 4), scalar(&Lay::c, 8),
+                             scalar(&Lay::d, 16)),
+                         24) == LayoutError::None) &&
+           (layout_check(lay(), 8) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::a, 7)), 8) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::d, 248)), 256) == LayoutError::BadWireSize) &&
+           (layout_check(lay(scalar(&Lay::d, 240)), 248) == LayoutError::None) &&
+           (layout_check(lay(), 0) == LayoutError::BadWireSize) &&
+           (layout_check(lay(), 12) == LayoutError::BadWireSize) &&
+           (layout_check(lay(), 256) == LayoutError::BadWireSize) &&
+           (layout_check(lay(scalar(&Lay::c, 8)), 8) == LayoutError::OutOfBounds) &&
+           (layout_check(lay(scalar(&Lay::c, 4)), 8) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::a, 8)), 8) == LayoutError::OutOfBounds) &&
+           (layout_check(lay(scalar(&Lay::a, std::numeric_limits<std::size_t>::max())), 8) ==
+            LayoutError::OutOfBounds) &&
+           (layout_check(lay(scalar(&Lay::b, 3)), 16) == LayoutError::Misaligned) &&
+           (layout_check(lay(scalar(&Lay::c, 6)), 16) == LayoutError::Misaligned) &&
+           (layout_check(lay(scalar(&Lay::d, 12)), 24) == LayoutError::Misaligned) &&
+           (layout_check(lay(scalar(&Lay::d, 8)), 16) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::a, 3), scalar(&Lay::e, 5)), 8) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::a, 0)), 8) == LayoutError::HeaderOverlap) &&
+           (layout_check(lay(scalar(&Lay::a, 1)), 8) == LayoutError::HeaderOverlap) &&
+           (layout_check(lay(scalar(&Lay::b, 0)), 8) == LayoutError::HeaderOverlap) &&
+           (layout_check(lay(flag(&Lay::f, 1, 3)), 8) == LayoutError::HeaderOverlap) &&
+           (layout_check(lay(scalar(&Lay::a, 4), scalar(&Lay::a, 4)), 8) == LayoutError::Overlap) &&
+           (layout_check(lay(scalar(&Lay::b, 4), scalar(&Lay::a, 5)), 8) == LayoutError::Overlap) &&
+           (layout_check(lay(scalar(&Lay::c, 4), scalar(&Lay::b, 6)), 8) == LayoutError::Overlap) &&
+           (layout_check(lay(scalar(&Lay::d, 8), scalar(&Lay::c, 12)), 16) ==
+            LayoutError::Overlap) &&
+           (layout_check(lay(scalar(&Lay::b, 4), scalar(&Lay::b, 6)), 8) == LayoutError::None) &&
+           (layout_check(lay(bits(&Lay::a, 2, 0, 4), bits(&Lay::a, 2, 4, 4)), 8) ==
+            LayoutError::None) &&
+           (layout_check(lay(bits(&Lay::a, 2, 0, 4), bits(&Lay::a, 2, 3, 2)), 8) ==
+            LayoutError::Overlap) &&
+           (layout_check(lay(flag(&Lay::f, 2, 7), flag(&Lay::f, 2, 7)), 8) ==
+            LayoutError::Overlap) &&
+           (layout_check(lay(flag(&Lay::f, 2, 0), flag(&Lay::f, 3, 0)), 8) == LayoutError::None) &&
+           (layout_check(lay(scalar(&Lay::a, 2), flag(&Lay::f, 2, 0)), 8) ==
+            LayoutError::Overlap) &&
+           (layout_check(lay(flag(&Lay::f, 4, 0), scalar(&Lay::b, 4)), 8) ==
+            LayoutError::Overlap) &&
+           (layout_check(lay(bits(&Lay::a, 2, 6, 3)), 8) == LayoutError::BadBitRange) &&
+           (layout_check(lay(bits(&Lay::a, 2, 5, 3)), 8) == LayoutError::None) &&
+           (layout_check(lay(bits(&Lay::a, 2, 0, 0)), 8) == LayoutError::BadBitRange) &&
+           (layout_check(lay(bits(&Lay::a, 2, 0, 9)), 8) == LayoutError::BadBitRange) &&
+           (layout_check(lay(bits(&Lay::a, 2, 8, 1)), 8) == LayoutError::BadBitRange) &&
+           (layout_check(lay(flag(&Lay::f, 2, 8)), 8) == LayoutError::BadBitRange) &&
+           (layout_check(lay(scalar(&Lay::b, 3), scalar(&Lay::c, 12)), 8) ==
+            LayoutError::Misaligned) &&
+           (layout_check(lay(scalar(&Lay::c, 12), scalar(&Lay::b, 3)), 8) ==
+            LayoutError::OutOfBounds);
+}
+static_assert(layout_cases());
 
 struct BadTable {
     [[maybe_unused]] static constexpr std::uint8_t opcode = 220;
@@ -610,12 +618,105 @@ struct BadTable {
 static_assert(!wire::layout_ok<BadTable>());
 static_assert(wire::layout_check<BadTable>() == LayoutError::Misaligned);
 
+TEST(FieldsLayout, AllCasesAtRunTime) {
+    EXPECT_TRUE(layout_cases());
+}
+
 TEST(FieldsLayout, RuntimeSpotChecks) {
     // The same checks as above, observable as ordinary test results.
     EXPECT_TRUE(wire::layout_ok<FtGolden>());
     EXPECT_TRUE(wire::layout_ok<FtAll>());
     EXPECT_FALSE(wire::layout_ok<BadTable>());
     EXPECT_EQ(wire::layout_check<BadTable>(), LayoutError::Misaligned);
+}
+
+// --- Runtime evaluation of descriptors and layout checks ------------------------------------
+// Everything above is also evaluated at compile time. These tests build the same descriptors from
+// values the compiler cannot see, so the code is exercised (and covered) at run time too.
+
+std::size_t rt(std::size_t v) {
+    const volatile std::size_t x = v;
+    return x;
+}
+
+TEST(FieldsLayout, RuntimeEvaluationAgreesWithCompileTime) {
+    const auto check = [](auto... fs) { return std::tuple{fs...}; };
+    EXPECT_EQ(layout_check(check(scalar(&Lay::a, rt(2)), scalar(&Lay::b, rt(4))), rt(8)),
+              LayoutError::None);
+    EXPECT_EQ(layout_check(check(), rt(0)), LayoutError::BadWireSize);
+    EXPECT_EQ(layout_check(check(), rt(12)), LayoutError::BadWireSize);
+    EXPECT_EQ(layout_check(check(), rt(256)), LayoutError::BadWireSize);
+    EXPECT_EQ(layout_check(check(scalar(&Lay::c, rt(8))), rt(8)), LayoutError::OutOfBounds);
+    EXPECT_EQ(layout_check(check(scalar(&Lay::b, rt(3))), rt(8)), LayoutError::Misaligned);
+    EXPECT_EQ(layout_check(check(scalar(&Lay::a, rt(1))), rt(8)), LayoutError::HeaderOverlap);
+    EXPECT_EQ(layout_check(check(scalar(&Lay::a, rt(4)), scalar(&Lay::a, rt(4))), rt(8)),
+              LayoutError::Overlap);
+    EXPECT_EQ(layout_check(check(flag(&Lay::f, rt(2), 0), bits(&Lay::a, rt(2), 1, 3)), rt(8)),
+              LayoutError::None);
+    EXPECT_EQ(layout_check(check(bits(&Lay::a, rt(2), 6, 3)), rt(8)), LayoutError::BadBitRange);
+    EXPECT_EQ(layout_check(check(flag(&Lay::f, rt(2), 1), flag(&Lay::f, rt(2), 1)), rt(8)),
+              LayoutError::Overlap);
+}
+
+TEST(FieldsDescriptors, RuntimeRangeAndValidityOnBothKinds) {
+    Lay p;
+    const auto wide =
+        scalar(&Lay::b, rt(4))
+            .range(static_cast<std::uint16_t>(rt(10)), static_cast<std::uint16_t>(rt(20)));
+    p.b = 15;
+    EXPECT_TRUE(wide.valid(p));
+    p.b = 21;
+    EXPECT_FALSE(wide.valid(p));
+    const auto narrow =
+        bits(&Lay::a, rt(2), 0, 4)
+            .range(static_cast<std::uint8_t>(rt(1)), static_cast<std::uint8_t>(rt(9)));
+    p.a = 9;
+    EXPECT_TRUE(narrow.valid(p));
+    p.a = 0;
+    EXPECT_FALSE(narrow.valid(p));
+
+    // Encode / decode through descriptors built at run time, including the explicit wire type.
+    const auto as_byte = scalar<std::uint8_t>(&Lay::f, rt(3));
+    Bytes buf(8);
+    p.f = true;
+    as_byte.encode(p, buf);
+    EXPECT_EQ(buf.at(3), std::byte{1});
+    Lay q;
+    as_byte.decode(q, buf, ByteOrder::Native);
+    EXPECT_TRUE(q.f);
+    const auto lone = flag(&Lay::f, rt(5), 4);
+    lone.encode(p, buf);
+    EXPECT_EQ(buf.at(5), std::byte{0x10});
+    Lay r;
+    lone.decode(r, buf, ByteOrder::Native);
+    EXPECT_TRUE(r.f);
+    EXPECT_EQ(scalar(&Lay::d, rt(8)).size(), 8U);
+    EXPECT_EQ(scalar(&Lay::d, rt(8)).alignment(), 8U);
+    EXPECT_EQ(bits(&Lay::a, rt(2), 2, 3).byte_mask(), 0x1C);
+    EXPECT_TRUE(scalar(&Lay::d, rt(8)).shape_ok());
+    EXPECT_EQ(scalar(&Lay::d, rt(8)).byte_mask(), 0xFF);
+}
+
+TEST(FieldsLayout, EveryTablePacketChecksAtRunTime) {
+    EXPECT_TRUE(wire::layout_ok<FtChecked>());
+    EXPECT_TRUE(wire::layout_ok<FtStamped>());
+    EXPECT_TRUE(wire::layout_ok<UserPacket>());
+    EXPECT_TRUE(wire::layout_ok<IgControl>());
+    EXPECT_TRUE(wire::layout_ok<StartOfFrame>());
+    EXPECT_EQ(wire::layout_check<FtGolden>(), LayoutError::None);
+}
+
+TEST(FieldsValidate, EveryTablePacketValidatesAtRunTime) {
+    EXPECT_TRUE(wire::validate_fields(all_value).has_value());
+    EXPECT_TRUE(wire::validate_fields(UserPacket{}).has_value());
+    EXPECT_TRUE(wire::validate_fields(FtStamped{}).has_value());
+    EXPECT_FALSE(wire::validate_fields(FtStamped{.value = 0xFFFF}).has_value());
+    EXPECT_FALSE(wire::validate_fields(UserPacket{0xFFFF}).has_value());
+    EXPECT_TRUE(wire::validate_fields(FtGolden{}).has_value());
+    EXPECT_FALSE(wire::validate_fields(FtGolden{.mode = static_cast<FtMode>(9)}).has_value());
+    EXPECT_FALSE(wire::validate_fields(IgControl{.database_number = -1}).has_value());
+    EXPECT_FALSE(
+        wire::validate_fields(StartOfFrame{.ig_mode = static_cast<IgMode>(5)}).has_value());
 }
 
 // --- TableDrivenPacket concept --------------------------------------------------------------

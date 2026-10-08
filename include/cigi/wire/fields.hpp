@@ -29,6 +29,7 @@
 #include <span>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace cigi {
 
@@ -54,15 +55,15 @@ namespace cigi::wire {
 /// rep. Undefined for other types (use `scalar<WireT>(...)` to name the wire type explicitly).
 template <class M> struct WireRepr {};
 template <WireScalar M> struct WireRepr<M> {
-    using type = M;
+    using Type = M;
 };
 template <class E>
     requires(std::is_enum_v<E> && WireScalar<std::underlying_type_t<E>>)
 struct WireRepr<E> {
-    using type = std::underlying_type_t<E>;
+    using Type = std::underlying_type_t<E>;
 };
 template <WireScalar Rep, class Period> struct WireRepr<std::chrono::duration<Rep, Period>> {
-    using type = Rep;
+    using Type = Rep;
 };
 
 namespace detail {
@@ -72,12 +73,12 @@ template <class Rep, class Period>
 inline constexpr bool is_duration_v<std::chrono::duration<Rep, Period>> = true;
 
 template <class W, class M> struct ResolveWire {
-    using type = W;
+    using Type = W;
 };
 template <class M>
-    requires requires { typename WireRepr<M>::type; }
+    requires requires { typename WireRepr<M>::Type; }
 struct ResolveWire<void, M> {
-    using type = typename WireRepr<M>::type;
+    using Type = WireRepr<M>::Type;
 };
 
 template <class W, class M> [[nodiscard]] constexpr W to_wire(const M& value) noexcept {
@@ -90,7 +91,7 @@ template <class W, class M> [[nodiscard]] constexpr W to_wire(const M& value) no
 
 template <class M, class W> [[nodiscard]] constexpr M from_wire(W raw) noexcept {
     if constexpr (is_duration_v<M>) {
-        return M{static_cast<typename M::rep>(raw)};
+        return M{static_cast<M::rep>(raw)};
     } else if constexpr (std::same_as<M, bool>) {
         return raw != W{};
     } else {
@@ -106,17 +107,17 @@ concept HasIsDefined = requires(M v) {
 /// Value-validity metadata shared by both descriptor kinds.
 template <class M> struct Validity {
     bool has_range = false;
-    M lo{};
-    M hi{};
+    // Unused unless has_range, hence the (otherwise suspicious) value-initialisation of enums.
+    M lo{}; // NOLINT(bugprone-invalid-enum-default-initialization)
+    M hi{}; // NOLINT(bugprone-invalid-enum-default-initialization)
 
     [[nodiscard]] constexpr bool ok(const M& v) const noexcept {
-        if (has_range && !(lo <= v && v <= hi)) {
-            return false;
-        }
+        const bool in_range = !has_range || (lo <= v && v <= hi);
         if constexpr (HasIsDefined<M>) {
-            return EnumTraits<M>::is_defined(v);
+            return in_range && EnumTraits<M>::is_defined(v);
+        } else {
+            return in_range;
         }
-        return true;
     }
 };
 
@@ -126,8 +127,8 @@ template <class M> struct Validity {
 
 /// A whole-byte field of wire type W at a byte offset. Build with scalar().
 template <class P, class M, class W> struct ScalarField {
-    M P::* member;
-    std::size_t offset;
+    M P::* member = nullptr;
+    std::size_t offset = 0;
     detail::Validity<M> validity{};
 
     /// Same field, but validate() requires lo <= value <= hi (also catches NaN for floats).
@@ -157,10 +158,10 @@ template <class P, class M, class W> struct ScalarField {
 /// A sub-byte field: `width` bits at bit `lsb` (0 = least significant) of the byte at `offset`.
 /// Build with bits() / flag().
 template <class P, class M> struct BitsField {
-    M P::* member;
-    std::size_t offset;
-    unsigned lsb;
-    unsigned width;
+    M P::* member = nullptr;
+    std::size_t offset = 0;
+    unsigned lsb = 0;
+    unsigned width = 1;
     detail::Validity<M> validity{};
 
     [[nodiscard]] constexpr BitsField range(M lo, M hi) const noexcept {
@@ -198,7 +199,7 @@ template <class P, class M> struct BitsField {
 /// (e.g. a bool stored in a full byte).
 template <class W = void, class P, class M>
 [[nodiscard]] constexpr auto scalar(M P::* member, std::size_t offset) noexcept {
-    using Wire = typename detail::ResolveWire<W, M>::type;
+    using Wire = detail::ResolveWire<W, M>::Type;
     static_assert(WireScalar<Wire>, "the wire type of a scalar field must be a WireScalar");
     return ScalarField<P, M, Wire>{.member = member, .offset = offset};
 }
@@ -261,44 +262,85 @@ enum class LayoutError : std::uint8_t {
 
 inline constexpr std::size_t max_packet_size = 255; ///< The size byte is 8 bits (ICD 2.6).
 
-/// Check `table` against a packet of `wire_size` bytes.
-template <class... Fs>
-[[nodiscard]] constexpr LayoutError layout_check(const std::tuple<Fs...>& table,
+namespace detail {
+
+/// The layout-relevant facts of one descriptor, so the checking logic is not a template.
+struct FieldShape {
+    std::size_t offset = 0;
+    std::size_t size = 0;
+    std::size_t alignment = 1;
+    std::uint8_t mask = 0xFF; ///< Bits occupied in each byte of the field.
+    bool shape_ok = true;
+};
+
+template <class F> [[nodiscard]] constexpr FieldShape shape_of(const F& f) noexcept {
+    return {
+        .offset = f.offset,
+        .size = f.size(),
+        .alignment = f.alignment(),
+        .mask = f.shape_ok() ? f.byte_mask() : std::uint8_t{0},
+        .shape_ok = f.shape_ok(),
+    };
+}
+
+/// True if two (individually valid) fields share a byte and a bit within it.
+[[nodiscard]] constexpr bool shares_bits(const FieldShape& a, const FieldShape& b) noexcept {
+    return a.offset < b.offset + b.size && b.offset < a.offset + a.size && (a.mask & b.mask) != 0;
+}
+
+/// Layout problem of `f` on its own or against the earlier fields.
+[[nodiscard]] constexpr LayoutError check_field(const FieldShape& f,
+                                                std::span<const FieldShape> earlier,
+                                                std::size_t wire_size) noexcept {
+    if (!f.shape_ok) {
+        return LayoutError::BadBitRange;
+    }
+    if (f.offset > wire_size || f.size > wire_size - f.offset) {
+        return LayoutError::OutOfBounds;
+    }
+    if (f.offset % f.alignment != 0) {
+        return LayoutError::Misaligned;
+    }
+    if (f.offset < 2) {
+        return LayoutError::HeaderOverlap;
+    }
+    for (const auto& other : earlier) {
+        if (shares_bits(other, f)) {
+            return LayoutError::Overlap;
+        }
+    }
+    return LayoutError::None;
+}
+
+/// Non-template core of layout_check: the first failing field, in table order, decides.
+[[nodiscard]] constexpr LayoutError check_shapes(std::span<const FieldShape> shapes,
                                                  std::size_t wire_size) noexcept {
     if (wire_size == 0 || wire_size % 8 != 0 || wire_size > max_packet_size) {
         return LayoutError::BadWireSize;
     }
-    std::array<std::uint8_t, max_packet_size + 1> used{};
-    used[0] = 0xFF; // opcode
-    used[1] = 0xFF; // size
-    const auto check = [&](const auto& f) {
-        if (!f.shape_ok()) {
-            return LayoutError::BadBitRange;
+    std::size_t index = 0;
+    for (const auto& shape : shapes) {
+        const auto error = check_field(shape, shapes.first(index), wire_size);
+        if (error != LayoutError::None) {
+            return error;
         }
-        if (f.offset > wire_size || f.size() > wire_size - f.offset) {
-            return LayoutError::OutOfBounds;
-        }
-        if (f.offset % f.alignment() != 0) {
-            return LayoutError::Misaligned;
-        }
-        if (f.offset < 2) {
-            return LayoutError::HeaderOverlap;
-        }
-        for (std::size_t i = f.offset; i < f.offset + f.size(); ++i) {
-            if ((used[i] & f.byte_mask()) != 0) {
-                return LayoutError::Overlap;
-            }
-            used[i] = static_cast<std::uint8_t>(used[i] | f.byte_mask());
-        }
-        return LayoutError::None;
-    };
-    LayoutError result = LayoutError::None;
-    std::apply(
-        [&](const auto&... f) {
-            ((result == LayoutError::None ? static_cast<void>(result = check(f)) : void()), ...);
+        ++index;
+    }
+    return LayoutError::None;
+}
+
+} // namespace detail
+
+/// Check `table` against a packet of `wire_size` bytes.
+template <class... Fs>
+[[nodiscard]] constexpr LayoutError layout_check(const std::tuple<Fs...>& table,
+                                                 std::size_t wire_size) noexcept {
+    const auto shapes = std::apply(
+        [](const auto&... f) {
+            return std::array<detail::FieldShape, sizeof...(Fs)>{detail::shape_of(f)...};
         },
         table);
-    return result;
+    return detail::check_shapes(shapes, wire_size);
 }
 
 /// Check P::fields against P::wire_size.
