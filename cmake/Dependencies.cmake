@@ -19,3 +19,18 @@ if(CIGI_BUILD_TESTS)
         endforeach()
     endif()
 endif()
+
+if(CIGI_BUILD_TRANSPORT)
+    # Boost.Asio via the official Boost CMake release tarball (superproject). Only asio and its
+    # dependencies are configured. Official release, published 2026-08-12.
+    set(BOOST_INCLUDE_LIBRARIES asio CACHE STRING "" FORCE)
+    set(BOOST_ENABLE_MPI OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(Boost
+        URL https://github.com/boostorg/boost/releases/download/boost-1.92.0/boost-1.92.0-cmake.tar.xz
+        URL_HASH SHA256=9bed76128d4e46755dbe818487788c6fceb6f72b378f4daa49b7e1e600d9088d
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    FetchContent_MakeAvailable(Boost)
+endif()

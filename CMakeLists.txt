@@ -15,6 +15,8 @@ endif()
 
 option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
+option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and platform helpers"
+       ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
@@ -69,6 +71,37 @@ else()
 endif()
 
 cigi_apply_project_options(cigi)
+
+if(CIGI_BUILD_TRANSPORT)
+    # Timing abstraction: the only place with timing-related platform #ifdefs.
+    add_library(cigi_platform STATIC src/platform/sleep.cpp)
+    add_library(cigi::platform ALIAS cigi_platform)
+    target_sources(cigi_platform PUBLIC
+        FILE_SET HEADERS BASE_DIRS include FILES include/cigi/platform/sleep.hpp)
+    target_compile_features(cigi_platform PUBLIC cxx_std_23)
+    if(WIN32)
+        # PLATFORM: timeBeginPeriod/timeEndPeriod
+        target_link_libraries(cigi_platform PRIVATE winmm)
+    endif()
+
+    # UDP transport on Boost.Asio, hidden behind a pimpl (no Boost in public headers).
+    add_library(cigi_transport STATIC src/transport/udp.cpp src/transport/no_exceptions.cpp)
+    add_library(cigi::transport ALIAS cigi_transport)
+    target_sources(cigi_transport PUBLIC
+        FILE_SET HEADERS BASE_DIRS include FILES include/cigi/transport/udp.hpp)
+    target_compile_features(cigi_transport PUBLIC cxx_std_23)
+    target_link_libraries(cigi_transport PUBLIC cigi::cigi PRIVATE Boost::asio)
+
+    foreach(_t cigi_platform cigi_transport)
+        if(MSVC)
+            target_compile_options(${_t} PRIVATE /EHs-c-)
+            target_compile_definitions(${_t} PRIVATE _HAS_EXCEPTIONS=0)
+        else()
+            target_compile_options(${_t} PRIVATE -fno-exceptions)
+        endif()
+        cigi_apply_project_options(${_t})
+    endforeach()
+endif()
 
 if(CIGI_BUILD_EXAMPLES)
     add_subdirectory(examples)
