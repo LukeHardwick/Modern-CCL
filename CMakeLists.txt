@@ -39,6 +39,8 @@ target_sources(cigi PUBLIC
           include/cigi/packets/common.hpp
           include/cigi/packets/ig_control.hpp
           include/cigi/packets/start_of_frame.hpp
+          include/cigi/message/builder.hpp
+          include/cigi/message/view.hpp
           include/cigi/detail/assert.hpp
           include/cigi/wire/bits.hpp
           include/cigi/wire/byte_order.hpp
