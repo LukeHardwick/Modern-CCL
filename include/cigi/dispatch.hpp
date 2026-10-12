@@ -175,6 +175,37 @@ public:
         std::get<std::function<void(const P&)>>(slots_) = nullptr;
     }
 
+    /// Hand one already-decoded packet (or unknown packet, or error) to its handler without
+    /// walking a view: for sessions that adjust packets before the application sees them.
+    /// Returns whether a handler was registered (and called).
+    template <class P>
+        requires(SetType::template contains<P>)
+    // NOLINTNEXTLINE(modernize-use-nodiscard): the result is optional.
+    bool deliver(const P& packet) const {
+        const auto& slot = std::get<std::function<void(const P&)>>(slots_);
+        if (!slot) {
+            return false;
+        }
+        slot(packet);
+        return true;
+    }
+    // NOLINTNEXTLINE(modernize-use-nodiscard): the result is optional.
+    bool deliver(const UnknownPacket& packet) const {
+        if (!unknown_) {
+            return false;
+        }
+        unknown_(packet);
+        return true;
+    }
+    // NOLINTNEXTLINE(modernize-use-nodiscard): the result is optional.
+    bool deliver(const Error& error) const {
+        if (!error_) {
+            return false;
+        }
+        error_(error);
+        return true;
+    }
+
     /// Dispatch every packet of `view` to the registered handlers.
     // NOLINTNEXTLINE(modernize-use-nodiscard): the stats are optional.
     DispatchStats dispatch(const MessageView& view) const {

@@ -66,6 +66,12 @@ rules of its own: all protocol behaviour stays in T07's sessions; the facade onl
 - **Message size.** An `add()` that would exceed `max_message_bytes` returns `BufferTooSmall` and
   the frame is still sent with what fit. Log a one-time warning when a message exceeds 1472 bytes
   (it will be IP-fragmented on a standard Ethernet MTU).
+- **Session API from T07 review (2026-10-12).** On Lost or restart call `HostSession::reset_peer()`
+  before replaying start-up; `Ig::restart()` uses `IgSession::reset()`. The session no longer
+  delivers its own frame packet (SOF / IG Control) to the Dispatcher — read it via
+  `last_start_of_frame()` / `last_ig_control()`. `ReceiveReport::duplicate`/`stale` are not restarts;
+  but treat more than `stale_window` consecutive stale frames as a restart (see 04-sessions.md
+  limitation) and test it with an IG restarted after 3 frames.
 - **Pass-throughs.** `request_mode(IgMode)`, `request_database(n)`, `stats()` (session + link:
   frames sent, late frames, time in each state), and `session()` / escape hatch for advanced use.
 - `close()` (also in the destructor): if `standby_on_close`, send one IG Control requesting

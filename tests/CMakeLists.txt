@@ -49,6 +49,14 @@ if(CIGI_BUILD_TRANSPORT)
     endif()
 endif()
 
+if(CIGI_BUILD_SESSION)
+    cigi_add_test(cigi_session_test SOURCES
+        session/host_session_test.cpp
+        session/ig_session_test.cpp
+        session/exchange_test.cpp
+        LINK cigi::session)
+endif()
+
 find_program(CIGI_TSHARK tshark)
 
 cigi_add_test(cigi_tools_test SOURCES tools/pcap_writer_test.cpp LINK cigi::tools)
