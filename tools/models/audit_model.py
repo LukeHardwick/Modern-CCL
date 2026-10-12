@@ -92,22 +92,22 @@ def load_config(path):
 
 def rm(x):
     """Round a length (m) for the report: 1e-6 m."""
-    return None if x is None else round(float(x), 6)
+    return None if x is None or not math.isfinite(x) else round(float(x), 6)
 
 
 def rd(x):
     """Round an angle (degrees): 0.01 deg."""
-    return None if x is None else round(float(x), 2)
+    return None if x is None or not math.isfinite(x) else round(float(x), 2)
 
 
 def rf(x):
     """Round a fraction (0..1): 0.01 % = 1e-4."""
-    return None if x is None else round(float(x), 4)
+    return None if x is None or not math.isfinite(x) else round(float(x), 4)
 
 
 def ra(x):
     """Round an area (m^2): 1 mm^2."""
-    return None if x is None else round(float(x), 6)
+    return None if x is None or not math.isfinite(x) else round(float(x), 6)
 
 
 def vec(v, k=rm):
@@ -555,20 +555,19 @@ class NodeMatch:
         self.identical = (self.err < 1e-6) & (self.nerr < 0.05)
 
 
-def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, thresholds, cfg,
-                     spacing):
-    """Decimate a welded component at each ratio (largest first) and re-measure shape
-    accuracy; stops at the first ratio that fails. Returns the per-ratio records."""
+def decimate(verts, faces, ratios, name="audit_decimate"):
+    """Yield (ratio, triangle vertices (T,3,3)) for each ratio: Blender's Decimate modifier,
+    collapse mode, triangulated, applied to the mesh (verts, faces) without other options.
+    Closing the generator early removes the temporary object."""
     import bpy
-    me = bpy.data.meshes.new(f"audit_{name}")
-    me.from_pydata(verts.tolist(), [], faces.tolist())
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(np.asarray(verts).tolist(), [], np.asarray(faces).tolist())
     me.validate(verbose=False)
-    obj = bpy.data.objects.new(f"audit_{name}", me)
+    obj = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(obj)
     mod = obj.modifiers.new("decimate", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
     mod.use_collapse_triangulate = True
-    records = []
     try:
         for r in ratios:
             mod.ratio = r
@@ -577,18 +576,28 @@ def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, thresh
             ev = obj.evaluated_get(dg)
             m2 = ev.to_mesh()
             m2.calc_loop_triangles()
-            nv = len(m2.vertices)
-            co = np.zeros(nv * 3)
+            co = np.zeros(len(m2.vertices) * 3)
             m2.vertices.foreach_get("co", co)
-            co = co.reshape(-1, 3)
-            nt = len(m2.loop_triangles)
-            tri = np.zeros(nt * 3, dtype=np.int64)
+            tri = np.zeros(len(m2.loop_triangles) * 3, dtype=np.int64)
             m2.loop_triangles.foreach_get("vertices", tri)
             ev.to_mesh_clear()
-            tv = co[tri.reshape(-1, 3)]
+            yield r, co.reshape(-1, 3)[tri.reshape(-1, 3)]
+    finally:
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(me)
+
+
+def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, thresholds, cfg,
+                     spacing):
+    """Decimate a welded component at each ratio (largest first) and re-measure shape
+    accuracy; stops at the first ratio that fails. Returns the per-ratio records."""
+    records = []
+    gen = decimate(verts, faces, ratios, f"audit_{name}")
+    try:
+        for r, tv in gen:
             rec = measure_patch(tv, tree_ref, ref_v, rc_pts, cfg, spacing)
             rec["ratio"] = r
-            rec["triangles"] = int(nt)
+            rec["triangles"] = int(len(tv))
             rec["pass"] = bool(rec["fwd_p99"] <= thresholds[0] and rec["fwd_max"] <= thresholds[1]
                                and rec["rev_p99"] <= thresholds[0]
                                and rec["rev_max"] <= thresholds[1])
@@ -596,8 +605,7 @@ def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, thresh
             if not rec["pass"]:
                 break
     finally:
-        bpy.data.objects.remove(obj)
-        bpy.data.meshes.remove(me)
+        gen.close()
     return records
 
 
@@ -616,6 +624,9 @@ def measure_patch(tv, tree_ref, ref_v, rc_pts, cfg, spacing):
     smp = cfg["sampling"]
     patch = Patch(tv)
     keep = np.nonzero(patch.area >= cfg["hygiene"]["degenerate_area"])[0]
+    if len(keep) == 0:  # nothing left: the piece is gone
+        return {"fwd_p99": math.inf, "fwd_max": math.inf, "rev_p99": math.inf,
+                "rev_max": math.inf}
     owner, _bary, pts, starts = make_samples(patch, keep, spacing, smp["inset"], smp["kmax"])
     j = nearest(tree_ref, pts)
     a, b, c = ref_v[j, 0], ref_v[j, 1], ref_v[j, 2]
