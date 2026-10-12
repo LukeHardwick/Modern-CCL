@@ -158,9 +158,9 @@ this, reversing "no Blender MCP" in item 5 above.
 - A fresh **Opus 5.5** session started from a task chip does the modelling.
 
 **Order.** [T22c](T22c-model-audit.md) (deterministic audit tool, separate Opus agent) → the
-planner explains the method and the CP1 baseline to the user → the user approves the gates and the
-triangle budget → only then does the modelling session start (user: "explain it before making the
-full model").
+planner explains the method and the CP1 baseline to the user → the user approves the gates → only
+then does the modelling session start (user: "explain it before making the full model"). The
+triangle budget is decided (below).
 
 **Audit rules for the generator.**
 - `--detail k` scales every tessellation count (rings, segments, profile points, bevel segments)
@@ -183,7 +183,9 @@ full model").
 - **CP3** as in the handoff, plus each LOD audited against LOD0 at its switch distance. Then the
   independent Opus review and merge.
 
-**Budget (user decision pending before the modelling session starts).** Either keep the approved
-total cap of 150 k (target 90–110 k), or raise it to about 250 k (exterior ≤ 100 k + cockpit
-≤ 150 k; 150 k is MSFS 2024's interior guide for a single- or two-seat aircraft). Either way the
-cap is a ceiling, not a target: the audit decides whether triangles are earned.
+**Budget (user decision, 2026-10-13): total cap 250 k triangles.** Exterior ≤ 100 k (War
+Thunder's fighter LOD0 range is roughly 50–150 k) and cockpit ≤ 150 k (MSFS 2024's interior guide
+for a single- or two-seat aircraft); `.glb` ≤ 10 MB. This replaces the hero row of research A2
+(target 60–100 k, cap 150 k, ≤ 6 MB). The cap is a ceiling, not a target: the audit gates decide
+whether triangles are earned. Commit the `.glb` and previews only at checkpoints, since every
+version stays in git history (about 8 MB each at 250 k).

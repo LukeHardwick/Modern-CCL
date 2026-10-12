@@ -106,7 +106,7 @@ Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-f
   patterns), stable order (sorted names, index order), rounded output (1e-6 m, 0.01°, 0.01 %),
   `json.dumps(..., sort_keys=True)`. Two runs give byte-identical JSON. Test Decimate's
   determinism; if anything is not deterministic, replace it or document it.
-- **Speed.** The full audit takes at most about 3 min for 150 k triangles on this Mac (report the
+- **Speed.** The full audit takes at most about 3 min for 250 k triangles on this Mac (report the
   time). A `--fast` mode (fewer directions and samples) is fine for iteration, but only the full
   mode counts at checkpoints.
 
@@ -139,7 +139,7 @@ Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-f
 | Slivers | ≤ 1 % |
 | Length / span / height vs published | ±2 % |
 | Profile fairness | per probe (see F) |
-| Budgets | from the T22a brief (the user is deciding the cap) |
+| Budgets | total ≤ 250 k triangles (exterior ≤ 100 k, cockpit ≤ 150 k), `.glb` ≤ 10 MB (user, 2026-10-13) |
 
 ## Boundaries
 - Do not edit `tools/models/hawk.py`, `mm_common.py` or `make_models.py` (the T22a session owns
