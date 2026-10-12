@@ -1,5 +1,5 @@
 build/
-.cache/
+.cache
 /compile_commands.json
 # CIGI ICD PDFs must never be committed.
 third_party/spec/*
