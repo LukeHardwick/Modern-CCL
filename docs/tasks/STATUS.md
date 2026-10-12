@@ -81,9 +81,10 @@ scenario files, record/replay (pcap) and config file all in scope; Genesis-match
 numbers via a configurable mapping; macOS + Linux + Windows; small CC0 sample assets in the repo.
 **Libraries approved:** toml++ (hand-edited files) + glaze (JSON, machine files). T20 also
 evaluates glaze's TOML reader. T27 (interactive Host) is optional.
-**Before launching T21/T22:** the user supplies the sample assets (one SRTM3 tile; CC0 glTF jet,
-helicopter, tank, truck ≤ 5 MB with credits); agents must not download.
-Order: T09b P2 ‖ T20 → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
+**Before launching T21/T22:** models come from **T22a** (Blender script; the user installs
+Blender first). The user downloads one SRTM3 tile for T21. Agents must not download; candidate
+online models are listed in the T22a brief (optional, each download needs the user's approval).
+Order: T09b P2 ‖ T20 → T22a → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
 **T28 (Unreal IG) is 🔒 locked:** optional future work. Never start, brief or launch it without the
 user's express permission for T28 specifically; approval of other tasks does not cover it.
 

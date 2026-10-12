@@ -44,6 +44,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | **M2** | **Full CIGI 3.3 milestone** | | T13–T19 | |
 | [T20](T20-ig-database.md) | Mock-IG database: TOML manifest, loader, Database Number protocol, `cigi_db` | Tools | T09b P1 | 📝 |
 | [T21](T21-heightmap-terrain.md) | Heightmap terrain per database (rendering + HAT/HOT) | Tools | T20 | 📝 |
+| [T22a](T22a-sample-models-blender.md) | Sample models (tank, helicopter, jet, truck) from a Blender script | Tools | T20; user installs Blender | 📝 |
 | [T22](T22-gltf-models.md) | glTF models, articulated part nodes, primitive fallback, Database panel | Tools | T20 | 📝 |
 | [T23](T23-ig-config-file.md) | `ig.toml` config for `ig_viewer` / `demo_ig` | Tools | T09b P2, T20 | 📝 |
 | [T24](T24-scenario-files.md) | Scenario files replace the hardcoded scripted Host | Tools | T20 | 📝 |
@@ -56,7 +57,7 @@ Parallelism: T03, T04, T05 and T08 are independent and can run at the same time.
 run beside T07–T09 (T09a sits between T07/T08 and T09). T09b Part 1 (headless mock-IG core +
 viewer rendering) runs beside T07/T09a; its Part 2 (network mode) follows T09a. In Phase B, T13–T17 are independent.
 Tools track (productionising `ig_viewer` / `cigi_mock_ig`, planned 2026-10-12; 📝 = brief written,
-not launched): T09b P2 ‖ T20 → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
+not launched): T09b P2 ‖ T20 → T22a → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
 
 ## Rules that apply to every task (sub-agents must follow these)
 
