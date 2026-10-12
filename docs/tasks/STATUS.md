@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 13:45 BST** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 14:35 BST** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -29,7 +29,7 @@ Worktrees live under `.claude/worktrees/` in the main checkout.
 |---|---|---|---|---|---|
 | T09b P1 mock-IG core + `ig_viewer` | `task/t09b-ig-viewer` | `agent-aabbb35402214e1c2` | `a50503f` | `f2dedae` (before T07/T10) | implementation done; debug 437/437 |
 | T09a Host/Ig facade | `task/t09a-host-ig-facade` | `agent-a7ac964648ce5a2d4` | `09e82c1` | `5a20b87` | implementation + docs done; debug 478/478 |
-| T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `12134c4` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
+| T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `8971714` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
 | T17 user-defined packets | `task/t17-user-defined-packets` | `agent-a5de62c6ac549c511` | `f70c635` | `5a20b87` | done; `check.sh --coverage` ALL CHECKS PASSED |
 
 Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
@@ -49,7 +49,12 @@ Full `check.sh --coverage` results for the four heads above: see "Check results"
 Part 2 (network mode + fault panel) starts after T09a is merged — see the brief.
 
 ### T09a — remaining
-1. Full `check.sh --coverage` (agent was about to run it) and Linux check.
+1. **Fix clang-tidy errors in `examples/host_minimal.cpp`** (only file failing; format, debug and
+   asan pass with 478/478): replace `printf`/`fprintf` with `std::println`, `atoi` with
+   `std::from_chars`, `argv` pointer arithmetic with `std::span(argv, argc)`, make the static
+   `g_stop` initialisation non-throwing (e.g. `std::atomic<bool>` + `std::stop_source` created in
+   `main`), `string_view::data()` → pass sizes / use `std::string`. Keep it ≤ 80 lines and matching
+   the brief's target usage. Then full `check.sh --coverage` and Linux check.
 2. Opus review (focus: state machine vs ICD §2.8, Lost/restart handling incl. "> stale_window
    consecutive stale frames = restart" with an IG restarted after 3 frames, fault transport,
    steady-state allocation, `examples/host_minimal.cpp` matches the brief's target usage).
@@ -62,7 +67,10 @@ Part 2 (network mode + fault panel) starts after T09a is merged — see the brie
 2. Fuzz results so far (macOS, Homebrew LLVM libFuzzer, ~661 s each, **no crashes**):
    `fuzz_message_view` 17.3 M runs (26 k exec/s, cov 950), `fuzz_roundtrip` 8.2 M (12 k/s, cov 1304),
    `fuzz_sessions` 4.9 M (7.4 k/s, cov 1618). Logs in the worktree's `build/logs/` (not committed).
-3. Full `check.sh --coverage`, Linux check, Opus review, merge; record results in the T12 brief/report.
+3. **Fix 38 clang-tidy errors** in `fuzz/gen_corpus.cpp` (30: trailing commas, unchecked `operator[]`,
+   `reinterpret_cast` for writing bytes — use `std::as_bytes`/`std::bit_cast` or `.at()`) and
+   `fuzz/replay_main.cpp` (8). Format is fixed (`8971714`); debug and asan pass with 419/419.
+   Then full `check.sh --coverage`, Linux check, Opus review, merge; record results in the brief.
 
 ### T17 — remaining
 1. Opus review (agent's final report was lost to the usage limit: reviewer must summarise the API
@@ -80,5 +88,12 @@ the user). Phase B: T13–T16 (independent), T18, T19.
   "Process terminated due to timeout" or "Killed signal", re-run it.
 - Spec (git-ignored): `/Users/luke/Documents/Projects/Assignments/Final_Year_Project/Modern-CCL/third_party/spec/`.
 
-## Check results
-_(pending — filled in when the 13:40 full-check run finishes)_
+## Check results (`scripts/check.sh --coverage`, macOS, 2026-10-12 ~14:30)
+| Branch @ head | format | debug | asan | tidy | coverage (lines, total) |
+|---|---|---|---|---|---|
+| T17 @ `f70c635` | ✅ | ✅ 429 | ✅ | ✅ | ✅ 97.7 % |
+| T09b P1 @ `a50503f` | ✅ | ✅ 540 | ✅ | ✅ | ✅ 98.3 % (viewer exe excluded) |
+| T09a @ `09e82c1` | ✅ | ✅ 478 | ✅ | ❌ `examples/host_minimal.cpp` only | not reached |
+| T12 @ `8971714` | ✅ (fixed) | ✅ 419 | ✅ | ❌ `fuzz/gen_corpus.cpp`, `fuzz/replay_main.cpp` | not reached |
+Linux checks have not been run on any of the four yet (`CIGI_LINUX_JOBS=6 scripts/linux-check.sh`).
+T09b and T17 are therefore ready for Opus review now.
