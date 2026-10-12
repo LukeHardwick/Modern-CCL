@@ -23,6 +23,7 @@ MATERIALS = [
     ("dark", 0.85, 0.0, 1.0),
     ("metal", 0.35, 0.8, 1.0),
     ("light", 0.4, 0.0, 1.0),
+    ("hud", 0.05, 0.0, 0.22),
 ]
 MAT = {name: i for i, (name, *_rest) in enumerate(MATERIALS)}
 
@@ -177,6 +178,17 @@ class Mesh:
 
     def poly(self, points, mat=None, color=None, smooth=False):
         return self.face([self.vert(p) for p in points], mat, color, smooth)
+
+    def orient(self, faces, want):
+        """Flip faces whose normal points against `want(centre) -> Vector` (for open shells,
+        where recalc_face_normals cannot know inside from outside)."""
+        for f in faces:
+            if f is None or not f.is_valid:
+                continue
+            f.normal_update()
+            c = f.calc_center_median() + self.origin
+            if f.normal.dot(Vector(want(c))) < 0:
+                f.normal_flip()
 
     def recalc(self, faces):
         faces = [f for f in faces if f is not None and f.is_valid]
@@ -425,6 +437,24 @@ def make_ao(meshes, radius=0.45):
                 occ += 1.0 - hit[3] / radius
         return 0.55 + 0.45 * (1.0 - occ / len(dirs))
     return ao
+
+
+def smart_uv(objs, angle=66.0, margin=0.002):
+    """Non-overlapping UVs (Smart UV Project) for later textures (research A4)."""
+    view_layer = bpy.context.view_layer
+    for obj in objs:
+        if obj.type != "MESH" or not obj.data.polygons:
+            continue
+        for o in bpy.context.scene.objects:
+            o.select_set(o is obj)
+        view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.smart_project(angle_limit=math.radians(angle), island_margin=margin,
+                                 scale_to_bounds=False)
+        bpy.ops.object.mode_set(mode="OBJECT")
+    for o in bpy.context.scene.objects:
+        o.select_set(False)
 
 
 def empty(name, location, parent=None, size=0.1):

@@ -10,7 +10,7 @@ import math
 from mathutils import Matrix, Vector
 
 from mm_common import (LEFT, RIGHT, MAT, Mesh, empty, foil_ring, grey, hash01, lerp, make_ao,
-                       make_materials, mix, naca_t, pchip, smoothstep, srgb,
+                       make_materials, mix, naca_t, pchip, smart_uv, smoothstep, srgb,
                        superellipse_point, tone)
 
 Y_NOSE = -5.75
@@ -39,11 +39,12 @@ WHITE_LAMP = srgb(0.95, 0.95, 0.9)
 # --------------------------------------------------------------------------- fuselage
 # (y, half width, top z, bottom z, squareness n)
 FUS_KEYS = [
-    (-5.75, 0.00, -0.04, -0.04, 2.0),
-    (-5.55, 0.07, 0.02, -0.14, 2.0),
-    (-5.10, 0.18, 0.16, -0.30, 2.0),
-    (-4.50, 0.33, 0.38, -0.46, 2.1),
-    (-3.90, 0.48, 0.66, -0.58, 2.3),
+    (-5.75, 0.00, -0.04, -0.04, 2.0),  # ogive nose: radius grows fast at the tip, then slows
+    (-5.62, 0.080, 0.050, -0.130, 2.0),
+    (-5.35, 0.170, 0.150, -0.235, 2.0),
+    (-4.95, 0.275, 0.280, -0.350, 2.05),
+    (-4.45, 0.385, 0.440, -0.470, 2.15),
+    (-3.90, 0.49, 0.64, -0.58, 2.3),
     (-3.40, 0.60, 0.88, -0.66, 2.5),
     (-2.60, 0.68, 1.00, -0.74, 2.6),
     (-1.20, 0.72, 1.04, -0.76, 2.6),
