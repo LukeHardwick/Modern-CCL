@@ -23,7 +23,9 @@ README.md). All checks green on the release candidate: macOS 658/658 (98.3 % lin
 debug + ASan 655/655.
 
 ## Open task branches
-Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel):
+Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel). **T09 merged `47775ef`**
+(review fixes applied); merged main (T09 + T09c) check.sh: 705/705 all green. Next: **T09d** (launched),
+then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/demo_common`).
 - **T09** `task/t09-demo-apps`: demo_host + demo_ig, CLI11. Told not to touch the facade/examples
   (report facade gaps instead) or `apps/ig_viewer/`.
 - **T09c merged `d348d73`** (Opus review fixes applied; macOS 671/671, 98.3 % lines; Linux 668/668).
