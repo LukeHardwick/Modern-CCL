@@ -9,3 +9,7 @@ cigi_apply_project_options(cigi_frames)
 add_executable(dispatch_example dispatch_example.cpp)
 target_link_libraries(dispatch_example PRIVATE cigi::cigi)
 cigi_apply_project_options(dispatch_example)
+
+add_executable(user_packet user_packet.cpp)
+target_link_libraries(user_packet PRIVATE cigi::cigi)
+cigi_apply_project_options(user_packet)

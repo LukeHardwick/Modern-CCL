@@ -68,7 +68,7 @@ template <std::size_t I = 0, class V, class F> constexpr void visit_alternative(
 /// packet was handled.
 template <class Set, class OnPacket, class OnUnknown, class OnError>
 constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnknown& on_unknown,
-                             OnError& on_error) {
+                             OnError& on_error, bool ignore_user = false) {
     DispatchStats stats;
     for (const auto& item : view) {
         if (!item) {
@@ -84,6 +84,12 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
                 .offset = item->offset,
                 .opcode = item->opcode,
             });
+            continue;
+        }
+        // ICD 4.3: with user-defined packets switched off they are skipped undecoded, counted as
+        // ignored, and not delivered even as unknown.
+        if (ignore_user && is_user_opcode(item->opcode)) {
+            ++stats.ignored;
             continue;
         }
         const auto decoded = decode_any<Set>(*item, view.direction());
@@ -206,6 +212,11 @@ public:
         return true;
     }
 
+    /// Skip user-defined packets (opcodes 201-255, ICD 4.3) instead of dispatching them: they are
+    /// counted as ignored and reach neither a handler nor on_unknown. Off by default.
+    void ignore_user_packets(bool ignore) noexcept { ignore_user_ = ignore; }
+    [[nodiscard]] bool ignoring_user_packets() const noexcept { return ignore_user_; }
+
     /// Dispatch every packet of `view` to the registered handlers.
     // NOLINTNEXTLINE(modernize-use-nodiscard): the stats are optional.
     DispatchStats dispatch(const MessageView& view) const {
@@ -228,13 +239,14 @@ public:
                 error_(e);
             }
         };
-        return detail::walk<SetType>(view, on_packet, on_unknown, on_error);
+        return detail::walk<SetType>(view, on_packet, on_unknown, on_error, ignore_user_);
     }
 
 private:
     std::tuple<std::function<void(const Ps&)>...> slots_;
     std::function<void(const UnknownPacket&)> unknown_;
     std::function<void(const Error&)> error_;
+    bool ignore_user_ = false;
 };
 
 } // namespace cigi

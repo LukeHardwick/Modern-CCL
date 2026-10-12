@@ -4,6 +4,7 @@
 
 #include "cigi/detail/assert.hpp"
 #include "cigi/packet.hpp"
+#include "cigi/user_packet.hpp"
 
 #include <array>
 #include <cstddef>
@@ -22,8 +23,9 @@ public:
         CIGI_ASSERT(dir != Direction::Both);
     }
 
-    /// Errors: WrongDirection, UnexpectedFirstPacket, DuplicateFramePacket, BufferTooSmall
-    /// (each with the packet's opcode and the offset at which it would have been written).
+    /// Errors: WrongDirection, UnexpectedFirstPacket, DuplicateFramePacket, InvalidPacketSize (a
+    /// user-defined packet whose size violates ICD 4.3), BufferTooSmall (each with the packet's
+    /// opcode and the offset at which it would have been written).
     template <Packet P> [[nodiscard]] constexpr Result<void> add(const P& p) noexcept {
         const auto fail = [&](ErrorCode code) {
             return std::unexpected(Error{.code = code, .offset = size_, .opcode = P::opcode});
@@ -39,6 +41,10 @@ public:
             return fail(ErrorCode::DuplicateFramePacket);
         }
         const std::size_t n = encoded_size(p);
+        // ICD 4.3: a user-defined packet is 4 + 4n bytes and a multiple of 8.
+        if (is_user_opcode(P::opcode) && !is_valid_user_size(n)) {
+            return fail(ErrorCode::InvalidPacketSize);
+        }
         if (n > storage_.size() - size_) {
             return fail(ErrorCode::BufferTooSmall);
         }
