@@ -46,9 +46,13 @@ sequenceDiagram
   restart signal for the facade; duplicates and reordering are not.
   *Limitation:* a peer that restarts within `stale_window` frames of its previous number (e.g. an
   IG restarted after only a few frames) is first seen as stale and is not reported as a restart;
-  the tracker resynchronises once the new numbers pass the old one. The facade's peer timeout and
-  IG mode changes (Reset/Standby in the restarted SOFs are ignored while stale) cover this case
-  only partly — T09a should also treat a stale run longer than `stale_window` as a restart. Peers older than 3.2 have one
+  the tracker resynchronises once the new numbers pass the old one. Such an IG sends the numbers
+  0..N-1 (stale), N (duplicate) and then fresh ones, now in Reset/Standby. The `cigi::Host`
+  facade handles it in two ways: it counts the stale and duplicate frames of a run and treats more
+  than `stale_window` of them as a restart, and it treats a fresh Start of Frame that follows a
+  stale/duplicate run and reports Reset/Standby while the Host is in Operate/Debug as a restart
+  too (`reset_peer()` plus replaying the requested database). Code driving a `HostSession`
+  directly has to do the same. Peers older than 3.2 have one
   "Frame Counter" originated by the IG: the Host copies the IG's counter into IG Control, so an
   `IgSession` does not track the frame numbers of a 3.0/3.1 Host (it only remembers the last
   value); a `HostSession` still tracks a 3.0/3.1 IG's counter.
@@ -107,14 +111,53 @@ Not maskable: the Celestial Sphere hour/minute is local time before 3.3 and UTC 
 packet carries no version-dependent marker, so the session cannot convert it and the application
 must interpret it according to `peer()`.
 
-## For the facade (T09a)
+## Facade (T09a): `cigi::Host` / `cigi::Ig`
 
-The facade supplies the clock (`SessionConfig::clock`), the logger, and the transport; it reads
-`ready_to_send()`, `operational()`, `ig_mode()`, `ig_database()`, `database_loading()`,
-`last_start_of_frame()`, `peer()`, `stats()` and the `ReceiveReport` of each `receive()`
-(`frame_regressed` is the IG-restart signal; `duplicate` and `stale` are not), and calls
-`HostSession::reset_peer()` / `IgSession::reset()` to replay start-up. Peer timeouts and `LinkState` are the facade's: they
-need wall time, which the session deliberately does not track.
+The sessions are transport- and clock-agnostic. The `cigi_runtime` target (`cigi::runtime`) puts
+the receive -> session -> ready? -> build -> send loop and its timeouts on top, so that a Host is a
+few lines (`docs/guide/host-quickstart.md`). The facade adds no protocol rules.
+
+```mermaid
+flowchart TB
+    app["Application<br/>on_frame / on&lt;P&gt; / on_state_change"]
+    facade["cigi::Host / cigi::Ig<br/>(LinkState, peer timeout, pacing, stats)"]
+    session["HostSession / IgSession<br/>(frame numbers, ICD 2.8 start-up, database handshake)"]
+    seam["DatagramTransport<br/>send(span) / receive(span, timeout)"]
+    udp["UdpEndpoint (T08)"]
+    mem["in-memory pair"]
+    fault["FaultInjectingTransport"]
+    app --> facade --> session
+    facade --> seam
+    seam --> udp
+    seam --> mem
+    seam --> fault --> udp
+```
+
+- **One clock.** The facade reads `SessionConfig::clock` (10 microsecond `Timestamp`, wrapping)
+  and extends it to a non-wrapping time point. Peer timeouts, probe intervals, asynchronous pacing
+  (`platform::FramePacer` for the grid and the missed-tick rule), time-in-state and the fault
+  transport's delays all follow it, so a test with a fake clock is deterministic.
+- **Link state** is derived, not stored by the session: the IG mode and database of the last
+  accepted Start of Frame (Reset/Standby and Offline Maintenance: `Standby`; operating with a
+  negative database: `LoadingDatabase`; Operate; Debug), `WaitingForIg` before the first one and
+  after a restart, `Lost` when nothing arrives for `peer_timeout`, `Closed` after `close()`.
+- **Restarts.** `ReceiveReport::frame_regressed` or more than `stale_window` consecutive `stale`
+  reports call `HostSession::reset_peer()` and the state becomes `WaitingForIg` (this closes the
+  limitation noted under "Frame numbers" for runs of stale frames; a restart that stays within
+  the window and then passes the old number is an ordinary mode change). `duplicate` is ignored.
+  Lost calls `reset_peer()` too. `Ig::restart()` calls `IgSession::reset()` and restarts the pacer.
+- **Sending.** Synchronous: one message when `ready_to_send()`; while `WaitingForIg` / `Lost` an
+  IG Control probe every `probe_interval`. Asynchronous: at `async_rate_hz`. The user's
+  `on_frame` runs between `begin_frame()` and `finish_frame()` only in Operate/Debug. `Ig`
+  sends a Start of Frame at `rate_hz` (not while paused) and calls `on_frame` in Operate/Debug.
+- **Errors.** Per-datagram problems (parse errors, wrong direction, oversize datagram, packet
+  decode errors, oversize `add`) are counted and passed to `on_error`; a transport failure other
+  than `Timeout` / `BufferTooSmall` ends `poll` / `run`.
+- **Fault hooks** for the mock IGs: `Ig::set_paused`, `Ig::restart`, and
+  `FaultInjectingTransport` (drop / duplicate / delay on the datagrams sent through it).
+
+Peers of the sessions read `ready_to_send()`, `operational()`, `ig_mode()`, `ig_database()`,
+`database_loading()`, `last_start_of_frame()`, `peer()` and `stats()` through `Host::session()`.
 
 ## Statistics
 

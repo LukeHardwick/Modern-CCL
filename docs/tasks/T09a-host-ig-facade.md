@@ -124,3 +124,15 @@ rules of its own: all protocol behaviour stays in T07's sessions; the facade onl
 README rules 6–9; `linux-check` passes (reviewer). `examples/host_minimal.cpp` builds under
 `check.sh`, and the network test shows a `Host` reaching Operate against an `Ig` and exchanging
 entity updates and a HAT/HOT request.
+
+## Report (implementation notes and deviations)
+- `HostConfig::probe_interval` (default 100 ms) is an addition to the brief's config: a Host that has
+  not yet heard an IG (WaitingForIg or Lost) sends an IG Control this often, so an IG that learns
+  its Host from the first message can start. Start-up probes count as frames in
+  `HostFrame::since_last_frame`.
+- Review fixes (2026-10-12): `close()` from any callback is final; the requested database is
+  replayed after Lost or an IG restart; stale + duplicate frames count towards the restart rule and
+  a Reset/Standby SOF after such a run is a restart; an `Ig` with no configured Host latches the
+  sender of the first valid message (re-latched after `restart()` or `peer_timeout`);
+  `FaultInjectingTransport::receive` wakes for the next release and reports inner send failures.
+- Follow-up: typed `on_user<P>` handlers for user-defined packets (T17) are not in the facade yet.

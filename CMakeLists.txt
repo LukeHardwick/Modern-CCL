@@ -159,6 +159,34 @@ if(CIGI_BUILD_SESSION)
     cigi_apply_project_options(cigi_session)
 endif()
 
+if(TARGET cigi_session AND TARGET cigi_transport)
+    # Host / Ig facades: the receive -> session -> send loop, timeouts and fault injection on top
+    # of the sessions and the UDP transport. No Boost types in the public headers.
+    add_library(cigi_runtime STATIC src/runtime/host.cpp src/runtime/ig.cpp
+                                    src/runtime/memory_transport.cpp
+                                    src/runtime/fault_transport.cpp)
+    add_library(cigi::runtime ALIAS cigi_runtime)
+    target_sources(cigi_runtime PUBLIC
+        FILE_SET HEADERS BASE_DIRS include
+        FILES include/cigi/datagram_transport.hpp
+              include/cigi/fault_transport.hpp
+              include/cigi/host.hpp
+              include/cigi/ig.hpp
+              include/cigi/link_state.hpp)
+    target_compile_features(cigi_runtime PUBLIC cxx_std_23)
+    target_link_libraries(cigi_runtime PUBLIC cigi::session
+                          PRIVATE cigi::transport cigi::platform)
+    target_include_directories(cigi_runtime PRIVATE src/runtime)
+    set_target_properties(cigi_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(MSVC)
+        target_compile_options(cigi_runtime PRIVATE /EHs-c-)
+        target_compile_definitions(cigi_runtime PRIVATE _HAS_EXCEPTIONS=0)
+    else()
+        target_compile_options(cigi_runtime PRIVATE -fno-exceptions)
+    endif()
+    cigi_apply_project_options(cigi_runtime)
+endif()
+
 if(CIGI_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
