@@ -1,8 +1,13 @@
 # Viewing CIGI frames in Wireshark
 
-`cigi_frames` simulates a short Host/IG start-up exchange in memory (no network), using only the
-public `MessageBuilder` / `MessageView` API, and writes the datagrams to `cigi_frames.pcap`
-(through `cigi::tools::PcapWriter`) so you can see our bytes decoded by an independent tool.
+`cigi_frames` runs a real `cigi::Host` and `cigi::Ig` back to back over the in-memory transport
+(no network) and writes every datagram they send to `cigi_frames.pcap` (through
+`cigi::tools::PcapWriter`), so you can see the start-up exchange the library actually produces,
+decoded by an independent tool. A small recording `DatagramTransport` decorator sits between each
+facade and the wire; the clock is stepped by hand at 60 Hz, so the capture is identical on every run.
+Exception: the recorder deliberately rewrites the Host's 4th datagram into the opposite byte order
+to simulate a big-endian Host and show the Byte Swap field; the library itself always sends native
+order.
 The larger verification of every MVP packet is in `docs/interop/wireshark.md`.
 
 ## Prerequisites
@@ -37,18 +42,22 @@ tshark -r cigi_frames.pcap -o cigi.host:10.0.0.1 -o cigi.ig:10.0.0.2 -V
 
 ## What you should see
 
-Twelve datagrams, 16.667 ms apart (60 Hz): IG Start of Frame (SOF), 2 ms later the Host's
-IG Control.
+Nineteen datagrams, 16.67 ms apart (60 Hz), the Host's reply carrying the same timestamp as the
+IG frame it answers (the clock does not move between them): IG Start of Frame (SOF), then the
+Host's IG Control.
 
 | Frames | What |
 |---|---|
-| 1, 3, 5 | SOF IG frames 1-3 in Reset/Standby; database -128 (unavailable), -1 (loading), 1 (loaded) |
-| 2, 4, 6 | IG Control host frames 1-3 (Standby, Standby, then Operate requested) |
-| 7-12 | IG frames 4-6 in Operate, host frames 4-6; frame numbers keep incrementing (ICD 2.3, Figure 6) |
-| 10 | IG Control host frame 5 in the **foreign** byte order: Byte Swap shows `0x8000` (Big-Endian) |
+| 1 | IG SOF frame 0 (Reset/Standby, database 0); shown as Unknown by the dissector, see the caveats |
+| 2 | The Host's probe IG Control (requests Operate and database 1); the Host repeats database 1 in frames 4 and 6 |
+| 3, 5 | SOF IG frames 1-2 in Reset/Standby (the IG has accepted the request but is not ready) |
+| 7-17 odd | SOF in Operate from IG frame 3; database -1 (loading) in frames 7, 9, 11, then 1 (loaded) from frame 13 |
+| 8 | IG Control host frame 3 in the **foreign** byte order, rewritten by this example (not the library): Byte Swap shows `0x8000` (Big-Endian) |
+| 19 | The Host's closing IG Control: Reset/Standby (ICD 2.8) |
 
 Every IG Control's *Last IG Frame Number* equals the SOF just received; every SOF's *Last Host Frame
 Number* equals the previous IG Control's *Host Frame Number*. Minor Version is 3 throughout.
+`examples/wireshark/check_pcap.sh` asserts the counts (19 datagrams, 18 named, 1 foreign, 0 malformed).
 
 ## Dissector caveats observed (Wireshark 4.6.9)
 

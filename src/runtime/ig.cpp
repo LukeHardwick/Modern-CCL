@@ -35,6 +35,9 @@ public:
           rx_(receive_buffer_bytes), host_known_(host_known), configured_known_(host_known) {
         last_rx_ = clock_.now();
         session_.handlers().on_error([this](const Error& e) { report(e); });
+        session_.handlers().on_unknown([this](const UnknownPacket& u) {
+            users_.dispatch(u, [this](const Error& e) { report(e); });
+        });
     }
     IgCore(const IgCore&) = delete;
     IgCore& operator=(const IgCore&) = delete;
@@ -81,6 +84,12 @@ public:
     [[nodiscard]] const IgSession& session() const noexcept { return session_; }
 
     void on_error(std::function<void(const Error&)> f) { error_cb_ = std::move(f); }
+    void on_unknown(std::function<void(const UnknownPacket&)> f) {
+        users_.set_fallback(std::move(f));
+    }
+    void set_user_handler(std::uint8_t opcode, UserHandlers::Slot slot) {
+        users_.set(opcode, std::move(slot));
+    }
     void on_frame(std::function<void(IgFrame&)> f) { frame_cb_ = std::move(f); }
 
 private:
@@ -104,6 +113,7 @@ private:
     bool paused_ = false;
     TimePoint last_rx_;
     IgStats stats_;
+    UserHandlers users_;
     std::function<void(const Error&)> error_cb_;
     std::function<void(IgFrame&)> frame_cb_;
 };
@@ -146,12 +156,12 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         if (!transport_) {
             return status; // a handler closed the IG
         }
-        if (!host_known_ || !connected_) {
-            log_->info("Host connected");
-        }
         if (!host_known_ && learner_ != nullptr && !learner_->latch_peer()) {
             log_->warn("cannot adopt the sender of the Host message as the Host");
             continue; // stay unknown: the next message tries again
+        }
+        if (!host_known_ || !connected_) {
+            log_->info("Host connected"); // only once the Host is really adopted
         }
         host_known_ = true;
         connected_ = true;
@@ -238,7 +248,10 @@ Result<Ig> Ig::connect(IgConfig config) {
 }
 
 void Ig::on_unknown(std::function<void(const UnknownPacket&)> handler) {
-    core_->session().handlers().on_unknown(std::move(handler));
+    core_->on_unknown(std::move(handler));
+}
+void Ig::set_user_handler(std::uint8_t opcode, detail::UserHandlers::Slot slot) {
+    core_->set_user_handler(opcode, std::move(slot));
 }
 void Ig::on_error(std::function<void(const Error&)> handler) {
     core_->on_error(std::move(handler));

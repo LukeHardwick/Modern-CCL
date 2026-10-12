@@ -58,6 +58,10 @@ public:
     [[nodiscard]] std::size_t pending() const noexcept { return queue_.size(); }
     [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
 
+    /// A datagram refused by the inner transport is returned as that error. A failure of an
+    /// earlier delayed release is reported by the next send() as well, but if this send() itself
+    /// fails its own error is returned and the deferred one is dropped (it stays counted in
+    /// `stats().release_failures`).
     Result<void> send(std::span<const std::byte> datagram) override;
     Result<std::size_t> receive(std::span<std::byte> buffer,
                                 std::chrono::milliseconds timeout) override;

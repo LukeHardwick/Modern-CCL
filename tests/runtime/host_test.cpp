@@ -829,5 +829,40 @@ TEST(HostLink, ALostLinkRequestsTheDatabaseAgainWhenTheIgForgotIt) {
     EXPECT_GE(f.requests_sent(), 1);
 }
 
+TEST(HostLink, ALostLinkDoesNotRequestAgainWhileTheIgIsStillLoadingTheDatabase) {
+    LostWithDatabase f;
+    f.peer.send(sof_message(3, IgMode::Operate, -5)); // back, still loading database 5
+    ASSERT_TRUE(f.host.poll(0ms));
+    EXPECT_EQ(f.host.state(), LinkState::LoadingDatabase);
+    EXPECT_EQ(f.requests_sent(), 0);
+}
+
+TEST(HostLink, ADatabaseRequestedWhileLostIsSentWhenTheIgReturns) {
+    LostWithDatabase f;
+    ASSERT_TRUE(f.host.request_database(9));
+    f.peer.send(sof_message(3, IgMode::Operate, 5)); // back, still on the old database
+    ASSERT_TRUE(f.host.poll(0ms));
+    int nines = 0;
+    for (const auto& m : f.peer.received()) {
+        nines += control_of(m).database_number == 9 ? 1 : 0;
+    }
+    EXPECT_GE(nines, 1);
+}
+
+TEST(HostLink, AStaleFrameBeforeTheRequestedStandbyIsNotARestart) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    peer.send(sof_message(10, IgMode::Operate));
+    ASSERT_TRUE(host.poll(0ms));
+    ASSERT_EQ(host.state(), LinkState::Operate);
+    ASSERT_TRUE(host.request_mode(IgMode::ResetStandby));
+    peer.send(sof_message(9, IgMode::Operate));       // reordered, before the IG's first Standby
+    peer.send(sof_message(11, IgMode::ResetStandby)); // the IG obeys
+    ASSERT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Standby);
+    EXPECT_EQ(host.stats().ig_restarts, 0U);
+}
+
 } // namespace
 // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

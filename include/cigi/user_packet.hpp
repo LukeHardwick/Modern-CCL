@@ -51,3 +51,15 @@ concept UserDefinedPacket =
     Packet<P> && is_user_opcode(P::opcode) && detail::fixed_user_size_ok<P>();
 
 } // namespace cigi
+
+namespace cigi {
+
+/// A user-defined packet a Host can receive (direction IgToHost or Both): what Host::on_user takes.
+template <class P>
+concept HostReceivableUserPacket = UserDefinedPacket<P> && P::direction != Direction::HostToIg;
+
+/// A user-defined packet an IG can receive (direction HostToIg or Both): what Ig::on_user takes.
+template <class P>
+concept IgReceivableUserPacket = UserDefinedPacket<P> && P::direction != Direction::IgToHost;
+
+} // namespace cigi
