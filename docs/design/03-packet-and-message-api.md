@@ -154,6 +154,40 @@ iteration ends. Unknown opcodes are yielded normally. The iterator is a true for
 Validation is separate: call plain `cigi::validate(p)` on a decoded packet if you want the ICD
 range checks (never `validate<P>(p)`, which would skip packets' cross-field overloads).
 
+## User-defined packets (T17)
+
+ICD 2.10 / 4.3 reserve opcodes 201-255. A user packet is written exactly like a standard one: a
+value struct with `opcode`, `direction` (HostToIg, IgToHost or `Both`), `wire_size` and a field
+table (byte swapping comes with the table, which is why CCL users needed hand-written swap code),
+or a custom codec for variable layouts. Put the identifying fields in the first two 32-bit words
+(ICD 4.3; a convention, not checked). Declare custom codec overloads in the packet's own namespace
+or in `cigi` (ADL), and call `encode`/`decode` qualified (`cigi::encode`) from other namespaces.
+
+`cigi/user_packet.hpp`: `is_user_opcode(op)`, `is_valid_user_size(n)` (4 + 4n, a multiple of 8,
+8..248), and `concept UserDefinedPacket<P>` = `Packet<P>` + opcode 201-255 + a legal `wire_size`
+when it has one. (Named `UserDefinedPacket` because the shared test helper already defines a
+`cigi::test::UserPacket` struct.) A packet failing it is rejected at compile time by
+`ExtendUser`.
+
+- **Register** with `using Set = cigi::ExtendUser<cigi::HostToIgPackets, MyPacket>` (an `Extend`
+  whose added packets must be `UserDefinedPacket`; duplicate opcodes still fail the `PacketSet`
+  `static_assert`). Use `Dispatcher<Set>` / `dispatch<Set>` / `decode_any<Set>` as usual.
+- **Builder:** `MessageBuilder::add` returns `InvalidPacketSize` (offset where it would have been
+  written, opcode set, builder unchanged) for a user packet whose `encoded_size` is not a legal
+  user size. This is the only check for variable-size packets.
+- **Ignoring them (ICD 4.3: devices should be configurable to ignore user packets).**
+  `Dispatcher::ignore_user_packets(true)` skips opcodes 201-255 undecoded at run time: counted as
+  `ignored`, delivered to neither a handler nor `on_unknown`. `WithoutUserPackets<Set>` removes
+  them at compile time (they then arrive as `UnknownPacket`; this is also the form for the free
+  `dispatch<Set>`). A user opcode not in the set always reaches `on_unknown` (ICD 2.10).
+- Example: `examples/user_packet.cpp`; tests: `tests/packets/user_packet_test.cpp`.
+
+**Sessions.** `SessionConfig::ignore_user_packets` (default false) is forwarded to the session's
+`Dispatcher` in both constructors. Sessions are *not* templated on the packet set (the least
+intrusive change to T07's API), so their sets hold no user packets: user opcodes arrive as
+`UnknownPacket` (`on_unknown`, `stats.unknown_packets`) or, with the flag set, are skipped. Typed
+user packets in sessions (set-templated sessions) are deferred to the facade / T09a follow-up.
+
 ## Versions and older peers
 
 We send 3.3 and accept 3.0-3.2. 3.0/3.1 frame packets are 16 bytes (bytes 8-11 are a "frame

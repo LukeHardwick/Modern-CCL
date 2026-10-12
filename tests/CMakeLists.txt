@@ -27,6 +27,8 @@ cigi_add_test(cigi_entity_packet_test SOURCES
     packets/entity_control_test.cpp
     packets/rate_control_test.cpp)
 
+cigi_add_test(cigi_user_packet_test SOURCES packets/user_packet_test.cpp)
+
 cigi_add_test(cigi_message_test SOURCES
     message/builder_test.cpp
     message/dispatch_test.cpp

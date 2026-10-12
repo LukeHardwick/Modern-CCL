@@ -6,6 +6,7 @@
 #include "cigi/message/view.hpp"
 #include "cigi/packet.hpp"
 #include "cigi/packets.hpp"
+#include "cigi/user_packet.hpp"
 
 #include <algorithm>
 #include <array>
@@ -96,6 +97,28 @@ using IgToHostPackets = PacketSet<StartOfFrame, HatHotResponse, HatHotExtendedRe
 
 /// `Set` followed by more packets (your own, T17): `Extend<HostToIgPackets, MyPacket>`.
 template <class Set, Packet... Ps> using Extend = Concat<Set, PacketSet<Ps...>>;
+
+/// `Set` followed by user-defined packets (ICD 4.3): like Extend, but every added packet must be
+/// a UserDefinedPacket (opcode 201-255, legal fixed size).
+template <class Set, UserDefinedPacket... Ps> using ExtendUser = Extend<Set, Ps...>;
+
+namespace detail {
+
+template <class Set> struct WithoutUserImpl;
+template <> struct WithoutUserImpl<PacketSet<>> {
+    using Type = PacketSet<>;
+};
+template <Packet P, Packet... Rest> struct WithoutUserImpl<PacketSet<P, Rest...>> {
+    using Tail = WithoutUserImpl<PacketSet<Rest...>>::Type;
+    using Type = std::conditional_t<is_user_opcode(P::opcode), Tail, Concat<PacketSet<P>, Tail>>;
+};
+
+} // namespace detail
+
+/// `Set` minus its user-defined packets (ICD 4.3: a device should be configurable to ignore them).
+/// Their opcodes then decode as UnknownPacket, like any opcode outside the set. For a run-time
+/// switch use Dispatcher::ignore_user_packets.
+template <class Set> using WithoutUserPackets = detail::WithoutUserImpl<Set>::Type;
 
 /// std::variant of every packet in `Set`, plus UnknownPacket.
 template <class Set> using AnyPacket = Set::Variant;

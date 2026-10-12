@@ -27,3 +27,10 @@ user handler, ignore-user-packets mode, unknown user opcode still reaches `on_un
 
 ## Acceptance
 README rules 6–9. Update the design doc with a "User-defined packets" section.
+
+## Report / deviations
+- Sessions are not templated on the packet set (kept T07's API; T09a builds a facade on them).
+  `SessionConfig::ignore_user_packets` is wired into both sessions; typed user packets in sessions
+  (set-templated sessions) are deferred to the facade / T09a follow-up. Until then user opcodes
+  reach a session's `on_unknown` (or are skipped when the flag is set).
+- The concept is named `UserDefinedPacket` (`cigi::test::UserPacket` already exists).
