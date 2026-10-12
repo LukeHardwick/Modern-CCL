@@ -21,6 +21,7 @@ const char* usage() noexcept {
            "  --scripted                 built-in scripted Host (the default; Part 1)\n"
            "  --origin LAT,LON           centre of the scenario in degrees (default 51.5,-0.12)\n"
            "  --width N --height N       window size (default 1280x720)\n"
+           "  --fullscreen               start in borderless fullscreen (F or F11 toggles)\n"
            "  --camera host|chase|free   initial camera\n"
            "  --ui none|map|all          panels to show\n"
            "  --select ID                entity selected at start\n"
@@ -57,6 +58,23 @@ Args parse_args(int argc, const char* const* argv) {
             a.scripted = true;
         } else if (arg == "--help" || arg == "-h") {
             a.help = true;
+        } else if (arg == "--fullscreen") {
+            a.fullscreen = true;
+        } else if (arg == "--toggle-fs") {
+            number(a.toggle_fs);
+        } else if (arg == "--hidpi") {
+            a.hidpi = true;
+        } else if (arg == "--resize-to") {
+            const std::string_view v = next();
+            const auto x = v.find('x');
+            if (!a.error.empty()) {
+                continue;
+            }
+            if (x == std::string_view::npos || !parse_number(v.substr(0, x), a.resize_w) ||
+                !parse_number(v.substr(x + 1), a.resize_h) || a.resize_w < 320 ||
+                a.resize_h < 240) {
+                a.error = "--resize-to expects WxH (at least 320x240)";
+            }
         } else if (arg == "--width") {
             number(a.width);
         } else if (arg == "--height") {

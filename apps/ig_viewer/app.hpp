@@ -4,8 +4,10 @@
 
 #include "args.hpp"
 #include "mock_ig/mock_ig.hpp"
+#include "mock_ig/panel_layout.hpp"
 #include "mock_ig/scripted_host.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -53,6 +55,16 @@ struct UiState {
     bool show_hat_hot = true;
     bool show_map = true;
     bool show_view = true;
+    // Panel layout: recomputed from the window size (see mock::compute_panel_layout) and applied
+    // once (ImGuiCond_Always) when the size, the UI mode or the set of panels changes; in between
+    // the user can move and resize panels freely.
+    mock::PanelLayout layout;
+    bool apply_layout = true;       ///< This frame: force the panels to `layout`.
+    bool relayout_requested = true; ///< Key L, or the first frame.
+    float layout_w = 0.0F;
+    float layout_h = 0.0F;
+    UiMode layout_mode = UiMode::All;
+    std::array<bool, mock::panel_count> layout_visible{};
     // Map
     mock::Vec3d map_center{};
     float map_scale = 0.09F; ///< Pixels per metre.

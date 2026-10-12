@@ -650,8 +650,11 @@ void Renderer::draw_overlay(const CameraResult& cam, const SkyState& sky,
     const std::string hud =
         std::format("{}   UTC {:02}:{:02}   sun {:.0f} deg   {} entities", mode, c.hour, c.minute,
                     sky.sun.elevation_deg, scene.entities().size());
-    DrawText(hud.c_str(), 12, GetScreenHeight() - 30, 20, Fade(BLACK, 0.85F));
-    DrawText(hud.c_str(), 10, GetScreenHeight() - 32, 20, WHITE);
+    // Centred at the bottom: the side columns of panels (see mock::compute_panel_layout) cover the
+    // corners. Logical screen points, like every 2-D draw call here.
+    const int hud_x = std::max((GetScreenWidth() - MeasureText(hud.c_str(), 20)) / 2, 4);
+    DrawText(hud.c_str(), hud_x + 2, GetScreenHeight() - 30, 20, Fade(BLACK, 0.85F));
+    DrawText(hud.c_str(), hud_x, GetScreenHeight() - 32, 20, WHITE);
 }
 
 } // namespace cigi::viewer
