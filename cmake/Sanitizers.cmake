@@ -1,4 +1,15 @@
 # Applied globally (directory scope) so third-party code (GoogleTest) is instrumented too.
+if(CIGI_ENABLE_FUZZING)
+    # PLATFORM: libFuzzer needs Clang (-fsanitize=fuzzer); there is no MSVC or GCC equivalent.
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "CIGI_ENABLE_FUZZING requires Clang")
+    endif()
+    # Everything is instrumented for coverage feedback; only the fuzz targets link the fuzzer
+    # runtime (-fsanitize=fuzzer), see fuzz/CMakeLists.txt.
+    set(CIGI_ENABLE_SANITIZERS ON)
+    add_compile_options(-fsanitize=fuzzer-no-link)
+endif()
+
 if(CIGI_ENABLE_SANITIZERS)
     if(MSVC)
         # LIMITATION: MSVC supports AddressSanitizer only; there is no UBSan or LSan.

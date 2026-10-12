@@ -23,6 +23,7 @@ option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and pl
        ${_cigi_top})
 option(CIGI_BUILD_SESSION "Build the Host/IG sessions (fetches spdlog)" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
+option(CIGI_ENABLE_FUZZING "Build the libFuzzer targets (Clang only; implies ASan + UBSan)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
 option(CIGI_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
@@ -161,8 +162,16 @@ if(CIGI_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-if(CIGI_BUILD_TESTS)
+if(CIGI_BUILD_TESTS OR CIGI_ENABLE_FUZZING)
     enable_testing()
+endif()
+
+if(CIGI_BUILD_TESTS)
     add_subdirectory(tests)
     cigi_define_coverage_target()
+endif()
+
+# Corpus-replay ctests (always, with the tests) and the libFuzzer targets (CIGI_ENABLE_FUZZING).
+if(CIGI_BUILD_TESTS OR CIGI_ENABLE_FUZZING)
+    add_subdirectory(fuzz)
 endif()
