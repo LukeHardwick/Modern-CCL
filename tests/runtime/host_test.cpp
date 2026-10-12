@@ -769,5 +769,65 @@ TEST(HostLink, AnIgRestartReplaysTheDatabaseRequest) {
     EXPECT_EQ(requests.back(), 7);
 }
 
+TEST(HostLink, ADuplicateFollowedByStandbyIsAnOrdinaryModeChange) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    peer.send(sof_message(10, IgMode::Operate));
+    peer.send(sof_message(10, IgMode::Operate)); // a duplicate, e.g. from the network
+    peer.send(sof_message(11, IgMode::ResetStandby));
+    ASSERT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Standby);
+    EXPECT_EQ(host.stats().ig_restarts, 0U);
+}
+
+/// A Host that asked for database 5 and then lost the link for a while.
+struct LostWithDatabase {
+    RawPeer peer;
+    FakeClock const clock;
+    Host host;
+    LostWithDatabase() : host(make(clock, peer)) {
+        peer.send(sof_message(1, IgMode::Operate, -5)); // loading
+        peer.send(sof_message(2, IgMode::Operate, 5));  // loaded
+        EXPECT_TRUE(host.poll(0ms));
+        EXPECT_EQ(host.state(), LinkState::Operate);
+        static_cast<void>(peer.received());
+        clock.advance(500'000); // 5 s of silence
+        EXPECT_TRUE(host.poll(0ms));
+        EXPECT_EQ(host.state(), LinkState::Lost);
+        static_cast<void>(peer.received());
+    }
+    static Host make(const FakeClock& clock, RawPeer& peer) {
+        HostConfig config = host_config_with(clock);
+        config.database = 5;
+        return Host::over(config, peer.take_other()).value();
+    }
+    /// How many of the messages sent since carry a database request.
+    int requests_sent() {
+        int n = 0;
+        for (const auto& m : peer.received()) {
+            n += control_of(m).database_number != 0 ? 1 : 0;
+        }
+        return n;
+    }
+};
+
+TEST(HostLink, ALostLinkDoesNotReloadTheDatabaseWhenTheIgStillHasIt) {
+    LostWithDatabase f;
+    for (std::uint32_t frame = 3; frame < 8; ++frame) {
+        f.peer.send(sof_message(frame, IgMode::Operate, 5)); // back, still on database 5
+        ASSERT_TRUE(f.host.poll(0ms));
+    }
+    EXPECT_EQ(f.host.state(), LinkState::Operate);
+    EXPECT_EQ(f.requests_sent(), 0); // a non-zero number would be a new load request
+}
+
+TEST(HostLink, ALostLinkRequestsTheDatabaseAgainWhenTheIgForgotIt) {
+    LostWithDatabase f;
+    f.peer.send(sof_message(1, IgMode::ResetStandby, 0)); // power-cycled during the outage
+    ASSERT_TRUE(f.host.poll(0ms));
+    EXPECT_GE(f.requests_sent(), 1);
+}
+
 } // namespace
 // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

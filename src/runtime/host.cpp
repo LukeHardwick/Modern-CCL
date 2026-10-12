@@ -115,7 +115,8 @@ private:
     void refresh_state(TimePoint now);
     void on_datagram(std::span<const std::byte> datagram);
     void ig_restarted(TimePoint now, const char* why);
-    void replay_startup();
+    void reset_link();
+    void rearm_database_if_forgotten();
     void check_timeout(TimePoint now);
     [[nodiscard]] TimePoint next_wake(TimePoint now) const;
     Result<bool> maybe_send(TimePoint now);
@@ -136,6 +137,8 @@ private:
     TimePoint last_probe_;
     std::optional<TimePoint> last_sent_;
     std::uint32_t stale_run_ = 0; ///< Consecutive stale or duplicate Start of Frames.
+    bool saw_stale_ = false; ///< A real stale frame (not only duplicates) is in the current run.
+    bool check_database_ = false; ///< After Lost: re-request the database if the IG forgot it.
     std::optional<int> database_; ///< Last database asked for, replayed after a restart.
     bool warned_fragmentation_ = false;
     HostStats stats_;
@@ -183,14 +186,34 @@ void HostCore::refresh_state(TimePoint now) {
 void HostCore::ig_restarted(TimePoint now, const char* why) {
     ++stats_.ig_restarts;
     log_->warn("IG restarted ({}): replaying start-up", why);
-    replay_startup();
+    reset_link();
+    check_database_ = false;
+    if (database_) { // the session forgets a request once the IG accepted it
+        // NOLINTNEXTLINE(bugprone-unused-return-value): the number was validated when stored.
+        static_cast<void>(session_.request_database(*database_));
+    }
     set_state(LinkState::WaitingForIg, now);
 }
 
-void HostCore::replay_startup() {
+void HostCore::reset_link() {
     session_.reset_peer();
     stale_run_ = 0;
-    if (database_) { // the session forgets a request once the IG accepted it
+    saw_stale_ = false;
+}
+
+/// After Lost the IG may have been power-cycled, or may just have been out of reach. A later
+/// non-zero database number is a NEW load request (ICD 4.1.1), so ask again only if the first
+/// fresh Start of Frame shows the IG is not on the database we asked for (n, or -n while loading).
+void HostCore::rearm_database_if_forgotten() {
+    if (!check_database_) {
+        return;
+    }
+    check_database_ = false;
+    const auto& sof = session_.last_start_of_frame();
+    if (database_ && sof && sof->database_number != *database_ &&
+        sof->database_number != -*database_) {
+        log_->info("IG reports database {} after the link loss: requesting {} again",
+                   static_cast<int>(sof->database_number), *database_);
         // NOLINTNEXTLINE(bugprone-unused-return-value): the number was validated when stored.
         static_cast<void>(session_.request_database(*database_));
     }
@@ -212,13 +235,15 @@ void HostCore::on_datagram(std::span<const std::byte> datagram) {
         // Reordering or a repeat - unless it goes on for longer than the stale window: then the IG
         // restarted and is counting up to its old number again (docs/design/04-sessions.md,
         // "Limitation").
+        saw_stale_ = saw_stale_ || received->stale;
         if (++stale_run_ > config_.session.stale_window) {
             ig_restarted(now, "stale run");
         }
         return;
     }
-    const bool after_stale_run = stale_run_ > 0;
+    const bool after_stale_run = saw_stale_; // duplicates alone are not a restart
     stale_run_ = 0;
+    saw_stale_ = false;
     if (received->frame_regressed) {
         ig_restarted(now, "frame number regressed");
         return;
@@ -229,6 +254,7 @@ void HostCore::on_datagram(std::span<const std::byte> datagram) {
         ig_restarted(now, "reset after stale frames");
         return;
     }
+    rearm_database_if_forgotten();
     refresh_state(now);
 }
 
@@ -237,7 +263,8 @@ void HostCore::check_timeout(TimePoint now) {
         ++stats_.link_losses;
         log_->warn("no message from the IG for {} ms: link lost",
                    std::chrono::duration_cast<milliseconds>(now - last_rx_).count());
-        replay_startup();
+        reset_link();
+        check_database_ = database_.has_value();
         set_state(LinkState::Lost, now);
     }
 }

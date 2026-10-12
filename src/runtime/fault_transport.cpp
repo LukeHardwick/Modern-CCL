@@ -26,10 +26,9 @@ bool FaultInjectingTransport::roll(double probability) {
     return draw < probability;
 }
 
-Result<void> FaultInjectingTransport::release_due() {
-    Result<void> result;
+void FaultInjectingTransport::release_due() {
     if (queue_.empty()) {
-        return result;
+        return;
     }
     const std::uint32_t now = clock_().count();
     std::vector<Delayed> keep;
@@ -37,15 +36,17 @@ Result<void> FaultInjectingTransport::release_due() {
         // Signed difference of the wrapping tick counters: due once now has reached release_at.
         if (static_cast<std::int32_t>(now - item.release_at) >= 0) {
             ++stats_.released;
-            if (const auto sent = inner_->send(item.data); !sent && result) {
-                result = sent; // the first failure is reported, the rest are still released
+            if (const auto sent = inner_->send(item.data); !sent) {
+                ++stats_.release_failures;
+                if (!deferred_error_) {
+                    deferred_error_ = sent.error(); // reported by the next send()
+                }
             }
         } else {
             keep.push_back(std::move(item));
         }
     }
     queue_ = std::move(keep);
-    return result;
 }
 
 std::chrono::milliseconds FaultInjectingTransport::until_next_release() const {
@@ -62,11 +63,11 @@ std::chrono::milliseconds FaultInjectingTransport::until_next_release() const {
 }
 
 Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) {
-    const Result<void> released = release_due();
+    release_due();
     ++stats_.sent;
     if (roll(drop_)) {
         ++stats_.dropped;
-        return released; // a lost datagram is no failure, a failed release is
+        return take_deferred_error(); // a lost datagram is no failure, a failed release is
     }
     int copies = 1;
     if (roll(duplicate_)) {
@@ -86,24 +87,29 @@ Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) 
             result = sent;
         }
     }
-    if (result && !released) {
-        return released; // a delayed datagram released now could not be sent
+    const Result<void> deferred = take_deferred_error();
+    return result ? deferred : result;
+}
+
+Result<void> FaultInjectingTransport::take_deferred_error() {
+    if (!deferred_error_) {
+        return {};
     }
-    return result;
+    const Error error = *deferred_error_;
+    deferred_error_.reset();
+    return std::unexpected(error);
 }
 
 Result<std::size_t> FaultInjectingTransport::receive(std::span<std::byte> buffer,
                                                      std::chrono::milliseconds timeout) {
-    if (const auto released = release_due(); !released) {
-        return std::unexpected(released.error());
-    }
+    // A failed release never fails a receive (the datagram that arrived would be lost, and the
+    // facades treat a receive error as fatal): it is counted and reported by the next send().
+    release_due();
     // Never sleep past the moment a delayed datagram is due: wake for it, release it, and let the
     // caller poll again.
     const bool capped = !queue_.empty() && until_next_release() < timeout;
     const auto received = inner_->receive(buffer, capped ? until_next_release() : timeout);
-    if (const auto released = release_due(); !released) {
-        return std::unexpected(released.error());
-    }
+    release_due();
     return received;
 }
 

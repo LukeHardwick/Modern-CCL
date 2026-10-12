@@ -35,13 +35,6 @@ public:
     /// error is fatal.
     virtual Result<std::size_t> receive(std::span<std::byte> buffer,
                                         std::chrono::milliseconds timeout) = 0;
-
-    /// Hooks for a transport that has to learn its peer (an IG whose Host address is not
-    /// configured). `latch_peer` is called when the datagram most recently returned by receive()
-    /// parsed as a valid message: remember its sender as the destination of send(). `forget_peer`
-    /// drops it (the peer timed out or the IG restarted). Defaults do nothing.
-    virtual void latch_peer() {}
-    virtual void forget_peer() {}
 };
 
 /// Two connected in-memory transports: what one sends, the other receives (a thread-safe queue;

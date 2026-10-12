@@ -27,11 +27,12 @@ Result<void> validate(const IgConfig& c) {
 
 class IgCore {
 public:
-    IgCore(IgConfig config, std::unique_ptr<DatagramTransport> transport, bool host_known)
-        : config_(std::move(config)), transport_(std::move(transport)), session_(config_.session),
-          clock_(config_.session.clock), log_(resolve_logger(config_.session)),
-          pacing_(config_.rate_hz, clock_.now()), rx_(receive_buffer_bytes),
-          host_known_(host_known), configured_known_(host_known) {
+    IgCore(IgConfig config, std::unique_ptr<DatagramTransport> transport, bool host_known,
+           UdpDatagramTransport* learner = nullptr)
+        : config_(std::move(config)), transport_(std::move(transport)), learner_(learner),
+          session_(config_.session), clock_(config_.session.clock),
+          log_(resolve_logger(config_.session)), pacing_(config_.rate_hz, clock_.now()),
+          rx_(receive_buffer_bytes), host_known_(host_known), configured_known_(host_known) {
         last_rx_ = clock_.now();
         session_.handlers().on_error([this](const Error& e) { report(e); });
     }
@@ -42,7 +43,10 @@ public:
     ~IgCore() = default;
 
     Result<PollStatus> poll(milliseconds timeout);
-    void close() { transport_.reset(); }
+    void close() {
+        learner_ = nullptr;
+        transport_.reset();
+    }
 
     void restart() {
         ++stats_.restarts;
@@ -57,8 +61,8 @@ public:
     /// A Host learnt from its traffic is forgotten (and may be a different one next time).
     void forget_host() {
         host_known_ = configured_known_;
-        if (!configured_known_ && transport_) {
-            transport_->forget_peer();
+        if (learner_ != nullptr) {
+            learner_->forget_peer();
         }
     }
 
@@ -88,6 +92,7 @@ private:
 
     IgConfig config_;
     std::unique_ptr<DatagramTransport> transport_;
+    UdpDatagramTransport* learner_ = nullptr; ///< Into transport_ when the Host is learnt.
     IgSession session_;
     mutable TickClock clock_;
     std::shared_ptr<spdlog::logger> log_;
@@ -144,8 +149,9 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         if (!host_known_ || !connected_) {
             log_->info("Host connected");
         }
-        if (!host_known_) {
-            transport_->latch_peer(); // the first valid message names the Host
+        if (!host_known_ && learner_ != nullptr && !learner_->latch_peer()) {
+            log_->warn("cannot adopt the sender of the Host message as the Host");
+            continue; // stay unknown: the next message tries again
         }
         host_known_ = true;
         connected_ = true;
@@ -226,7 +232,9 @@ Result<Ig> Ig::connect(IgConfig config) {
         config.session.logger = config.logger;
     }
     auto udp = std::make_unique<detail::UdpDatagramTransport>(std::move(*endpoint), !host_known);
-    return Ig{std::make_unique<detail::IgCore>(std::move(config), std::move(udp), host_known)};
+    auto* learner = host_known ? nullptr : udp.get(); // the IgCore owns udp and drops this first
+    return Ig{
+        std::make_unique<detail::IgCore>(std::move(config), std::move(udp), host_known, learner)};
 }
 
 void Ig::on_unknown(std::function<void(const UnknownPacket&)> handler) {

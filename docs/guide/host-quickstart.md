@@ -42,10 +42,17 @@ IPv6 literals); resolve names yourself. `Host::over(config, transport)` takes yo
 Until the IG operates the facade sends IG Control only (carrying the requested mode and database,
 ICD 2.8, 4.1.1). `on_frame` is never called outside Operate/Debug. After `Lost` or an IG restart
 the facade calls `HostSession::reset_peer()` and the start-up sequence runs again; the requested
-mode and database are kept. An IG restart is recognised by its frame number going far backwards
-or by a run of more than `stale_window` consecutive stale Start of Frame messages. A restart that
-only passes through stale frames for a few messages shows up as a normal mode change (Operate to
-Standby) and is handled the same way. A Host that has never heard an IG stays `WaitingForIg` (it
+mode is kept. The requested database is asked for again after an IG restart; after `Lost` only if
+the first Start of Frame heard afterwards reports a different database (a non-zero number is a new
+load request, so a mere network blip must not reload the IG).
+
+An IG restart is recognised by its frame number going far backwards, by a run of more than
+`stale_window` consecutive stale or duplicate Start of Frame messages, or, for an IG restarted
+within `stale_window` of its old frame number, by at least one stale frame followed by a fresh
+Start of Frame reporting Reset/Standby while the Host is in Operate/Debug. A single duplicate
+followed by Standby is an ordinary mode change.
+
+A Host that has never heard an IG stays `WaitingForIg` (it
 sends an IG Control every `probe_interval`, 100 ms, so an IG that learns its Host from the first
 message can start).
 
@@ -83,6 +90,9 @@ are not part of the facade yet.
   event loop; call it at least as often as your frame period.
 - `run(stop_token)` loops `poll` until stop is requested, `close()` is called or the transport
   fails (a socket error is the only fatal error; everything else is `on_error` plus counters).
+- `close()` may be called from any callback; the Host stays closed. Packets later in the datagram
+  being processed still reach their handlers (the datagram was already accepted); nothing more is
+  read or sent.
 - `close()` (also the destructor) sends one IG Control requesting Reset/Standby when
   `standby_on_close` is set (ICD 2.8), then closes the socket.
 - `request_mode()`, `request_database(n)`, `stats()` (session counters, frames sent, late frames,

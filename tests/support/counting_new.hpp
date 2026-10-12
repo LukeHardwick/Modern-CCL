@@ -17,9 +17,14 @@
 
 inline std::atomic<std::size_t> allocations{0};
 
-inline void* counted_alloc(std::size_t size, std::size_t align) noexcept {
+// The aligned forms always take the aligned path, so that the aligned operator delete can pair
+// with it (on MSVC _aligned_malloc memory must go to _aligned_free, never to free).
+inline void* counted_alloc(std::size_t size, std::size_t align, bool aligned) noexcept {
     allocations.fetch_add(1, std::memory_order_relaxed);
-    if (align <= alignof(std::max_align_t)) {
+    if (size == 0) {
+        size = 1; // never hand out a null for a successful zero-size request
+    }
+    if (!aligned) {
         return std::malloc(size);
     }
 #ifdef _WIN32
@@ -27,7 +32,8 @@ inline void* counted_alloc(std::size_t size, std::size_t align) noexcept {
     return _aligned_malloc(size, align);
 #else
     void* p = nullptr;
-    return posix_memalign(&p, align, size) == 0 ? p : nullptr;
+    return posix_memalign(&p, align < sizeof(void*) ? sizeof(void*) : align, size) == 0 ? p
+                                                                                        : nullptr;
 #endif
 }
 inline void counted_free(void* p, bool aligned) noexcept {
@@ -49,28 +55,28 @@ inline void* checked_alloc(void* p) {
 }
 
 void* operator new(std::size_t size) {
-    return checked_alloc(counted_alloc(size, 1));
+    return checked_alloc(counted_alloc(size, 1, false));
 }
 void* operator new[](std::size_t size) {
-    return checked_alloc(counted_alloc(size, 1));
+    return checked_alloc(counted_alloc(size, 1, false));
 }
 void* operator new(std::size_t size, std::align_val_t al) {
-    return checked_alloc(counted_alloc(size, static_cast<std::size_t>(al)));
+    return checked_alloc(counted_alloc(size, static_cast<std::size_t>(al), true));
 }
 void* operator new[](std::size_t size, std::align_val_t al) {
-    return checked_alloc(counted_alloc(size, static_cast<std::size_t>(al)));
+    return checked_alloc(counted_alloc(size, static_cast<std::size_t>(al), true));
 }
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, 1);
+    return counted_alloc(size, 1, false);
 }
 void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, 1);
+    return counted_alloc(size, 1, false);
 }
 void* operator new(std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, static_cast<std::size_t>(al));
+    return counted_alloc(size, static_cast<std::size_t>(al), true);
 }
 void* operator new[](std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, static_cast<std::size_t>(al));
+    return counted_alloc(size, static_cast<std::size_t>(al), true);
 }
 void operator delete(void* p) noexcept {
     counted_free(p, false);

@@ -23,14 +23,21 @@ public:
         }
         return endpoint_.send(datagram);
     }
-    void latch_peer() override {
-        // Called by the Ig only while it has no Host.
-        if (const auto sender = endpoint_.last_sender();
-            sender && endpoint_.set_remote(sender->address, sender->port)) {
-            latched_ = learn_peer_;
+    /// Adopt the sender of the datagram last received as the destination of send(). True if
+    /// there is nothing to learn or the peer was adopted; false (nothing changed) if no sender is
+    /// known or the address was refused.
+    bool latch_peer() {
+        if (!learn_peer_) {
+            return true;
         }
+        const auto sender = endpoint_.last_sender();
+        if (!sender || !endpoint_.set_remote(sender->address, sender->port)) {
+            return false;
+        }
+        latched_ = true;
+        return true;
     }
-    void forget_peer() override { latched_ = false; }
+    void forget_peer() { latched_ = false; }
     Result<std::size_t> receive(std::span<std::byte> buffer,
                                 std::chrono::milliseconds timeout) override {
         return endpoint_.receive(buffer, timeout);

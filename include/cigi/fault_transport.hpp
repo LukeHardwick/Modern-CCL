@@ -11,8 +11,9 @@
 // in the order they were sent: a release happens only when the owner calls one of the two, so
 // receive() never waits beyond the next due release (it wakes, releases and returns what it has,
 // typically Timeout) and a peer polling with a long timeout sees at most about one millisecond
-// of extra delay. A failing inner send of a released datagram is returned by the call that
-// released it (the first failure; the others are still released). Not thread-safe.
+// of extra delay. A failing inner send of a released datagram never fails receive(): it is
+// counted in stats().release_failures and the first one is returned by the next send(). Not
+// thread-safe.
 
 #include "cigi/datagram_transport.hpp"
 #include "cigi/session/session.hpp"
@@ -21,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -29,11 +31,12 @@ namespace cigi {
 class FaultInjectingTransport final : public DatagramTransport {
 public:
     struct Stats {
-        std::uint64_t sent = 0;       ///< send() calls.
-        std::uint64_t dropped = 0;    ///< Datagrams discarded.
-        std::uint64_t duplicated = 0; ///< Extra copies created.
-        std::uint64_t delayed = 0;    ///< Datagrams that waited in the delay queue.
-        std::uint64_t released = 0;   ///< Delayed datagrams passed on.
+        std::uint64_t sent = 0;             ///< send() calls.
+        std::uint64_t dropped = 0;          ///< Datagrams discarded.
+        std::uint64_t duplicated = 0;       ///< Extra copies created.
+        std::uint64_t delayed = 0;          ///< Datagrams that waited in the delay queue.
+        std::uint64_t released = 0;         ///< Delayed datagrams passed on.
+        std::uint64_t release_failures = 0; ///< Releases the inner transport refused.
     };
 
     /// `clock` empty means steady_timestamp. `seed` seeds the random draws.
@@ -72,7 +75,8 @@ private:
         return p < 1.0 ? p : 1.0;
     }
     [[nodiscard]] bool roll(double probability);
-    Result<void> release_due();
+    void release_due();
+    [[nodiscard]] Result<void> take_deferred_error();
     [[nodiscard]] std::chrono::milliseconds until_next_release() const;
 
     std::unique_ptr<DatagramTransport> inner_;
@@ -82,6 +86,7 @@ private:
     double duplicate_ = 0.0;
     std::chrono::microseconds latency_{0};
     std::vector<Delayed> queue_;
+    std::optional<Error> deferred_error_; ///< First failed release, returned by the next send().
     Stats stats_;
 };
 

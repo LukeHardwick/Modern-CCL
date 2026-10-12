@@ -78,6 +78,7 @@ if(TARGET cigi_runtime)
         runtime/host_test.cpp
         runtime/ig_test.cpp
         runtime/transport_test.cpp
+        runtime/udp_transport_test.cpp
         LINK cigi::runtime)
     # Replaces the global operator new to prove the steady-state frame path is allocation-free.
     cigi_add_test(cigi_runtime_alloc_test SOURCES runtime/host_alloc_test.cpp LINK cigi::runtime)

@@ -227,6 +227,36 @@ TEST(FaultTransport, ReceiveWakesForTheNextReleaseInsteadOfSleepingThrough) {
     EXPECT_EQ(p.faulty->pending(), 1U); // the fake clock has not moved: still waiting
 }
 
+/// Receives one byte on demand and refuses every send.
+class ReceivesButCannotSend final : public DatagramTransport {
+public:
+    Result<void> send(std::span<const std::byte> /*datagram*/) override {
+        return std::unexpected(Error{.code = ErrorCode::TransportError, .os_error = 5});
+    }
+    Result<std::size_t> receive(std::span<std::byte> buffer,
+                                std::chrono::milliseconds /*timeout*/) override {
+        buffer[0] = std::byte{42};
+        return 1;
+    }
+};
+
+TEST(FaultTransport, AFailedReleaseNeverFailsAReceive) {
+    const FakeClock clock;
+    FaultInjectingTransport faulty{std::make_unique<ReceivesButCannotSend>(), clock.fn()};
+    faulty.set_added_latency(10ms);
+    ASSERT_TRUE(faulty.send(numbered(1))); // queued
+    clock.advance(1000);
+    Bytes buffer(8);
+    const auto received = faulty.receive(buffer, 0ms);
+    ASSERT_TRUE(received); // delivered although the release failed
+    EXPECT_EQ(*received, 1U);
+    EXPECT_EQ(faulty.stats().release_failures, 1U);
+    faulty.set_added_latency(0us);
+    const auto next = faulty.send(numbered(2)); // the deferred failure is reported here, once
+    ASSERT_FALSE(next);
+    EXPECT_EQ(next.error().os_error, 5);
+}
+
 TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
     auto broken = std::make_unique<BrokenTransport>();
     BrokenTransport* inner = broken.get();
@@ -237,13 +267,12 @@ TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
     inner->fail_send = true;
     clock.advance(1000);
     Bytes buffer(8);
-    const auto released = faulty.receive(buffer, 0ms);
-    ASSERT_FALSE(released);
-    EXPECT_EQ(released.error().os_error, 5);
+    EXPECT_FALSE(faulty.receive(buffer, 0ms)); // Timeout, not the failed release
+    EXPECT_EQ(faulty.stats().release_failures, 1U);
 
     faulty.set_added_latency(10ms);
     inner->fail_send = false;
-    ASSERT_TRUE(faulty.send(numbered(2)));
+    static_cast<void>(faulty.send(numbered(2))); // (reports the deferred failure above)
     inner->fail_send = true;
     clock.advance(1000);
     faulty.set_added_latency(0us);

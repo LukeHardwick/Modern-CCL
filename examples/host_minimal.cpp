@@ -2,6 +2,7 @@
 //   host_minimal [--ig-address 127.0.0.1] [--seconds 30]   (Ctrl-C stops it)
 #include "cigi/host.hpp"
 
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -16,8 +17,8 @@
 #include <utility>
 
 namespace { // Set by SIGINT (a plain flag is async-signal-safe); the timer thread polls it.
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-volatile std::sig_atomic_t g_interrupted = 0;
+std::atomic<int> g_interrupted{0}; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+static_assert(std::atomic<int>::is_always_lock_free);
 } // namespace
 
 // NOLINTNEXTLINE(bugprone-exception-escape): std::println may throw; an example may terminate.
@@ -35,7 +36,7 @@ int main(int argc, char** argv) {
                                               std::to_address(value.end()), seconds));
         }
     }
-    static_cast<void>(std::signal(SIGINT, [](int) { g_interrupted = 1; }));
+    static_cast<void>(std::signal(SIGINT, [](int) { g_interrupted.store(1); }));
 
     auto ig = cigi::Host::connect(config); // defaults: ports 8004/8005, synchronous
     if (!ig) {
@@ -64,11 +65,10 @@ int main(int argc, char** argv) {
         // NOLINTNEXTLINE(bugprone-unused-return-value)
         static_cast<void>(frame.add(entity)); // a full frame just drops this update
     });
-
     std::stop_source stop;
     std::jthread timer([&](const std::stop_token& st) { // stops the run on Ctrl-C or --seconds
         const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
-        while (!st.stop_requested() && g_interrupted == 0 &&
+        while (!st.stop_requested() && g_interrupted.load() == 0 &&
                std::chrono::steady_clock::now() < end) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
