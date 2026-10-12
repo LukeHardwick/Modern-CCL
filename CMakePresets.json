@@ -45,6 +45,19 @@
       }
     },
     {
+      "name": "linux-clang",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
       "name": "msvc",
       "hidden": true,
       "inherits": "base",
@@ -160,6 +173,32 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CIGI_ENABLE_SANITIZERS": "ON"
       }
+    },
+    {
+      "name": "clang-fuzz",
+      "inherits": [
+        "homebrew-clang"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O1 -g",
+        "CIGI_ENABLE_FUZZING": "ON",
+        "CIGI_BUILD_TESTS": "OFF",
+        "CIGI_BUILD_EXAMPLES": "OFF"
+      }
+    },
+    {
+      "name": "linux-clang-fuzz",
+      "inherits": [
+        "linux-clang"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O1 -g",
+        "CIGI_ENABLE_FUZZING": "ON",
+        "CIGI_BUILD_TESTS": "OFF",
+        "CIGI_BUILD_EXAMPLES": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -253,6 +292,24 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      }
+    },
+    {
+      "name": "clang-fuzz",
+      "configurePreset": "clang-fuzz",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "linux-clang-fuzz",
+      "configurePreset": "linux-clang-fuzz",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     }
   ],

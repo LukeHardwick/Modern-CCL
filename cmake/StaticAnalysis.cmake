@@ -19,6 +19,7 @@ if(CIGI_CLANG_FORMAT)
         "${PROJECT_SOURCE_DIR}/include/*.hpp" "${PROJECT_SOURCE_DIR}/include/*.h"
         "${PROJECT_SOURCE_DIR}/src/*.cpp" "${PROJECT_SOURCE_DIR}/src/*.hpp"
         "${PROJECT_SOURCE_DIR}/apps/*.cpp" "${PROJECT_SOURCE_DIR}/apps/*.hpp"
+        "${PROJECT_SOURCE_DIR}/fuzz/*.cpp" "${PROJECT_SOURCE_DIR}/fuzz/*.hpp"
         "${PROJECT_SOURCE_DIR}/tests/*.cpp" "${PROJECT_SOURCE_DIR}/tests/*.hpp"
         "${PROJECT_SOURCE_DIR}/tools/*.cpp" "${PROJECT_SOURCE_DIR}/tools/*.hpp")
     add_custom_target(format

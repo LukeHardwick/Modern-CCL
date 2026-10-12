@@ -25,6 +25,7 @@ option(CIGI_BUILD_MOCK_IG "Build apps/mock_ig (headless mock-IG core)" ${_cigi_t
 option(CIGI_BUILD_VIEWER "Build apps/ig_viewer (fetches raylib, Dear ImGui and rlImGui)" OFF)
 option(CIGI_BUILD_SESSION "Build the Host/IG sessions (fetches spdlog)" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
+option(CIGI_ENABLE_FUZZING "Build the libFuzzer targets (Clang only; implies ASan + UBSan)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
 option(CIGI_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
@@ -203,8 +204,16 @@ if(CIGI_BUILD_VIEWER)
     add_subdirectory(apps/ig_viewer)
 endif()
 
-if(CIGI_BUILD_TESTS)
+if(CIGI_BUILD_TESTS OR CIGI_ENABLE_FUZZING)
     enable_testing()
+endif()
+
+if(CIGI_BUILD_TESTS)
     add_subdirectory(tests)
     cigi_define_coverage_target()
+endif()
+
+# Corpus-replay ctests (always, with the tests) and the libFuzzer targets (CIGI_ENABLE_FUZZING).
+if(CIGI_BUILD_TESTS OR CIGI_ENABLE_FUZZING)
+    add_subdirectory(fuzz)
 endif()
