@@ -50,6 +50,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T25](T25-record-replay.md) | Record / replay (pcap + pcapng reader, JSON index, replay panel) | Tools | T09b P2, T10 | 📝 |
 | [T26](T26-tools-platforms-packaging.md) | Viewer on Linux/Windows, CPack bundle, tools guide | Tools | T20–T25 | 📝 |
 | [T27](T27-interactive-host.md) | *Optional:* interactive Host (fly/drive with a gamepad) | Tools | T09b P2, T20 | 📝 |
+| [T28](T28-unreal-ig.md) | *Optional:* Unreal Engine IG plugin — **🔒 locked: needs the user's express permission to start** | Future | M1, T20 | 🔒 |
 
 Parallelism: T03, T04, T05 and T08 are independent and can run at the same time. T10 and T12 can
 run beside T07–T09 (T09a sits between T07/T08 and T09). T09b Part 1 (headless mock-IG core +

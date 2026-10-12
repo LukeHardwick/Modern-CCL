@@ -84,6 +84,8 @@ evaluates glaze's TOML reader. T27 (interactive Host) is optional.
 **Before launching T21/T22:** the user supplies the sample assets (one SRTM3 tile; CC0 glTF jet,
 helicopter, tank, truck ≤ 5 MB with credits); agents must not download.
 Order: T09b P2 ‖ T20 → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
+**T28 (Unreal IG) is 🔒 locked:** optional future work. Never start, brief or launch it without the
+user's express permission for T28 specifically; approval of other tasks does not cover it.
 
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
