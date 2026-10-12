@@ -35,6 +35,15 @@ primitive shape **and is flagged**, so gaps in a database are visible.
   truck; total ≤ 5 MB) in `databases/sample/models/` with `CREDITS.md` before launch. **Do not
   download anything.** Tests use a tiny glTF generated or hand-written by the test.
 
+## Additions from the T22a research (user-approved 2026-10-12)
+Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-format-and-fidelity.md) (Addendum A wins where it differs).
+- LOD selection from T20's `lods` list by bounding-sphere screen height, with hysteresis; the
+  lowest LOD may have no parts (tolerate missing part nodes there).
+- Warn on primitives with ≥ 65,536 vertices (raylib u16 indices); Draco is unsupported (report).
+- Honour `COLOR_0` vertex colours (the shader already multiplies vertex colour).
+- Honour `attached_view` (`full` / `hidden`; `cockpit` falls back to `full` until T22b).
+- Out of scope here, in **T22b**: instancing, the cockpit second pass, textures/PBR.
+
 ## Acceptance
 README rules 7–9; coverage ≥ 95 % on headless code (manifest-side mapping and validation). Tests:
 node lookup, part composition (hand-computed matrices), axis conversion, visibility components,
