@@ -72,6 +72,23 @@ Linux GCC debug + ASan 655/655. Notes: `docs/releases/v0.2.0.md`. `v0.1.0` (2026
 was the foundation. Tagged at the user's request before their hand test of the viewer: still to
 check by hand: green button, live F/F11/Esc, edge-drag (listed as a known limitation). New work: **T09c**, T09b Part 2, T09.
 
+## Tools track: productionise `ig_viewer` / mock IG (planned 2026-10-12, NOT launched)
+Briefs T20–T27 written on branch `claude/ig-viewer-mock-ig-productionize-96da85`; the user wants to
+review them before any agent runs. User decisions: aimed at both dev/test and demo use; database
+= folder + TOML manifest per CIGI Database Number; glTF models with primitive fallback; heightmap
+terrain shared by HAT/HOT and rendering (in `cigi_mock_ig`, so `demo_ig` agrees); network mode,
+scenario files, record/replay (pcap) and config file all in scope; Genesis-matching entity
+numbers via a configurable mapping; macOS + Linux + Windows; small CC0 sample assets in the repo.
+**Libraries approved:** toml++ (hand-edited files) + glaze (JSON, machine files). T20 also
+evaluates glaze's TOML reader. T27 (interactive Host) is optional.
+**T22a progress (2026-10-12, planner spike, inline at the user's request):** Blender 5.2.2 installed (Homebrew); `tools/models/make_models.py` builds `databases/sample/models/jet.glb` (35 KB, nodes + hinge pivots checked) and previews in `docs/guide/img/models/`. **📌 Paused: the user will specify more requirements before T22a continues (ask first).** Remaining: helicopter, tank, truck, `databases/sample/database.toml` (needs T20's format), CREDITS.md, `scripts/make_models.sh`.
+**Before launching T21/T22:** models come from **T22a** (Blender script; the user installs
+Blender first). The user downloads one SRTM3 tile for T21. Agents must not download; candidate
+online models are listed in the T22a brief (optional, each download needs the user's approval).
+Order: T09b P2 ‖ T20 → T22a → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
+**T28 (Unreal IG) is 🔒 locked:** optional future work. Never start, brief or launch it without the
+user's express permission for T28 specifically; approval of other tasks does not cover it.
+
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
 the user). Phase B: T13–T16 (independent), T18, T19.
