@@ -93,7 +93,8 @@ fullscreen or a panel is shown or hidden, the layout is recomputed and applied o
 those events you can move and resize panels freely (`L` re-applies the automatic layout). If the
 window is too small, the least important panels (IG log, HAT/HOT, inspector, ...) collapse to
 their title bar; click the arrow to open one. The native macOS green button is just another
-resize. Fullscreen is borderless (a window the size of the monitor), which keeps the HiDPI scale.
+resize; in that mode `F`/`F11`/`Esc` do nothing (GLFW cannot leave a native Space), so leave it
+with the green button. Fullscreen is borderless (a window the size of the monitor), which keeps the HiDPI scale.
 
 ## What the colours mean
 
@@ -129,3 +130,7 @@ stress before this fix is gone.)
 - OpenGL is deprecated on macOS (raylib still uses it).
 - Windows/MSVC is expected to work but is unverified; the Linux build of the viewer is not
   required (`cigi_mock_ig` itself builds everywhere).
+
+Developer note: three hidden options (not in `--help`) exercise the resize paths in offline
+captures: `--hidpi` (HiDPI framebuffer, so the PNG is 2x on Retina), `--resize-to WxH` (resize at
+frame 3) and `--toggle-fs N` (toggle fullscreen every N frames).

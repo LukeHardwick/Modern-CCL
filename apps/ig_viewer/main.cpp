@@ -124,6 +124,17 @@ bool is_fullscreen() {
     return IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
 }
 
+/// True when the window fills its monitor without our borderless mode: the native macOS
+/// fullscreen Space entered with the green button (which arrives only as a resize).
+bool in_native_fullscreen() {
+    if (is_fullscreen()) {
+        return false;
+    }
+    const int monitor = GetCurrentMonitor();
+    return GetScreenWidth() >= GetMonitorWidth(monitor) &&
+           GetScreenHeight() >= GetMonitorHeight(monitor);
+}
+
 void set_fullscreen(bool on) {
     // PLATFORM: borderless fullscreen (a window the size of the current monitor) rather than
     // raylib's ToggleFullscreen(). ToggleFullscreen() switches raylib to "physical pixel" mode,
@@ -131,7 +142,11 @@ void set_fullscreen(bool on) {
     // reports 1; on a macOS Retina display that disagrees with the 2x framebuffer scale ImGui
     // was told about and leaves the UI mis-sized. ToggleBorderlessWindowed() keeps the logical
     // coordinate system and the HiDPI scale, so only the window size changes. The native macOS
-    // green button (a Space) also arrives as a plain resize, so it needs no special handling.
+    // green button (a Space) also arrives as a plain resize, so the layout needs no special
+    // handling. GLFW cannot leave a native Space, so F/F11/Esc ignore it (in_native_fullscreen).
+    // Whether this borderless window covers the menu bar and Dock is unverified: raylib asks GLFW
+    // for a monitor-sized window on the monitor, which on macOS is normally a full-screen window
+    // that hides both, but I have not checked it by eye.
     if (is_fullscreen() != on) {
         ToggleBorderlessWindowed();
     }
@@ -190,6 +205,7 @@ int main(int argc, char** argv) {
     ImGui::GetIO().IniFilename = nullptr;
     // Esc leaves fullscreen first and quits only from a normal window (see the loop).
     SetExitKey(KEY_NULL);
+    SetWindowMinSize(320, 240); // the smallest size the panel layout is designed for
     if (args.fullscreen) {
         set_fullscreen(true);
     }
@@ -217,10 +233,13 @@ int main(int argc, char** argv) {
             // Input first, against the camera as drawn last frame.
             const ImGuiIO& io = ImGui::GetIO();
             if (!io.WantTextInput) {
-                if (IsKeyPressed(KEY_F) || IsKeyPressed(KEY_F11)) {
+                // In native fullscreen (green button) F/F11/Esc must not stack our borderless mode
+                // on top of it or quit by accident; the user leaves it with the green button.
+                const bool native_fs = in_native_fullscreen();
+                if ((IsKeyPressed(KEY_F) || IsKeyPressed(KEY_F11)) && !native_fs) {
                     set_fullscreen(!is_fullscreen());
                 }
-                if (IsKeyPressed(KEY_ESCAPE)) {
+                if (IsKeyPressed(KEY_ESCAPE) && !native_fs) {
                     if (is_fullscreen()) {
                         set_fullscreen(false);
                     } else {

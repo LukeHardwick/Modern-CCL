@@ -62,6 +62,11 @@ void place_panel(const UiState& ui, mock::PanelId id) {
 /// it is in the same units as every ImGui coordinate (no Retina factor to apply here).
 void update_layout(UiState& ui) {
     const ImVec2 size = ImGui::GetIO().DisplaySize;
+    if (size.x <= 0.0F || size.y <= 0.0F) {
+        // Minimised: not a real resize; keep the user's arrangement for the restore.
+        ui.apply_layout = false;
+        return;
+    }
     mock::LayoutInput in;
     in.width = size.x;
     in.height = size.y;

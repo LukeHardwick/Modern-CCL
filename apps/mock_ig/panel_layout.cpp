@@ -1,8 +1,9 @@
 #include "mock_ig/panel_layout.hpp"
 
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <span>
-#include <vector>
 
 namespace cigi::mock {
 
@@ -39,17 +40,23 @@ constexpr std::array<PanelId, panel_count> priority{
     return std::max(lo, std::min(v, hi));
 }
 
-/// Stack `ids` (top to bottom) in a column; heights shrink, then the least important collapse.
+/// The panels of one column, top to bottom (fixed storage: no allocation).
+struct Column {
+    std::array<PanelId, panel_count> ids{};
+    std::size_t n = 0;
+};
+
+/// Stack a column; heights shrink, then the least important collapse.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-void stack_column(PanelLayout& out, std::span<const PanelId> ids, float x, float col_w,
-                  float height, float bar_h) {
-    std::vector<PanelId> shown(ids.begin(), ids.end());
+void stack_column(PanelLayout& out, const Column& column, float x, float col_w, float height,
+                  float bar_h) {
+    const std::span<const PanelId> shown(column.ids.data(), column.n);
     if (shown.empty()) {
         return;
     }
     const float avail = std::max(height - (2.0F * margin), bar_h);
     // Collapse state by order index in `shown`; least important = highest priority index.
-    std::vector<bool> collapsed(shown.size(), false);
+    std::array<bool, panel_count> collapsed{};
     const auto rank = [&](PanelId id) {
         return std::ranges::find(priority, id) - priority.begin();
     };
@@ -110,10 +117,10 @@ PanelLayout compute_panel_layout(const LayoutInput& in) noexcept {
         return in.map_only ? (id == PanelId::Map && shown) : shown;
     };
     const auto column_of = [&](std::initializer_list<PanelId> list) {
-        std::vector<PanelId> ids;
+        Column ids;
         for (const PanelId id : list) {
             if (wanted(id)) {
-                ids.push_back(id);
+                ids.ids[ids.n++] = id;
             }
         }
         return ids;
