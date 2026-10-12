@@ -15,7 +15,8 @@
 //   entity 4   trailer (type 203), attached 8 m behind vehicle 3.
 //   entity 5   cargo (type 150), attached above vehicle 2; detached at `detach_s` (20 s) and then
 //              moved only by a Rate Control packet (8 m/s north, 4 m/s east, 30 m above ground).
-//   view 0     attached to the ownship at the pilot's eye, 70 x 42 degrees.
+//   view 0     attached to the ownship at the pilot's eye, looking 45 degrees right (into the
+//              turn) and 12 down, 70 x 42 degrees.
 //   celestial  UTC time-of-day advances one minute per second from `start_utc_hours`.
 //   HAT/HOT    one-shot HAT (id 1, frame 1), one-shot HOT (id 2, frame 30), periodic extended
 //              request relative to the ownship (id 3, every 30 frames), periodic HAT under vehicle

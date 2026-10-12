@@ -321,6 +321,8 @@ Result<void> ScriptedHost::build_frame(MessageBuilder& builder) {
             .entity_id = ownship_id,
             .x_offset = 1.0F,
             .z_offset = -1.0F,
+            .pitch = -12.0F, // looking down and into the turn, so the convoy comes into view
+            .yaw = 45.0F,
         });
     }
 

@@ -71,7 +71,8 @@
         "homebrew-clang"
       ],
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CIGI_BUILD_VIEWER": "ON"
       }
     },
     {

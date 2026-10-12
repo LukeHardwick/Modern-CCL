@@ -88,3 +88,55 @@ if(CIGI_BUILD_TRANSPORT)
         FetchContent_MakeAvailable(Boost)
     endblock()
 endif()
+
+if(CIGI_BUILD_VIEWER)
+    # Viewer dependencies (user-approved 2026-10-12). Versions are the latest releases at least
+    # two weeks old on 2026-10-12: raylib 6.0 (2026-04-23), Dear ImGui 1.92.9b (2026-07-31);
+    # rlImGui has no releases, so a commit (2026-08-24) is pinned. All third-party code is built
+    # without warnings (-w), as SYSTEM includes, and outside clang-tidy and coverage.
+    FetchContent_Declare(raylib
+        URL https://github.com/raysan5/raylib/archive/refs/tags/6.0.tar.gz
+        URL_HASH SHA256=2b3ee1e2120c7a0796b33062c7e9a694dd8a8caa56a96319ac8c8ecf54a90d0b
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    FetchContent_Declare(imgui
+        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.tar.gz
+        URL_HASH SHA256=21d8a0a565e85dce943e375db00812c2f3f0ab21f3f0f7964e364a63422d7f99
+        DOWNLOAD_EXTRACT_TIMESTAMP ON)
+    FetchContent_Declare(rlimgui
+        URL https://github.com/raylib-extras/rlImGui/archive/1550009359ad975927f7f0e4a3f47e3f27123ea9.tar.gz
+        URL_HASH SHA256=7d04ff0c996a89190e1050d3c4448ad784479723c76893efea2d731bd5eb839f
+        DOWNLOAD_EXTRACT_TIMESTAMP ON)
+
+    # Normal variables inside block() so they never leak out of this scope.
+    block()
+        set(BUILD_EXAMPLES OFF)
+        set(BUILD_GAMES OFF)
+        set(BUILD_SHARED_LIBS OFF)
+        set(CUSTOMIZE_BUILD OFF)
+        FetchContent_MakeAvailable(raylib imgui rlimgui)
+    endblock()
+    if(NOT MSVC)
+        target_compile_options(raylib PRIVATE -w)
+    endif()
+
+    FetchContent_GetProperties(imgui SOURCE_DIR imgui_SOURCE_DIR)
+    FetchContent_GetProperties(rlimgui SOURCE_DIR rlimgui_SOURCE_DIR)
+
+    # Dear ImGui and rlImGui ship no CMake build: one static library for both.
+    add_library(cigi_imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${rlimgui_SOURCE_DIR}/rlImGui.cpp)
+    target_include_directories(cigi_imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${rlimgui_SOURCE_DIR})
+    target_link_libraries(cigi_imgui PUBLIC raylib)
+    target_compile_features(cigi_imgui PUBLIC cxx_std_17)
+    if(MSVC)
+        target_compile_options(cigi_imgui PRIVATE /w)
+    else()
+        target_compile_options(cigi_imgui PRIVATE -w)
+    endif()
+endif()

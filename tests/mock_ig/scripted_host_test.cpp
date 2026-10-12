@@ -210,6 +210,8 @@ TEST(ScriptedHost, SixHundredFramesProduceTheExpectedWorld) {
     EXPECT_EQ(view->entity_id, 0);
     EXPECT_DOUBLE_EQ(view->offset.x, 1.0);
     EXPECT_DOUBLE_EQ(view->offset.z, -1.0);
+    EXPECT_DOUBLE_EQ(view->attitude.yaw_deg, 45.0);
+    EXPECT_DOUBLE_EQ(view->attitude.pitch_deg, -12.0);
     EXPECT_DOUBLE_EQ(view->horizontal_fov_deg(), 70.0);
     EXPECT_DOUBLE_EQ(view->vertical_fov_deg(), 42.0);
     ASSERT_TRUE(scene.view_pose(0).has_value());
