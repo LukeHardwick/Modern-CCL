@@ -37,7 +37,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T14](T14-host-packets-sensors-requests.md) | Sensors, motion, ERM, trajectory, collision, requests (17–20, 22, 23, 25–28) | B | M1 | ⏳ |
 | [T15](T15-ig-responses.md) | Remaining IG→Host packets (104–117) | B | M1 | ⏳ |
 | [T16](T16-symbology.md) | Symbology (29–35), variable-length packets | B | M1 | ⏳ |
-| [T17](T17-user-defined-packets.md) | User-defined packets (201–255) | B | T06 | 🚧 [in progress](STATUS.md) |
+| [T17](T17-user-defined-packets.md) | User-defined packets (201–255) | B | T06 | ✅ `a57c7f4` |
 | [T18](T18-benchmarks.md) | Benchmarks vs CCL + real-network performance test | B | T11 | ⏳ |
 | [T19](T19-docs.md) | Doxygen site, README, coming-from-CCL guide | B | all | ⏳ |
 | **M2** | **Full CIGI 3.3 milestone** | | T13–T19 | |

@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 13:50 BST** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 14:05 BST** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -18,15 +18,15 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the brief + the "Remaining" list below (better when the old context is long).
 
 ## `main`
-`main` contains T00–T08 and T10 (see README.md). All checks green at `5a20b87`
+`main` contains T00–T08, T10 and T17 (`a57c7f4`; see README.md). All checks green at `5a20b87`
 (macOS 416 tests, Linux GCC debug + ASan 413).
 
 ## Open task branches
 
-> **13:50: a separate Claude Desktop session ("Subagent in Sonnet 5.5") was editing the T09a and T17
-> worktrees after the heads below were recorded** (uncommitted changes there at 13:47). Before
-> continuing either task, run `git -C <worktree> status` / `git diff`, and commit or discard those
-> edits deliberately. The heads in this table are the last planner-verified commits.
+> **14:05: the session "Subagent in Sonnet 5.5" is now the active planner.** It has Sonnet agents
+> running in the T09a, T09b and T12 worktrees (T09a: full check incl. the host_minimal tidy fixes;
+> T09b: Opus-review fixes; T12: Linux libFuzzer verification + gen_corpus/replay_main tidy fixes).
+> Don't start other agents on those worktrees. T17 is merged.
 
 Worktrees live under `.claude/worktrees/` in the main checkout.
 
@@ -35,7 +35,6 @@ Worktrees live under `.claude/worktrees/` in the main checkout.
 | T09b P1 mock-IG core + `ig_viewer` | `task/t09b-ig-viewer` | `agent-aabbb35402214e1c2` | `a50503f` | `f2dedae` (before T07/T10) | implementation done; debug 437/437 |
 | T09a Host/Ig facade | `task/t09a-host-ig-facade` | `agent-a7ac964648ce5a2d4` | `09e82c1` | `5a20b87` | implementation + docs done; debug 478/478 |
 | T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `8971714` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
-| T17 user-defined packets | `task/t17-user-defined-packets` | `agent-a5de62c6ac549c511` | `f70c635` | `5a20b87` | done; `check.sh --coverage` ALL CHECKS PASSED |
 
 Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
 (filled in after the run).
@@ -77,10 +76,13 @@ Part 2 (network mode + fault panel) starts after T09a is merged — see the brie
    `fuzz/replay_main.cpp` (8). Format is fixed (`8971714`); debug and asan pass with 419/419.
    Then full `check.sh --coverage`, Linux check, Opus review, merge; record results in the brief.
 
-### T17 — remaining
-1. Opus review (agent's final report was lost to the usage limit: reviewer must summarise the API
-   from the diff `git diff 5a20b87...task/t17-user-defined-packets`).
-2. Linux check, merge.
+### T17 — merged `a57c7f4`
+Opus review: merge after fixes. Applied: `SessionConfig::ignore_user_packets` wired into both
+sessions (free `dispatch()` gained a trailing `bool ignore_user = false`), always-true opcode compare
+removed (GCC `-Wtype-limits`), `if constexpr` builder size check, distinct-type duplicate test,
+foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Linux GCC debug + ASan
+429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
+are not templated on the packet set; user packets arrive via `on_unknown`).
 
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
