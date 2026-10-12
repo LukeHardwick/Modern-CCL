@@ -76,11 +76,11 @@ foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Lin
 429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
 are not templated on the packet set; user packets arrive via `on_unknown`).
 
-## Release v0.1.0 (in progress)
+## Release v0.2.0 (in progress)
 The user asked (2026-10-12) to finish the current work and mark it as a release: once T09a,
 T09b Part 1 and T12 are merged and `main` passes `check.sh --coverage` + Linux check, tag
-`v0.1.0` on `main` (annotated, local only; nothing is pushed) with release notes in
-`docs/releases/v0.1.0.md`. New work after the tag: **T09c** (facade `on_user<P>`, examples on the
+`v0.2.0` on `main` (annotated, local only; nothing is pushed; `v0.1.0` = foundation, 2026-10-08)
+with release notes in `docs/releases/v0.2.0.md`. Also in the release: the viewer resize/fullscreen fix (`fix/viewer-resize`). New work after the tag: **T09c** (facade `on_user<P>`, examples on the
 facade), T09b Part 2, T09.
 
 ## Next tasks after these

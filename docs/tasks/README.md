@@ -28,7 +28,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ✅ `fd5b167` |
 | [T09a](T09a-host-ig-facade.md) | High-level `cigi::Host` / `cigi::Ig` facade | A (MVP) | T07, T08 | ✅ |
 | [T09b](T09b-ig-viewer.md) | Mock-IG core + visual `ig_viewer` (raylib + Dear ImGui) | A (MVP) | P1: T06 · P2: T09a | P1 ✅ · P2 ⏳ |
-| [T09c](T09c-facade-examples.md) | `on_user<P>` in the facade; `user_packet` + `cigi_frames` examples on the facade | A (after v0.1.0) | T09a, T17 | ⏳ |
+| [T09c](T09c-facade-examples.md) | `on_user<P>` in the facade; `user_packet` + `cigi_frames` examples on the facade | A (after v0.2.0) | T09a, T17 | ⏳ |
 | [T09](T09-demo-apps.md) | `demo_host` + mock `demo_ig` (+ fault flags) | A (MVP) | T09a, T09b P1, T10 | ⏳ |
 | [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ✅ `2781a3a` |
 | [T11](T11-ccl-interop.md) | CCL interoperability & differential tests | A (MVP) | T09 | ⏳ |
