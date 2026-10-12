@@ -10,6 +10,7 @@
 #include <tuple>
 
 namespace myapp {
+namespace {
 
 /// Opcode 201, 16 bytes (4 + 4n, a multiple of 8), either direction. The identifying fields sit in
 /// the first two 32-bit words (ICD 4.3). The field table also gives byte swapping for free.
@@ -33,6 +34,7 @@ struct Telemetry {
 static_assert(cigi::wire::layout_ok<Telemetry>());
 static_assert(cigi::UserDefinedPacket<Telemetry>);
 
+} // namespace
 } // namespace myapp
 
 // Registration: the standard Host -> IG packets plus ours (checked at compile time: the opcode must
@@ -47,7 +49,8 @@ int main() {
         builder.add(cigi::IgControl{}).has_value() &&
         builder
             .add(myapp::Telemetry{
-                .sensor_id = 7, .alarm = true, .temperature = 36.6F, .samples = 1200})
+                .sensor_id = 7, .alarm = true, .temperature = 36.6F, .samples = 1200,
+            })
             .has_value();
     if (!built) {
         return EXIT_FAILURE;

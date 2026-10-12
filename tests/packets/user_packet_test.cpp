@@ -14,6 +14,7 @@
 
 // The packets live directly in namespace cigi, like the library's own: the shared test helpers call
 // encode/decode unqualified and find the generic table-driven templates through it.
+// NOLINTBEGIN(misc-use-internal-linkage): external linkage on purpose, see above.
 namespace cigi {
 
 enum class TagMode : std::uint8_t { Off = 0, On = 1, Auto = 2 };
@@ -113,6 +114,8 @@ struct LastOpcode {
     static constexpr auto fields = std::tuple{wire::scalar(&LastOpcode::v, 2)};
 };
 
+// NOLINTEND(misc-use-internal-linkage)
+
 // ---- compile-time rejection -----------------------------------------------------------------
 static_assert(is_user_opcode(201) && is_user_opcode(255) && is_user_opcode(230));
 static_assert(!is_user_opcode(200) && !is_user_opcode(0) && !is_user_opcode(117));
@@ -160,6 +163,7 @@ constexpr auto golden_le = bytes_of(0xD2, 0x10, 0x02, 0x01, 0x02, 0x01, 0x00, 0x
 constexpr auto golden_be = bytes_of(0xD2, 0x10, 0x01, 0x02, 0x02, 0x01, 0x00, 0x00, //
                                     0x3F, 0xC0, 0x00, 0x00, 0x0A, 0x0B, 0x0C, 0x0D);
 
+namespace {
 constexpr bool constexpr_round_trip() {
     std::array<std::byte, 16> buf{};
     encode(sample, buf);
@@ -167,6 +171,7 @@ constexpr bool constexpr_round_trip() {
     return r.has_value() && *r == sample && buf == native_of(golden_le, golden_be);
 }
 static_assert(constexpr_round_trip());
+} // namespace
 
 TEST(UserPacket, GoldenBytesBothOrders) {
     expect_golden(sample, golden_le, golden_be);
@@ -276,15 +281,17 @@ TEST(UserPacketDispatch, VisitorReceivesUserPacket) {
     ASSERT_TRUE(view.has_value());
     int tags = 0;
     int others = 0;
-    const auto stats = dispatch<Mine>(*view, overloaded{[&](const SensorTag& t) {
-                                                            EXPECT_EQ(t, sample);
-                                                            ++tags;
-                                                        },
-                                                        [&](const OtherUser& o) {
-                                                            EXPECT_EQ(o.value, 9);
-                                                            ++others;
-                                                        },
-                                                        [](const IgControl&) {}});
+    const auto stats = dispatch<Mine>(*view, overloaded{
+                                                 [&](const SensorTag& t) {
+                                                     EXPECT_EQ(t, sample);
+                                                     ++tags;
+                                                 },
+                                                 [&](const OtherUser& o) {
+                                                     EXPECT_EQ(o.value, 9);
+                                                     ++others;
+                                                 },
+                                                 [](const IgControl&) {},
+                                             });
     EXPECT_EQ(tags, 1);
     EXPECT_EQ(others, 1);
     EXPECT_EQ(stats, (DispatchStats{.handled = 3, .ignored = 1, .unknown = 0, .errors = 0}));
