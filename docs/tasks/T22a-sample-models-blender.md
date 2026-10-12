@@ -17,6 +17,8 @@ Follow the shared rules in [README.md](README.md) (rule 6 does not apply).
    decals/markings, LODs. Recommend a level and justify it.
 3. **Improve the existing jet** where the research says it is worth it, and build the helicopter,
    tank and truck to the same level.
+**Review gate:** the research goes to the user for review before any modelling starts; models
+are built only after the user approves (or amends) the recommendations.
 Write the findings to `docs/research/03-model-format-and-fidelity.md` (sources cited with
 links + access date). If the recommendation changes this brief's format, sizes or the T22 loader
 plan, say so in the research doc and the report; do not edit T22's brief (the planner does).
