@@ -157,3 +157,283 @@ running twice; result in the task report).
   preservation, axis/scale conversion (glTF metres, +Y up, to Unreal centimetres, Z up), and
   whether the imported material uses `COLOR_0`. If pivots do not survive, USD is the fallback
   (the same Blender script can write it with `bpy.ops.wm.usd_export`).
+
+---
+
+# Addendum A (2026-10-12, after user review)
+
+User decisions: `.glb` accepted. The renderer is ours and can be upgraded, so "the viewer does not
+show it" is **withdrawn** as a reason for the fidelity level (section 4 above): fidelity is now
+justified by performance against looks and authoring effort. The aircraft is a generic advanced
+jet trainer modelled on the BAE Hawk's published proportions, with tandem cockpit and an interior.
+Where this addendum disagrees with sections 1 and 4 (no LODs, 200 KB cap, 3-10 k triangles for
+every model), **this addendum wins**. Web pages accessed 2026-10-12. Figures that are my
+estimates rather than sourced are marked **(estimate)** and are to be measured with the viewer's
+`--stress 200 --bench 600`.
+
+## A1. Performance budgets
+
+Sources found (authoritative per-vehicle budgets for a 200-entity IG do not exist publicly, so
+these are reference points, not rules):
+
+* Microsoft Flight Simulator 2024 SDK, aircraft modeling general principles: per-LOD maximums
+  LOD x0 1,500,000 triangles / 65 materials, x1 700 k, x2 350 k, x3 100 k, x4 50 k, x5 10 k,
+  x6 100; stated as hard limits to stay well below -
+  <https://docs.flightsimulator.com/msfs2024/retail/models-and-textures/modeling/aircraft/aircraft-modeling-general-principles/>
+  (figures as reported by a search summary; the page body was too long for our fetcher).
+* MSFS cockpit/cabin principles: LOD0 **interior** budgets 500 k / 400 k / 200 k / **150 k**
+  triangles for jumbo / large / small passenger jet / **single or double seater**; the cockpit
+  must fit inside the airframe, "no mesh from the cockpit should be visible outside"; merge static
+  non-interactive cockpit parts into one shell to save draw calls; place a pilot helper on the
+  seat - <https://docs.flightsimulator.com/msfs2024/retail/models-and-textures/modeling/aircraft/cockpit/cockpit-and-cabin-modeling-general-principles/index.md>
+* MSFS LOD selection: about 50 % fewer triangles per LOD step; LOD chosen by the bounding
+  sphere's share of vertical screen height (x0 at 110 % or more, x1 110-75 %, x2 75-50 %, x3
+  50-30 %, x4 below 30 %); an object under 0.1 % of the screen is not drawn -
+  <https://docs.flightsimulator.com/msfs2024/retail/models-and-textures/modeling/lods/lod-selection-system/>
+* Unreal: hierarchical instanced static meshes (HISM) draw different LODs per instance, plain
+  ISM shares one LOD, both cut draw calls; `stat RHI` / `stat scenerendering` count draws (from a
+  search summary of Epic's documentation; Epic's mobile performance guideline page could not be
+  retrieved).
+* Meta Quest guidance (mobile VR, a floor not a target): under 100 static, about 200 total draw
+  calls - <https://developers.meta.com/horizon/documentation/unity/po-assetstreaming/>
+* Community rule of thumb (low authority): fifty 1 k-triangle objects can cost more than one
+  50 k object because per-object overhead dominates; always profile on the target.
+
+What raylib 6.0 does and does not do for 3-D models (read in the local source,
+`build/clang-release/_deps/raylib-src/src/rmodels.c`):
+
+* `DrawMesh` = one draw call per mesh per material with uniform uploads; **no frustum culling, no
+  LOD, no sorting, no batching of meshes**. The rlgl batch (`RL_DEFAULT_BATCH_*`) only merges
+  immediate-mode primitives (`DrawCube` etc.), not meshes.
+* `DrawMeshInstanced(mesh, material, transforms, n)` exists (OpenGL 3.3/ES2). It needs a shader
+  with an instance-transform attribute (`SHADER_LOC_VERTEX_INSTANCETRANSFORM`), takes one mesh and
+  one material per call, and rebuilds the instance buffer every call (cheap for hundreds). Since
+  each instance has its own matrix, **articulated parts instance fine**: group by (model, LOD,
+  node, material) and give each entity's composed node matrix as that instance's transform.
+  Per-instance colour is not provided (vertex colour and material colour are shared).
+* GPU skinning is compiled out by default (`SUPPORT_GPU_SKINNING 0`), consistent with "no skins".
+* Index type is `u16`: every primitive under 65 536 vertices (split big meshes by part/material).
+
+Evaluation against about 200 entities on a laptop GPU **(estimate)**: triangles are not the limit
+(a typical integrated GPU handles tens of millions of triangles per frame at 60 fps; 200 entities
+at the LOD mix below is about 0.4 M). Draw calls are: 200 entities x 12 nodes x 2 materials = 4 800
+draws without LOD or instancing, which is likely to miss 60 fps on macOS (OpenGL translated to
+Metal has high per-draw cost). With the LOD mix 10 x LOD0 (20 draws), 40 x LOD1 (10), 100 x LOD2
+(4), 50 x LOD3 (1.5) the total is about 1 100 draws; with instancing about 150. So the **budgets
+that matter are draw calls per LOD and the number of distinct (model, LOD) pairs, not triangles**.
+
+Recommended per-model draw budgets (standard tier, see A2): LOD0 at most 14 nodes x 3 materials =
+20 draws; LOD1 at most 10; LOD2 at most 4; LOD3 1-2. Texture memory (when textures arrive, A4):
+raylib decodes PNG/JPEG to RGBA8 (no GPU-compressed upload from glTF; `KHR_texture_basisu` is
+parsed by cgltf but cannot be decoded by raylib, so do not use it): a 1024x1024 map is 4 MB
+(5.3 MB with mips). Standard model: one albedo atlas plus one packed occlusion-roughness-metallic
+(ORM) atlas at 1024 = about 11 MB; four standard models about 45 MB, shared by all entities.
+Hero: three 2048 maps = 3 x 21 MB = 64 MB. Fine on any laptop GPU; keep the total under 256 MB.
+
+## A2. Two fidelity tiers
+
+| | Hero (ownship) | Standard (all other entities) |
+|---|---|---|
+| Models | the jet trainer | helicopter, tank, truck (and the jet's distant LODs) |
+| LOD0 triangles | target 60-100 k, hard cap 150 k (exterior 35-60 k + cockpit 25-40 k) | 8-20 k |
+| Nodes / draws at LOD0 | up to 24 nodes, 40 draws (only one on screen) | at most 14 nodes, 20 draws |
+| LOD1 / LOD2 / LOD3 | 15 k / 4 k / 400 | 4 k / 1 k / 200 |
+| Material slots | at most 10 (at most 4 once texture-atlased) | at most 8 |
+| `.glb` size, geometry only | at most 6 MB (about 100 k triangles with ubyte vertex colour is 3-4 MB) | LOD0 at most 500 KB, all LODs at most 700 KB |
+| Textures (A4) | 2048 albedo + ORM + normal, later | 1024 albedo + ORM, later |
+
+Justification: the 150 k hero cap is MSFS's own LOD0 interior ceiling for a single/double
+seater, and the user's guess (50-150 k) agrees; only one hero is drawn at a time so GPU cost is
+immaterial and the real limit is authoring effort. Beyond about 100 k triangles a script-built
+model gets diminishing returns without textures: detail comes from meaningful parts (rails,
+intake lips, antennas, pylons, hinge fairings, gear detail, interior), not from subdividing.
+The standard tier moves up from 3-10 k to 8-20 k because LODs now carry the distance cost.
+
+**LODs from the script.** Generate them in the script, not with a blind Decimate:
+1. LOD0 is built with a `detail` parameter (ring/segment counts, bevel segments, optional small
+   parts). LOD1/LOD2 rebuild the same parts with lower `detail` and drop small parts. This is
+   deterministic, keeps every node name and pivot, and avoids decimation artefacts at hinges.
+2. LOD3 (below about 2 % screen height) is one static merged mesh of a single node (no articulated
+   parts; T22 must tolerate parts missing at LOD3). Merging is cheap in the script.
+3. Blender's Decimate modifier (Planar keeps flat areas, Collapse for organic shapes) stays a
+   fallback applied **per node** so pivots and names survive. (From my knowledge; the manual
+   page did not render in our fetcher.)
+
+**Selecting LODs in the viewer.** Options:
+* `MSFT_lod`: Khronos vendor extension, status Complete; the highest-quality node lists lower
+  nodes in `ids`, with `extras.MSFT_screencoverage` thresholds; clients without support load
+  only the top node -
+  <https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Vendor/MSFT_lod/README.md>.
+  Caveat: raylib's stock `LoadGLTF` uses **all** nodes and ignores scenes, so every LOD would be
+  drawn overlapped in any raylib tool that is not T22's cgltf loader. cgltf keeps unknown
+  extensions and node `extras` as raw JSON (`cgltf_extension`, `cgltf_extras`), so T22 could parse it.
+* Separate files per LOD (`jet.glb`, `jet_lod1.glb`, ...) listed in the manifest with a coverage
+  threshold. Works with every tool, keeps each file a valid standalone model, easy to cache and
+  to instance, no extension parsing.
+* **Recommend separate files + manifest** (`lods = [{model, min_screen_fraction}]`), with
+  MSFT_lod as an optional later export. Switch on the bounding sphere's share of vertical screen
+  height (from the actual camera FOV), thresholds starting at 25 % / 8 % / 2 % (our vehicles
+  are smaller than MSFS aircraft at typical distances) with about 20 % hysteresis, cull below
+  0.1 % (MSFS's value). Thresholds are **(estimate)**, tuned with the bench.
+
+## A3. Cockpit interior for the ownship
+
+Spec basis: ICD 3.3 section 4.1.16 (`third_party/spec/CIGI_ICD_3_3.txt`, View Control) attaches a
+view to an entity and sets its position and rotation **relative to the entity reference point**:
+translated along the entity's X, Y, Z (body axes, x forward, y right, z down), then rotated about
+the eyepoint in the order yaw, pitch, roll. So the host owns the eyepoint; the model only needs to
+offer a sensible default and a physical cockpit that matches it.
+
+Design:
+* Nodes in `jet.glb`: `cockpit` (interior shell, instruments, two seats, control columns, HUD
+  frame, canopy rails and sills; origin = entity reference point so it needs no transform; static
+  parts merged into one mesh as MSFS recommends, only moving controls separate), `hud_glass`
+  (a thin glass quad, drawn only when attached), exterior `canopy` (hinge at the canopy rear), and
+  empty marker nodes `eyepoint_front`, `eyepoint_rear` whose translation is the design eye
+  position (glTF empties are plain nodes; T22 reads them by name and converts to CIGI body axes
+  like everything else). They give the viewer a default View offset only when the host sent none.
+* The rear seat is raised (public description of the Hawk), so `eyepoint_rear` is higher than
+  `eyepoint_front`.
+* Visibility policy per entity in the manifest: `attached_view = "hidden" | "cockpit" | "full"`.
+  * `hidden` = real-simulator style (physical cockpit hardware, so the ownship is not drawn at
+    the eyepoint; the user states GenesisIG-style IGs commonly do this; I found no citable
+    source). It **must be optional** and is the default for any entity without a cockpit.
+  * `cockpit` (sample default for the hero) = draw `cockpit`, `hud_glass`, canopy frame; the
+    exterior nodes stay (the fuselage forward of the sill is below the eye).
+  * `full` = draw everything (debug).
+  In exterior views the `cockpit` node is drawn only at LOD0/LOD1, seen through a semi-transparent
+  canopy (or an opaque dark canopy at lower LODs, which avoids sorting issues).
+* Rendering detail: the attached view needs a **near plane near 0.05-0.1 m** while the scene
+  needs far planes of 100 km; one depth buffer cannot do both well (the viewer's chase camera
+  uses a 1 m near plane). Standard remedy: draw the cockpit in a second pass with its own
+  projection (near 0.05, far about 10 m) after clearing depth. Impact: a small T22/T23 renderer
+  change; the CIGI View Definition near/far values still apply to the world pass.
+* The interior must lie inside the airframe (MSFS rule); the script asserts the cockpit
+  bounding box lies inside the fuselage/canopy envelope.
+
+## A4. Renderer upgrade: PBR and textures with raylib 6.0
+
+What exists: raylib's `Material` has 12 maps (`MATERIAL_MAP_ALBEDO`, `METALNESS`, `NORMAL`,
+`ROUGHNESS`, `OCCLUSION`, `EMISSION`, ...); `LoadGLTF` already loads base colour,
+metallic-roughness (split into two grayscale textures), normal, occlusion and emissive images and
+factors. raylib ships `shaders_basic_pbr` (shader pair of about 210 lines, GLSL 330, up to 4
+lights, albedo + packed MRA + normal + emissive maps, no image-based lighting),
+`shaders_normalmap_rendering`, `shaders_shadowmap_rendering` and `shaders_mesh_instancing`
+examples (zlib licence; the PBR example's car model is CC-BY-NC, do not use it). Our viewer
+already has a custom GLSL 330 shader (Lambert + fog + grid), so the pattern is established.
+
+Work needed (rough effort, one developer, **estimate**):
+
+| Step | Effort | Notes |
+|---|---|---|
+| T22's cgltf loader keeps UVs, loads images to textures, shared cache, mipmaps + trilinear/anisotropic | 1 day beyond T22 | needed for any texture |
+| Textured albedo (sRGB to linear in shader) + baked AO multiply + constant roughness/metallic with a simple highlight | 0.5-1 day | **Phase A** |
+| Full metallic-roughness (GGX/Smith/Schlick) with sun + hemisphere ambient, ORM map, normal map (tangents from glTF or `GenMeshTangents`) | 3-4 days | **Phase B** |
+| Cheap environment reflection from the viewer's own sky gradient (no cubemap) so metals are not black | 0.5 day | Phase B |
+| Tone mapping, keeping fog and grid | 0.5 day | Phase B |
+| Sun shadow map | 2 days | not recommended now |
+
+Performance impact **(estimate)**: entities are small on screen so fragment cost is minor; the
+cost is state changes (texture binds) and memory, handled by one atlas per model and instancing.
+What it unlocks: livery, panel lines, camouflage and wear (albedo); baked contact shadows and
+panel creases (AO); paint vs bare metal (ORM); rivets and panel relief without triangles
+(normal map); instrument faces in the cockpit (albedo + emissive).
+
+Recommendation: **textures later; geometry and UV-readiness now.**
+* Now (T22a + T22): standard tier stays flat colour + vertex colour; the hero gets clean
+  non-overlapping UVs (Smart UV Project in the script) but no texture yet; T22 loads textures
+  if present.
+* Phase A shader with T22 or just after (albedo + AO). Phase B (normal + ORM) as a separate small
+  task after the sample database works. Priority of maps: albedo, then baked AO (inside ORM
+  red), then ORM, then normal.
+* Script feasibility: Cycles baking works headless (`bpy.ops.object.bake`, needs UVs) but is
+  slow, and byte-determinism across machines/GPUs is **not guaranteed** (needs a spike; not
+  tested). Policy: for textured assets the committed `.glb` is the artifact and CI does not
+  regenerate it; the script still reproduces it on the same machine and Blender version.
+  Textures inflate the repo (hero about 6-12 MB): generate rarely, commit once.
+
+## A5. Authoring: headless script vs Blender MCP
+
+**Community `ahujasid/blender-mcp`** (MIT; now published as `mcp-for-blender`) -
+<https://github.com/ahujasid/blender-mcp>: a Blender add-on opens a TCP socket (default port
+9876) and an MCP server relays tool calls. Tools: `execute_blender_code` (arbitrary Python in
+the live session), `look` (viewport, camera, multi-angle screenshots), `get_scene_info`,
+`generate_3d` (Tripo, Hunyuan3D, Hyper3D Rodin), `search_assets` / `import_asset` (Poly Haven
+CC0, Sketchfab, Poly Pizza of which about 69 % are CC-BY), telemetry controls. Setup the user
+would do: install `uv`, add the server to the MCP client config, `uvx mcp-for-blender
+install-addon`, enable the add-on, press Start MCP Server in Blender's sidebar, restart the
+client. Security: the socket has **no authentication or encryption**, so any local process can
+run Python as the user; an optional safe mode (`BLENDER_MCP_SAFE_MODE=1`) blocks file, network
+and process access; save work first. Telemetry: minimal anonymous usage by default, full
+prompt/scene collection opt-in; the terms mention use for improvement and training (set
+`DISABLE_TELEMETRY=true`).
+
+**Official Blender connector.** Third-party write-ups (strayspark.studio, mcp.directory,
+dev.classmethod.jp; accessed 2026-10-12) report an official Blender-developed MCP add-on and
+server announced with Anthropic's connector set on 2026-04-28, focused on Python API access and
+documentation search rather than asset generation, also via a local socket, installed from a
+Blender Lab extension repository. I could **not** retrieve a primary source (blender.org or
+Anthropic docs): treat this as unverified and check before relying on it.
+
+| | Headless `bpy` script (now) | Blender MCP (community or official) |
+|---|---|---|
+| Feedback loop | preview PNGs rendered and read by the agent (works today) | live viewport screenshots; the user can watch and hand-tweak |
+| Reproducibility | the script is the source; same input gives the same bytes | state lives in a running session; changes are lost unless written back |
+| Determinism | byte-identical `.glb` (geometry) | none by itself |
+| UV unwrap, Cycles bake, Decimate | callable headless via `bpy` | same API, no extra power |
+| Sculpting / painting | not practical headless | possible interactively, but yields unreproducible meshes |
+| Asset sources | none, none needed | Poly Haven textures (CC0) could help; Sketchfab / Poly Pizza need per-asset licence handling; AI-generated meshes have no named nodes or pivots, uncontrolled topology and an unclear output licence, which defeats the point of T22a |
+| Security | none beyond running Blender | unauthenticated code-execution socket |
+| Setup | already working (Blender 5.2.2) | user installs `uv`, add-on and config |
+
+Nothing the MCP offers is required for our models; the one real gain is a live viewport for
+art-direction of the hero and cockpit. **Recommendation: keep the headless script as the single
+source of truth for T22a.** If the user wants live iteration on the hero, use the hybrid: MCP for
+exploring proportions in a throwaway session, then encode every accepted decision as code in
+`make_models.py` (regenerate with `scripts/make_models.sh` and check the result; never commit
+output from the live session), with safe mode on and localhost only. No AI-generated or
+downloaded meshes in the sample database; at most Poly Haven CC0 textures later, each download
+approved by the user and credited in `CREDITS.md`.
+
+## A6. Revised plan per model and impact on other briefs
+
+Jet trainer (hero): a generic advanced jet trainer with tandem cockpit, modelled on published
+Hawk 128 numbers from Wikipedia (length 12.43 m, wingspan 9.94 m, height 3.98 m, wing area
+16.70 m2, empty weight 4 480 kg, one Rolls-Royce Turbomeca Adour turbofan; layout from the same
+article: tandem seats with a raised rear seat, low cantilever wing, intakes at the wing roots,
+single fin, ram-air turbine ahead of the fin) -
+<https://en.wikipedia.org/wiki/BAE_Systems_Hawk>. The older Hawk T1 is slightly smaller; its
+figures were not retrieved, so the model uses the 128 envelope. No wing-sweep figure was
+retrieved: use roughly 25 degrees by eye and say so in `CREDITS.md`.
+* Nodes: `fuselage` (root; fixed wing, intakes, fin, nozzle, antennas), `canopy`, `aileron_l`,
+  `aileron_r`, `flap_l`, `flap_r`, `elevator` (all-moving tailplane, pivot on its hinge axis),
+  `rudder`, `airbrake`, `gear` (visibility), `cockpit`, `hud_glass`, empties `eyepoint_front`,
+  `eyepoint_rear`. LOD files `jet_lod1..3.glb` (same node names except LOD3).
+* Budget: A2 hero column. Colours: neutral grey/white trainer scheme, no markings.
+* Legal (general information, not legal advice): published dimensions are facts; do not trace or
+  import BAE or third-party three-view drawings or blueprints (copyright). "Hawk", "BAE
+  Systems", Red Arrows / RAF liveries, roundels and logos are trademarks of their owners: no
+  markings, logos or real-unit schemes, and avoid "Hawk" in file names, manifest strings and
+  node names. The file stays `jet.glb`; `CREDITS.md` says "generic jet trainer; proportions
+  based on published dimensions of the BAE Systems Hawk; not affiliated with or endorsed by BAE
+  Systems".
+
+Helicopter, tank, truck: standard tier. Helicopter `fuselage`, `rotor_main`, `rotor_tail`,
+`gear`; tank `hull`, `turret`, `barrel`, `track_l`, `track_r`; truck `cab`, `bed`, `wheel_fl`,
+`wheel_fr`, `wheel_rl`, `wheel_rr` (per the T22a brief), each with LOD1-LOD3 files. Left/right
+sides corrected (vehicle left is +X).
+
+Impact on briefs (the planner edits them, not me):
+* **T22a**: the 200 KB cap becomes per-tier (A2); adds LOD files, the hero cockpit and extra
+  nodes, UV-ready hero; effort rises (the hero is the bulk). `scripts/make_models.sh` gains
+  `--lod` / `--detail` options.
+* **T20**: manifest gains `lods = [{model, min_screen_fraction}]`, `attached_view`
+  (`hidden|cockpit|full`), default eyepoint node names, and a per-part rotation-axis convention
+  (wheel / rotor spin). `database.toml` still waits for T20.
+* **T22**: LOD selection with hysteresis and 0.1 % cull; per-(model, LOD, node, material)
+  `DrawMeshInstanced` if the bench misses 60 fps (measure first); cockpit second pass with its
+  own near plane; eyepoint marker nodes; tolerate missing parts at LOD3; warn on primitives of
+  65 536 vertices or more; texture cache and Phase A shader as a follow-on.
+* **T28 (still locked, research only)**: separate LOD files import as separate static meshes;
+  Unreal LOD groups are set up in its static-mesh editor (not verified for glTF); the cockpit
+  second pass has an Unreal equivalent (separate near clip) to check then.
