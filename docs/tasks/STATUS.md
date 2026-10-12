@@ -35,7 +35,10 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   late" section at the end of the T22a brief.** One fresh Opus 5.5 session (task chip), MCP + script
   hybrid; it starts only after the user has had the T22c audit method explained and has approved
   the gates. Budget decided 2026-10-13: **cap 250 k triangles** (exterior ≤ 100 k, cockpit
-  ≤ 150 k), `.glb` ≤ 10 MB. No worktree holds the branch. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
+  ≤ 150 k), `.glb` ≤ 10 MB. **CP2a part 1** (the five CP1 fixes, `--detail` scaling, per-vertex
+  colour, raylib 65 536-vertex check) handed to a new Opus session via a task chip on 2026-10-13
+  (base `4cc297f`; it switches its worktree to the branch, uses the Blender MCP with the user's
+  Blender open, and stops for review). Re-mesh, cockpit and LODs wait for the audit approval. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
 - **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
   `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
   16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
