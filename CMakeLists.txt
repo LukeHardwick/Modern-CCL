@@ -179,7 +179,8 @@ if(TARGET cigi_session AND TARGET cigi_transport)
     # of the sessions and the UDP transport. No Boost types in the public headers.
     add_library(cigi_runtime STATIC src/runtime/host.cpp src/runtime/ig.cpp
                                     src/runtime/memory_transport.cpp
-                                    src/runtime/fault_transport.cpp)
+                                    src/runtime/fault_transport.cpp
+                                    src/runtime/udp_transport.cpp)
     add_library(cigi::runtime ALIAS cigi_runtime)
     target_sources(cigi_runtime PUBLIC
         FILE_SET HEADERS BASE_DIRS include
@@ -187,10 +188,11 @@ if(TARGET cigi_session AND TARGET cigi_transport)
               include/cigi/fault_transport.hpp
               include/cigi/host.hpp
               include/cigi/ig.hpp
-              include/cigi/link_state.hpp)
+              include/cigi/link_state.hpp
+              include/cigi/udp_datagram_transport.hpp)
     target_compile_features(cigi_runtime PUBLIC cxx_std_23)
-    target_link_libraries(cigi_runtime PUBLIC cigi::session
-                          PRIVATE cigi::transport cigi::platform)
+    target_link_libraries(cigi_runtime PUBLIC cigi::session cigi::transport
+                          PRIVATE cigi::platform)
     target_include_directories(cigi_runtime PRIVATE src/runtime)
     set_target_properties(cigi_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(MSVC)

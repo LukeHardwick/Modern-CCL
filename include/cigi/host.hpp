@@ -66,6 +66,10 @@ struct HostConfig {
     std::chrono::milliseconds probe_interval{100};
     /// Size of the buffer a message is built in. Overrides `session.max_message_bytes`.
     std::size_t max_message_bytes = 16384;
+    /// Host::connect only: drop datagrams that do not come from `ig_address`:`ig_port` before they
+    /// are decoded (counted in HostStats::foreign_datagrams, not as errors). Turn off for an IG
+    /// that answers from another port. A transport given to Host::over does its own filtering.
+    bool filter_senders = true;
     /// close() sends one IG Control requesting Reset/Standby first (ICD 2.8).
     bool standby_on_close = true;
     /// Further session settings (clock, stale window, validation, ...).
@@ -83,6 +87,9 @@ struct HostStats {
     std::uint64_t oversize_adds = 0;      ///< HostFrame::add calls that did not fit.
     std::uint64_t datagrams_received = 0; ///< Datagrams taken from the transport.
     std::uint64_t receive_errors = 0;     ///< Datagrams that could not be used.
+    /// Datagrams the transport dropped because they came from someone other than the IG (not
+    /// counted in `datagrams_received` or `receive_errors`).
+    std::uint64_t foreign_datagrams = 0;
     std::uint64_t ig_restarts = 0;        ///< IG restarts detected (frame numbers or stale run).
     std::uint64_t link_losses = 0;        ///< Times the link went Lost.
     std::array<std::chrono::microseconds, link_state_count> time_in_state{};
@@ -212,6 +219,9 @@ public:
     Result<void> request_database(int n);
     [[nodiscard]] LinkState state() const noexcept;
     [[nodiscard]] HostStats stats() const;
+    /// The local port the transport is bound to (useful with `local_port = 0`); 0 if the
+    /// transport has none, or after close().
+    [[nodiscard]] std::uint16_t local_port() const noexcept;
     /// The session underneath (escape hatch: handlers, last Start of Frame, peer version, ...).
     /// Do not call begin_frame()/finish_frame() on it while the facade drives it.
     [[nodiscard]] HostSession& session() noexcept;

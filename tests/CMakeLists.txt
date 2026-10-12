@@ -78,6 +78,7 @@ if(TARGET cigi_runtime)
     cigi_add_test(cigi_runtime_test SOURCES
         runtime/host_test.cpp
         runtime/ig_test.cpp
+        runtime/peer_test.cpp
         runtime/transport_test.cpp
         runtime/user_packet_test.cpp
         runtime/udp_transport_test.cpp

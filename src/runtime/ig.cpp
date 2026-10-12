@@ -1,7 +1,9 @@
 #include "cigi/ig.hpp"
 
 #include "internal.hpp"
-#include "udp_transport.hpp"
+
+#include "cigi/message/view.hpp"
+#include "cigi/udp_datagram_transport.hpp"
 
 #include <cmath>
 #include <spdlog/logger.h>
@@ -23,16 +25,26 @@ Result<void> validate(const IgConfig& c) {
     return {};
 }
 
+/// Would the IG session accept this datagram as a Host message (ICD 4.1.1: Host -> IG, first
+/// packet a decodable IG Control)? The same test IgSession::receive applies first, so the
+/// facade can adopt the sender before anything is delivered to a handler.
+bool is_host_message(std::span<const std::byte> datagram) {
+    const auto view = MessageView::parse(datagram);
+    return view && view->direction() == Direction::HostToIg &&
+           (*view->begin())
+               .and_then([](const RawPacket& raw) { return raw.decode_as<IgControl>(); })
+               .has_value();
+}
+
 } // namespace
 
 class IgCore {
 public:
-    IgCore(IgConfig config, std::unique_ptr<DatagramTransport> transport, bool host_known,
-           UdpDatagramTransport* learner = nullptr)
-        : config_(std::move(config)), transport_(std::move(transport)), learner_(learner),
+    IgCore(IgConfig config, std::unique_ptr<DatagramTransport> transport)
+        : config_(std::move(config)), transport_(std::move(transport)),
           session_(config_.session), clock_(config_.session.clock),
           log_(resolve_logger(config_.session)), pacing_(config_.rate_hz, clock_.now()),
-          rx_(receive_buffer_bytes), host_known_(host_known), configured_known_(host_known) {
+          rx_(receive_buffer_bytes) {
         last_rx_ = clock_.now();
         session_.handlers().on_error([this](const Error& e) { report(e); });
         session_.handlers().on_unknown([this](const UnknownPacket& u) {
@@ -47,7 +59,9 @@ public:
 
     Result<PollStatus> poll(milliseconds timeout);
     void close() {
-        learner_ = nullptr;
+        if (transport_) {
+            closed_foreign_ = transport_->foreign_datagrams();
+        }
         transport_.reset();
     }
 
@@ -61,22 +75,26 @@ public:
         last_rx_ = clock_.now();
     }
 
-    /// A Host learnt from its traffic is forgotten (and may be a different one next time).
+    /// A Host learnt from its traffic is forgotten (and may be a different one next time). A
+    /// configured Host stays.
     void forget_host() {
-        host_known_ = configured_known_;
-        if (learner_ != nullptr) {
-            learner_->forget_peer();
+        if (transport_) {
+            transport_->forget_peer();
         }
     }
 
     [[nodiscard]] bool host_connected() const {
-        return host_known_ && connected_ && clock_.now() - last_rx_ <= config_.peer_timeout;
+        return connected_ && clock_.now() - last_rx_ <= config_.peer_timeout;
     }
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     void set_paused(bool paused) noexcept { paused_ = paused; }
     [[nodiscard]] bool closed() const noexcept { return !transport_; }
+    [[nodiscard]] std::uint16_t local_port() const noexcept {
+        return transport_ ? transport_->local_port() : std::uint16_t{0};
+    }
     [[nodiscard]] IgStats stats() const {
         IgStats s = stats_;
+        s.foreign_datagrams = transport_ ? transport_->foreign_datagrams() : closed_foreign_;
         s.session = session_.stats();
         return s;
     }
@@ -91,6 +109,7 @@ public:
         users_.set(opcode, std::move(slot));
     }
     void on_frame(std::function<void(IgFrame&)> f) { frame_cb_ = std::move(f); }
+    void on_ig_control(std::function<void(const IgControl&)> f) { control_cb_ = std::move(f); }
 
 private:
     void report(const Error& error) const {
@@ -101,21 +120,20 @@ private:
 
     IgConfig config_;
     std::unique_ptr<DatagramTransport> transport_;
-    UdpDatagramTransport* learner_ = nullptr; ///< Into transport_ when the Host is learnt.
     IgSession session_;
     mutable TickClock clock_;
     std::shared_ptr<spdlog::logger> log_;
     Pacing pacing_;
     std::vector<std::byte> rx_;
-    bool host_known_;
-    bool configured_known_;
     bool connected_ = false;
     bool paused_ = false;
     TimePoint last_rx_;
+    std::uint64_t closed_foreign_ = 0; ///< foreign_datagrams of the transport when it was closed.
     IgStats stats_;
     UserHandlers users_;
     std::function<void(const Error&)> error_cb_;
     std::function<void(IgFrame&)> frame_cb_;
+    std::function<void(const IgControl&)> control_cb_;
 };
 
 Result<PollStatus> IgCore::poll(milliseconds timeout) {
@@ -144,7 +162,17 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         }
         ++status.datagrams_received;
         ++stats_.datagrams_received;
-        const auto handled = session_.receive(std::span<const std::byte>{rx_}.first(*received));
+        const auto datagram = std::span<const std::byte>{rx_}.first(*received);
+        // A transport that does not know its Host (ICD 2.8: the IG learns it from the first
+        // valid message) adopts the sender BEFORE anything is delivered: a message whose sender
+        // cannot be adopted reaches no handler. Anything that is not a Host message goes to the
+        // session as usual, which counts and reports it, and never redirects the IG.
+        if (!transport_->has_peer() && is_host_message(datagram) && !transport_->latch_peer()) {
+            ++stats_.receive_errors;
+            log_->warn("cannot adopt the sender of the Host message as the Host");
+            continue; // stay unknown: the next message tries again
+        }
+        const auto handled = session_.receive(datagram);
         if (!handled) {
             ++stats_.receive_errors;
             report(handled.error());
@@ -156,16 +184,18 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         if (!transport_) {
             return status; // a handler closed the IG
         }
-        if (!host_known_ && learner_ != nullptr && !learner_->latch_peer()) {
-            log_->warn("cannot adopt the sender of the Host message as the Host");
-            continue; // stay unknown: the next message tries again
+        if (!connected_) {
+            log_->info("Host connected");
         }
-        if (!host_known_ || !connected_) {
-            log_->info("Host connected"); // only once the Host is really adopted
-        }
-        host_known_ = true;
         connected_ = true;
         last_rx_ = clock_.now();
+        if (control_cb_ && !handled->duplicate && !handled->stale) {
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access): set by a successful receive().
+            control_cb_(*session_.last_ig_control());
+            if (!transport_) {
+                return status; // the callback closed the IG
+            }
+        }
     }
 
     now = clock_.now();
@@ -182,7 +212,8 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         ++stats_.frames_skipped;
         return status;
     }
-    if (!host_known_) {
+    if (!transport_->has_peer()) {
+        ++stats_.frames_unrouted;
         return status; // nobody to send to yet
     }
     // NOLINTNEXTLINE(bugprone-unused-return-value): Start of Frame always fits.
@@ -217,7 +248,7 @@ Result<Ig> Ig::over(IgConfig config, std::unique_ptr<DatagramTransport> transpor
     if (config.logger) {
         config.session.logger = config.logger;
     }
-    return Ig{std::make_unique<detail::IgCore>(std::move(config), std::move(transport), true)};
+    return Ig{std::make_unique<detail::IgCore>(std::move(config), std::move(transport))};
 }
 
 Result<Ig> Ig::connect(IgConfig config) {
@@ -228,23 +259,22 @@ Result<Ig> Ig::connect(IgConfig config) {
     if (host_known && config.host_port == 0) {
         return std::unexpected(detail::invalid_config());
     }
-    auto endpoint = transport::UdpEndpoint::open({
-        .local_address = config.listen_address,
-        .local_port = config.listen_port,
-        .remote_address = config.host_address,
-        .remote_port = host_known ? config.host_port : std::uint16_t{0},
-    });
-    if (!endpoint) {
-        return std::unexpected(endpoint.error());
+    auto udp = UdpDatagramTransport::open(
+        {
+            .local_address = config.listen_address,
+            .local_port = config.listen_port,
+            .remote_address = config.host_address,
+            .remote_port = host_known ? config.host_port : std::uint16_t{0},
+        },
+        config.filter_senders);
+    if (!udp) {
+        return std::unexpected(udp.error());
     }
     config.session.max_message_bytes = config.max_message_bytes;
     if (config.logger) {
         config.session.logger = config.logger;
     }
-    auto udp = std::make_unique<detail::UdpDatagramTransport>(std::move(*endpoint), !host_known);
-    auto* learner = host_known ? nullptr : udp.get(); // the IgCore owns udp and drops this first
-    return Ig{
-        std::make_unique<detail::IgCore>(std::move(config), std::move(udp), host_known, learner)};
+    return Ig{std::make_unique<detail::IgCore>(std::move(config), std::move(*udp))};
 }
 
 void Ig::on_unknown(std::function<void(const UnknownPacket&)> handler) {
@@ -255,6 +285,9 @@ void Ig::set_user_handler(std::uint8_t opcode, detail::UserHandlers::Slot slot) 
 }
 void Ig::on_error(std::function<void(const Error&)> handler) {
     core_->on_error(std::move(handler));
+}
+void Ig::on_ig_control(std::function<void(const IgControl&)> handler) {
+    core_->on_ig_control(std::move(handler));
 }
 void Ig::on_mode_request(std::function<bool(IgMode)> handler) {
     core_->session().on_mode_request(std::move(handler));
@@ -302,6 +335,9 @@ bool Ig::paused() const noexcept {
 }
 void Ig::restart() {
     core_->restart();
+}
+std::uint16_t Ig::local_port() const noexcept {
+    return core_->local_port();
 }
 IgStats Ig::stats() const {
     return core_->stats();

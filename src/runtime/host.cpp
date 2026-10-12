@@ -1,7 +1,8 @@
 #include "cigi/host.hpp"
 
 #include "internal.hpp"
-#include "udp_transport.hpp"
+
+#include "cigi/udp_datagram_transport.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -92,8 +93,12 @@ public:
     }
 
     [[nodiscard]] LinkState state() const noexcept { return state_; }
+    [[nodiscard]] std::uint16_t local_port() const noexcept {
+        return transport_ ? transport_->local_port() : std::uint16_t{0};
+    }
     [[nodiscard]] HostStats stats() const {
         HostStats s = stats_;
+        s.foreign_datagrams = transport_ ? transport_->foreign_datagrams() : closed_foreign_;
         s.session = session_.stats();
         s.time_in_state = in_state_;
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-*): LinkState values index the array.
@@ -150,6 +155,7 @@ private:
     bool check_database_ = false; ///< After Lost: re-request the database if the IG forgot it.
     std::optional<int> database_; ///< Last database asked for, replayed after a restart.
     bool warned_fragmentation_ = false;
+    std::uint64_t closed_foreign_ = 0; ///< foreign_datagrams of the transport when it was closed.
     HostStats stats_;
 
     UserHandlers users_;
@@ -411,6 +417,9 @@ void HostCore::close(bool notify) {
                        to_string(sent.error().code));
         }
     }
+    if (transport_) {
+        closed_foreign_ = transport_->foreign_datagrams();
+    }
     transport_.reset();
     set_state(LinkState::Closed, clock_.now(), notify);
 }
@@ -445,17 +454,18 @@ Result<Host> Host::connect(HostConfig config) {
     if (auto ok = detail::validate(config); !ok) {
         return std::unexpected(ok.error());
     }
-    auto endpoint = transport::UdpEndpoint::open({
-        .local_address = config.local_address,
-        .local_port = config.local_port,
-        .remote_address = config.ig_address,
-        .remote_port = config.ig_port,
-    });
-    if (!endpoint) {
-        return std::unexpected(endpoint.error());
+    auto udp = UdpDatagramTransport::open(
+        {
+            .local_address = config.local_address,
+            .local_port = config.local_port,
+            .remote_address = config.ig_address,
+            .remote_port = config.ig_port,
+        },
+        config.filter_senders);
+    if (!udp) {
+        return std::unexpected(udp.error());
     }
-    return over(std::move(config),
-                std::make_unique<detail::UdpDatagramTransport>(std::move(*endpoint), false));
+    return over(std::move(config), std::move(*udp));
 }
 
 void Host::on_unknown(std::function<void(const UnknownPacket&)> handler) {
@@ -499,6 +509,9 @@ Result<void> Host::request_database(int n) {
 }
 LinkState Host::state() const noexcept {
     return core_->state();
+}
+std::uint16_t Host::local_port() const noexcept {
+    return core_->local_port();
 }
 HostStats Host::stats() const {
     return core_->stats();

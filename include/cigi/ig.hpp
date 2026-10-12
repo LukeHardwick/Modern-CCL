@@ -42,9 +42,15 @@ struct IgConfig {
     std::uint16_t listen_port = 8004;
     /// Where Start of Frame goes (numeric address). Empty: the sender of the first datagram that
     /// parses as a Host message becomes the Host (stray datagrams do not redirect it) and nothing
-    /// is sent until then. The Host is forgotten again after restart() or `peer_timeout`.
+    /// is sent until then. The Host is forgotten again after restart() or `peer_timeout`, so a
+    /// Host restarted on another port is learnt again. Applies to Ig::connect; a transport given
+    /// to Ig::over learns (or not) through the peer hooks of DatagramTransport.
     std::string host_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t host_port = 8005;
+    /// Ig::connect only: once the Host is known (configured or learnt), drop datagrams from any
+    /// other sender before they are decoded (counted in IgStats::foreign_datagrams). Turn off
+    /// for a Host that sends from several ports.
+    bool filter_senders = true;
     /// Start of Frame rate (ICD 2.4; typically the display frame rate).
     double rate_hz = 60.0;
     /// No message from the Host for this long: host_connected() turns false.
@@ -63,6 +69,11 @@ struct IgStats {
     std::uint64_t late_frames = 0;        ///< Ticks missed because poll ran late.
     std::uint64_t datagrams_received = 0; ///< Datagrams taken from the transport.
     std::uint64_t receive_errors = 0;     ///< Datagrams that could not be used.
+    /// Datagrams dropped by the transport because they came from someone other than the Host.
+    /// They are neither decoded nor counted in `datagrams_received` or `receive_errors`.
+    std::uint64_t foreign_datagrams = 0;
+    /// Start of Frame ticks not sent because no Host is known yet (or any more).
+    std::uint64_t frames_unrouted = 0;
     std::uint64_t restarts = 0;           ///< restart() calls.
 };
 
@@ -98,7 +109,8 @@ public:
     /// Open the UDP socket. Errors: InvalidFieldValue (bad configuration or address),
     /// TransportError (bind failed).
     [[nodiscard]] static Result<Ig> connect(IgConfig config);
-    /// Same, over a transport of your own. Start of Frame is sent from the first poll() on.
+    /// Same, over a transport of your own. Start of Frame is sent from the first poll() on, or
+    /// once the transport has a peer if it learns one (DatagramTransport::has_peer / latch_peer).
     [[nodiscard]] static Result<Ig> over(IgConfig config,
                                          std::unique_ptr<DatagramTransport> transport);
 
@@ -110,8 +122,8 @@ public:
 
     // ---- receiving --------------------------------------------------------------------------
 
-    /// Handler for Host -> IG packets of type P (IG Control is consumed by the session; read it
-    /// with session().last_ig_control()). Only called in Operate/Debug (ICD 2.8).
+    /// Handler for Host -> IG packets of type P (IG Control is consumed by the session; see
+    /// on_ig_control, or read session().last_ig_control()). Only called in Operate/Debug (ICD 2.8).
     template <class P, class F>
         requires(HostToIgPackets::contains<P> && !std::is_same_v<P, IgControl>)
     void on(F&& handler) {
@@ -132,6 +144,12 @@ public:
         set_user_handler(P::opcode, detail::make_user_slot<P>(std::forward<F>(handler)));
     }
     void on_error(std::function<void(const Error&)> handler);
+    /// Called once for every IG Control that changes the Host's state, i.e. each message whose
+    /// IG Control is current (not a duplicate or reordered one; see IgSession::receive), in
+    /// every IG mode, after the message's other packets were delivered. Replaces polling
+    /// session().last_ig_control() every frame. It is called only for a message from the
+    /// accepted Host.
+    void on_ig_control(std::function<void(const IgControl&)> handler);
     /// Accept (true) or refuse (false) a Host's request for a different mode. On true the
     /// application calls set_mode() when the transition is done. Without it every request is
     /// accepted at once.
@@ -170,6 +188,9 @@ public:
     void restart();
 
     [[nodiscard]] IgStats stats() const;
+    /// The local port the transport is bound to (useful with `listen_port = 0`); 0 if the
+    /// transport has none, or after close().
+    [[nodiscard]] std::uint16_t local_port() const noexcept;
     /// The session underneath (escape hatch).
     [[nodiscard]] IgSession& session() noexcept;
     [[nodiscard]] const IgSession& session() const noexcept;

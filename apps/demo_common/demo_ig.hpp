@@ -69,7 +69,7 @@ public:
     ~DemoIg();
 
     /// The UDP port the IG listens on (useful with --listen-port 0).
-    [[nodiscard]] std::uint16_t bound_port() const { return link_->local_port(); }
+    [[nodiscard]] std::uint16_t bound_port() const { return ig_.local_port(); }
 
     /// Serve until `stop` is requested, `duration_s` has passed or the transport fails. Logs a
     /// status line every second and the summary at the end.
@@ -114,8 +114,6 @@ private:
     bool resumed_done_ = false;
     bool restarted_done_ = false;
     std::uint64_t last_report_frames_ = 0;
-    std::uint64_t applied_ = 0;       ///< messages_received when IG Control was last applied.
-    std::uint64_t accepted_seen_ = 0; ///< messages_received at the previous after_poll().
 };
 
 } // namespace cigi::demo

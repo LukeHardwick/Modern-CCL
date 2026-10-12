@@ -265,6 +265,17 @@ std::optional<UdpPeer> UdpEndpoint::last_sender() const {
     return UdpPeer{.address = impl_->sender.address().to_string(), .port = impl_->sender.port()};
 }
 
+std::optional<UdpPeer> UdpEndpoint::remote() const {
+    if (!impl_ || !impl_->has_remote) {
+        return std::nullopt;
+    }
+    return UdpPeer{.address = impl_->remote.address().to_string(), .port = impl_->remote.port()};
+}
+
+bool UdpEndpoint::last_sender_is_remote() const {
+    return impl_ && impl_->has_remote && impl_->has_sender && impl_->sender == impl_->remote;
+}
+
 std::uint16_t UdpEndpoint::local_port() const {
     if (!impl_) {
         return 0;

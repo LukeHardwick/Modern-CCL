@@ -66,6 +66,15 @@ public:
     Result<std::size_t> receive(std::span<std::byte> buffer,
                                 std::chrono::milliseconds timeout) override;
 
+    // The peer hooks go to the wrapped transport.
+    [[nodiscard]] bool has_peer() const override { return inner_->has_peer(); }
+    bool latch_peer() override { return inner_->latch_peer(); }
+    void forget_peer() override { inner_->forget_peer(); }
+    [[nodiscard]] std::uint64_t foreign_datagrams() const override {
+        return inner_->foreign_datagrams();
+    }
+    [[nodiscard]] std::uint16_t local_port() const override { return inner_->local_port(); }
+
 private:
     struct Delayed {
         std::vector<std::byte> data;

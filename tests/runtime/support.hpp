@@ -120,6 +120,50 @@ private:
     std::unique_ptr<DatagramTransport> theirs_;
 };
 
+/// A transport that learns its peer like the UDP one, with the outcome of every hook scripted:
+/// it has no peer until latch_peer() succeeds, and it records how it is used.
+class LearningTransport final : public DatagramTransport {
+public:
+    explicit LearningTransport(std::unique_ptr<DatagramTransport> inner)
+        : inner_(std::move(inner)) {}
+
+    int latch_failures = 0; ///< The next this-many latch_peer() calls fail.
+    int latch_calls = 0;
+    int forget_calls = 0;
+    int sends_without_peer = 0;
+    std::uint64_t foreign = 0;
+    std::uint16_t port = 0;
+
+    Result<void> send(std::span<const std::byte> datagram) override {
+        sends_without_peer += known_ ? 0 : 1;
+        return inner_->send(datagram);
+    }
+    Result<std::size_t> receive(std::span<std::byte> buffer,
+                                std::chrono::milliseconds timeout) override {
+        return inner_->receive(buffer, timeout);
+    }
+    [[nodiscard]] bool has_peer() const override { return known_; }
+    bool latch_peer() override {
+        ++latch_calls;
+        if (latch_failures > 0) {
+            --latch_failures;
+            return false;
+        }
+        known_ = true;
+        return true;
+    }
+    void forget_peer() override {
+        ++forget_calls;
+        known_ = false;
+    }
+    [[nodiscard]] std::uint64_t foreign_datagrams() const override { return foreign; }
+    [[nodiscard]] std::uint16_t local_port() const override { return port; }
+
+private:
+    std::unique_ptr<DatagramTransport> inner_;
+    bool known_ = false;
+};
+
 /// A transport that fails on demand.
 class BrokenTransport final : public DatagramTransport {
 public:

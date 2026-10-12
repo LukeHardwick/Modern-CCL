@@ -144,6 +144,8 @@ DemoIg::DemoIg(DemoIgOptions options, std::shared_ptr<spdlog::logger> logger,
     wire_scene();
     ig_.on_mode_request([this](IgMode mode) { return on_mode_request(mode); });
     ig_.on_frame([this](IgFrame& frame) { on_frame(frame); });
+    // The session consumes IG Control; the scene wants its frame number (HAT/HOT LSN).
+    ig_.on_ig_control([this](const IgControl& control) { scene_->apply(control); });
     // Unknown opcodes and errors go through the facade, so the scene counts them and the
     // facade's own error reporting stays intact. (The scene is replaced on a restart; these
     // hooks always use the current one.)
@@ -180,13 +182,6 @@ bool DemoIg::on_mode_request(IgMode mode) {
 }
 
 void DemoIg::on_frame(IgFrame& frame) {
-    // The session consumes IG Control; the scene wants its frame number (HAT/HOT LSN). Hand it
-    // over once per accepted Host message.
-    const auto received = ig_.session().stats().messages_received;
-    if (const auto& control = ig_.session().last_ig_control(); control && received != applied_) {
-        applied_ = received;
-        scene_->apply(*control);
-    }
     scene_->advance(dt_s_);
     ++operate_frames_;
     for (const auto& reply : responder_.collect(*scene_, frame.ig_frame_number())) {
@@ -217,7 +212,6 @@ void DemoIg::timed_faults(double elapsed_s) {
         restarted_done_ = true;
         logger_->warn("fault: IG restart");
         ig_.restart();
-        link_->forget_peer();
         seen_host_ = false;
         pending_mode_.reset();
         wire_scene();
@@ -238,18 +232,12 @@ void DemoIg::after_poll() {
             pending_mode_.reset();
         }
     }
-    // A Host is learnt once the session accepted a message from the candidate sender.
-    if (!link_->has_peer() && ig_.session().stats().messages_received != accepted_seen_) {
-        link_->latch_candidate();
-    }
-    accepted_seen_ = ig_.session().stats().messages_received;
-    // A learnt Host that went quiet is forgotten, so a restarted Host (new port) can reconnect.
+    // (The facade learns the Host, and forgets it again when it goes quiet, through the link.)
     const bool connected = ig_.host_connected();
     if (connected) {
         seen_host_ = true;
     } else if (seen_host_) {
         seen_host_ = false;
-        link_->forget_peer();
         logger_->warn("Host lost");
     }
 }
@@ -276,8 +264,8 @@ IgSummary DemoIg::summarise(double elapsed_s) const {
     s.operate_frames = operate_frames_;
     s.operate_refused = operate_refused_;
     s.datagrams_sent = link_->datagrams_sent();
-    s.datagrams_unrouted = link_->datagrams_unrouted();
-    s.datagrams_foreign = link_->datagrams_foreign();
+    s.datagrams_unrouted = s.ig.frames_unrouted;
+    s.datagrams_foreign = s.ig.foreign_datagrams;
     s.faults_active = faults_ != nullptr;
     if (faults_ != nullptr) {
         s.faults = faults_->stats();

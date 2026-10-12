@@ -84,6 +84,13 @@ public:
     /// Source of the most recently received datagram, if any (lets an IG reply to its Host).
     [[nodiscard]] std::optional<UdpPeer> last_sender() const;
 
+    /// The configured destination of `send`, if any.
+    [[nodiscard]] std::optional<UdpPeer> remote() const;
+
+    /// True if the most recently received datagram came from the configured remote (address and
+    /// port); false if it came from anyone else, or there is no remote or no datagram yet.
+    [[nodiscard]] bool last_sender_is_remote() const;
+
     /// The bound local port (useful after binding port 0); 0 if the endpoint is not open.
     [[nodiscard]] std::uint16_t local_port() const;
 
