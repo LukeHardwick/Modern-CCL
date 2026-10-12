@@ -310,6 +310,23 @@ class KnownAnswers(unittest.TestCase):
                                                  res["hygiene"]["slivers"])
         self.assertEqual(res["hygiene"]["slivers"], 4)
 
+    def test_5b_floating_and_duplicates(self):
+        """A box with a part 3 cm away (touching within the 5 cm margin), a part 20 cm away
+        (floating) and one triangle written twice: 1 floating island, 1 duplicate face."""
+        bv, bt = box((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+        nv, nt = box((0.53, -0.1, -0.1), (0.73, 0.1, 0.1))   # 3 cm gap: same cluster
+        fv, ft = box((0.70, -0.1, 0.8), (0.90, 0.1, 1.0))    # 20 cm from the box: floating
+        dv, dt = grid_plate(1, 0.2, 0.52)                    # 2 cm above the top: touching
+        dt = np.concatenate([dt, dt[:1]])                     # one face twice
+        m = write("islands", [node("body", bv, bt), node("near", nv, nt),
+                              node("far", fv, ft), node("dup", dv, dt)])
+        _a, res = audit(m, None, config(nodes=["body", "near", "far", "dup"]))
+        hy = res["hygiene"]
+        NOTE["5b islands: floating, duplicates"] = (hy["floating"], hy["duplicates"])
+        self.assertEqual(hy["floating"], 1)
+        self.assertEqual(hy["floating_islands"][0]["node"], "far")
+        self.assertEqual(hy["duplicates"], 1)
+
     def test_6_index_limit(self):
         """A primitive with 70 000 vertices fails the 16-bit index gate (hard); one with
         65 536 vertices passes."""

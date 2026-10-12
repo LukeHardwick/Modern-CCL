@@ -42,7 +42,7 @@ DEFAULTS = {
     "view": {"width": 1920, "height": 1080, "vfov_deg": 60.0},
     "visibility": {"directions": 162, "ray_offset": 1e-4, "clusters": 10},
     "headroom": {"ratios": [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01],
-                 "min_component": 2000},
+                 "min_component": 2000, "slack": 0.05, "max_reverse_points": 50000},
     "hygiene": {"degenerate_area": 1e-10, "sliver_deg": 2.0, "island_margin": 0.05},
     "reference": {"min_density": 4.0},
     "fast": {"spacing": 0.10, "directions": 42, "reverse_stride": 4,
@@ -966,45 +966,50 @@ def hygiene(geo, topo, cfg, node_match):
 
 def floating_islands(geo, topo, margin):
     """Same rule as make_models.check_islands: every connected island must touch (within
-    `margin`) the main cluster of geometry (the cluster with the most islands)."""
-    boxes = []
+    `margin`) the main cluster of geometry (the cluster with the most islands). Boxes are
+    swept in order of their lowest x, as there, with the overlap tests vectorised."""
+    los, his, names = [], [], []
     for name in sorted(topo):
         tp = topo[name]
         v = geo.v[tp.tri_idx]
-        for c in range(tp.ncomp):
-            sel = v[tp.comp == c].reshape(-1, 3)
-            boxes.append((sel.min(axis=0), sel.max(axis=0), name, c))
-    n = len(boxes)
-    parent = list(range(n))
+        lo = np.full((tp.ncomp, 3), np.inf)
+        hi = np.full((tp.ncomp, 3), -np.inf)
+        for k in range(3):
+            np.minimum.at(lo, tp.comp, v[:, k])
+            np.maximum.at(hi, tp.comp, v[:, k])
+        los.append(lo)
+        his.append(hi)
+        names += [name] * tp.ncomp
+    if not names:
+        return []
+    lo, hi = np.concatenate(los), np.concatenate(his)
+    n = len(lo)
+    order = np.lexsort((np.arange(n), lo[:, 0]))
+    slo, shi = lo[order], hi[order]
+    parent = np.arange(n)
 
     def find(i):
         while parent[i] != i:
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
-    order = sorted(range(n), key=lambda i: (boxes[i][0][0], i))
-    for ii, i in enumerate(order):
-        for j in order[ii + 1:]:
-            if boxes[j][0][0] > boxes[i][1][0] + margin:
-                break
-            a, b = boxes[i], boxes[j]
-            if all(a[0][k] <= b[1][k] + margin and b[0][k] <= a[1][k] + margin
-                   for k in range(3)):
-                ri, rj = find(i), find(j)
-                if ri != rj:
-                    parent[max(ri, rj)] = min(ri, rj)
-    sizes = {}
-    for i in range(n):
-        sizes[find(i)] = sizes.get(find(i), 0) + 1
-    if not sizes:
-        return []
-    main = min(sizes, key=lambda r: (-sizes[r], r))
+    ends = np.searchsorted(slo[:, 0], shi[:, 0] + margin, side="right")
+    for ii in range(n):
+        j0, j1 = ii + 1, ends[ii]
+        if j1 <= j0:
+            continue
+        ok = np.all((slo[j0:j1] <= shi[ii] + margin) & (slo[ii] <= shi[j0:j1] + margin), axis=1)
+        for jj in (np.nonzero(ok)[0] + j0).tolist():
+            ri, rj = find(int(order[ii])), find(int(order[jj]))
+            if ri != rj:
+                parent[max(ri, rj)] = min(ri, rj)
+    roots = np.array([find(i) for i in range(n)])
+    ids, counts = np.unique(roots, return_counts=True)
+    main = ids[np.lexsort((ids, -counts))[0]]
     out = []
-    for i in range(n):
-        if find(i) != main:
-            lo, hi = boxes[i][0], boxes[i][1]
-            out.append({"node": boxes[i][2], "centre": vec((lo + hi) / 2),
-                        "size": vec(hi - lo)})
+    for i in np.nonzero(roots != main)[0].tolist():
+        out.append({"node": names[i], "centre": vec((lo[i] + hi[i]) / 2),
+                    "size": vec(hi[i] - lo[i])})
     return out
 
 
@@ -1361,6 +1366,9 @@ class Audit:
                        (faces[:, 2] != faces[:, 0])
                 faces = faces[good]
                 rc_pts = m.rcent[comp_of_ref == c]
+                cap = hcfg.get("max_reverse_points", 50000)
+                if len(rc_pts) > cap:  # an even, deterministic subset keeps this fast
+                    rc_pts = rc_pts[::int(math.ceil(len(rc_pts) / cap))]
                 base = measure_patch(geo.v[gtris], m.tree, rgeo.v[m.rtri], rc_pts, cfg, spacing)
                 # Pass mark: the group gate, or (for a piece that already misses it) the
                 # piece's own error plus a 5 % slack, so that removing triangles may not make
