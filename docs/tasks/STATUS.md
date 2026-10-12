@@ -65,12 +65,12 @@ foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Lin
 429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
 are not templated on the packet set; user packets arrive via `on_unknown`).
 
-## Release v0.2.0 (candidate on `main`, tag pending the user's viewer hand test)
+## Release v0.2.0 — tagged 2026-10-12 on `192392c` (annotated, local only; not pushed)
 Contents: T00–T08, T09a, T09b Part 1, T10, T12, T17 + the viewer resize/fullscreen fix
 (`fix/viewer-resize`). Release candidate checks: macOS check.sh --coverage 658/658 (98.3 % lines),
 Linux GCC debug + ASan 655/655. Notes: `docs/releases/v0.2.0.md`. `v0.1.0` (2026-10-08, pushed)
-was the foundation. After the user has tried the viewer (green button, F/F11, edge-drag, Esc):
-annotated tag `v0.2.0` on `main`, local only. New work after the tag: **T09c**, T09b Part 2, T09.
+was the foundation. Tagged at the user's request before their hand test of the viewer: still to
+check by hand: green button, live F/F11/Esc, edge-drag (listed as a known limitation). New work: **T09c**, T09b Part 2, T09.
 
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
