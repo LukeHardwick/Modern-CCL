@@ -38,8 +38,9 @@ struct IgConfig {
     /// Interface to bind; empty means any.
     std::string listen_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t listen_port = 8004;
-    /// Where Start of Frame goes (numeric address). Empty: reply to the sender of the most recent
-    /// datagram, and send nothing until the first one arrives.
+    /// Where Start of Frame goes (numeric address). Empty: the sender of the first datagram that
+    /// parses as a Host message becomes the Host (stray datagrams do not redirect it) and nothing
+    /// is sent until then. The Host is forgotten again after restart() or `peer_timeout`.
     std::string host_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t host_port = 8005;
     /// Start of Frame rate (ICD 2.4; typically the display frame rate).

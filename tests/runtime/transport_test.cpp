@@ -210,6 +210,47 @@ TEST(FaultTransport, ReportsTheInnerTransportsFailure) {
     EXPECT_EQ(sent.error().os_error, 5);
 }
 
+TEST(FaultTransport, ReceiveWakesForTheNextReleaseInsteadOfSleepingThrough) {
+    FaultPair p;
+    p.faulty->set_added_latency(30ms); // 3000 ticks
+    ASSERT_TRUE(p.faulty->send(numbered(1)));
+    p.clock.advance(3000); // due now, but nothing has released it yet
+    Bytes buffer(8);
+    EXPECT_FALSE(p.faulty->receive(buffer, 0ms)); // releases it
+    EXPECT_EQ(drain(*p.far), (std::vector<std::uint8_t>{1}));
+
+    // A release due in the future caps the wait of a long receive().
+    ASSERT_TRUE(p.faulty->send(numbered(2)));
+    const auto capped_start = std::chrono::steady_clock::now();
+    EXPECT_FALSE(p.faulty->receive(buffer, 2s));
+    EXPECT_LT(std::chrono::steady_clock::now() - capped_start, 1500ms); // woke after ~30 ms
+    EXPECT_EQ(p.faulty->pending(), 1U); // the fake clock has not moved: still waiting
+}
+
+TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
+    auto broken = std::make_unique<BrokenTransport>();
+    BrokenTransport* inner = broken.get();
+    FakeClock clock;
+    FaultInjectingTransport faulty{std::move(broken), clock.fn()};
+    faulty.set_added_latency(10ms);
+    ASSERT_TRUE(faulty.send(numbered(1))); // queued
+    inner->fail_send = true;
+    clock.advance(1000);
+    Bytes buffer(8);
+    const auto released = faulty.receive(buffer, 0ms);
+    ASSERT_FALSE(released);
+    EXPECT_EQ(released.error().os_error, 5);
+
+    faulty.set_added_latency(10ms);
+    inner->fail_send = false;
+    ASSERT_TRUE(faulty.send(numbered(2)));
+    inner->fail_send = true;
+    clock.advance(1000);
+    faulty.set_added_latency(0us);
+    const auto sent = faulty.send(numbered(3)); // releases 2 (fails) and sends 3 (fails)
+    EXPECT_FALSE(sent);
+}
+
 TEST(FaultTransport, WorksUnderAHostAndAnIg) {
     // Dropping every Start of Frame the IG sends makes a connected Host lose the link.
     Rig rig{/*faults=*/true};

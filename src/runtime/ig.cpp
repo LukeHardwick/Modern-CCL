@@ -49,9 +49,17 @@ public:
         log_->warn("IG restart: back to Reset/Standby, frame counter reset");
         session_.reset();
         pacing_.reset(clock_.now());
-        host_known_ = configured_known_;
         connected_ = false;
+        forget_host();
         last_rx_ = clock_.now();
+    }
+
+    /// A Host learnt from its traffic is forgotten (and may be a different one next time).
+    void forget_host() {
+        host_known_ = configured_known_;
+        if (!configured_known_ && transport_) {
+            transport_->forget_peer();
+        }
     }
 
     [[nodiscard]] bool host_connected() const {
@@ -114,6 +122,9 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
             }
             ++stats_.receive_errors; // an oversize datagram was discarded
             report(error);
+            if (!transport_) {
+                return status; // on_error closed the IG
+            }
             continue;
         }
         ++status.datagrams_received;
@@ -122,23 +133,30 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         if (!handled) {
             ++stats_.receive_errors;
             report(handled.error());
+            if (!transport_) {
+                return status; // on_error closed the IG
+            }
             continue;
+        }
+        if (!transport_) {
+            return status; // a handler closed the IG
         }
         if (!host_known_ || !connected_) {
             log_->info("Host connected");
         }
+        if (!host_known_) {
+            transport_->latch_peer(); // the first valid message names the Host
+        }
         host_known_ = true;
         connected_ = true;
         last_rx_ = clock_.now();
-        if (!transport_) {
-            return status; // a handler closed the IG
-        }
     }
 
     now = clock_.now();
     if (connected_ && now - last_rx_ > config_.peer_timeout) {
         connected_ = false;
         log_->warn("no message from the Host for {} ms", config_.peer_timeout.count());
+        forget_host();
     }
     if (!pacing_.due(now)) {
         return status;

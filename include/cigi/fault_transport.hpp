@@ -8,7 +8,11 @@
 // Determinism: the random draws come from a seeded generator and the delay is measured with the
 // injected clock, so a test with a fake clock and a fixed seed always behaves the same. Delayed
 // datagrams are released from send() and receive() once the clock has passed their release time,
-// in the order they were sent. Not thread-safe.
+// in the order they were sent: a release happens only when the owner calls one of the two, so
+// receive() never waits beyond the next due release (it wakes, releases and returns what it has,
+// typically Timeout) and a peer polling with a long timeout sees at most about one millisecond
+// of extra delay. A failing inner send of a released datagram is returned by the call that
+// released it (the first failure; the others are still released). Not thread-safe.
 
 #include "cigi/datagram_transport.hpp"
 #include "cigi/session/session.hpp"
@@ -68,7 +72,8 @@ private:
         return p < 1.0 ? p : 1.0;
     }
     [[nodiscard]] bool roll(double probability);
-    void release_due();
+    Result<void> release_due();
+    [[nodiscard]] std::chrono::milliseconds until_next_release() const;
 
     std::unique_ptr<DatagramTransport> inner_;
     ClockFn clock_;

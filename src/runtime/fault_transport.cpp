@@ -1,6 +1,8 @@
 #include "cigi/fault_transport.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <utility>
 
 namespace cigi {
@@ -24,9 +26,10 @@ bool FaultInjectingTransport::roll(double probability) {
     return draw < probability;
 }
 
-void FaultInjectingTransport::release_due() {
+Result<void> FaultInjectingTransport::release_due() {
+    Result<void> result;
     if (queue_.empty()) {
-        return;
+        return result;
     }
     const std::uint32_t now = clock_().count();
     std::vector<Delayed> keep;
@@ -34,17 +37,32 @@ void FaultInjectingTransport::release_due() {
         // Signed difference of the wrapping tick counters: due once now has reached release_at.
         if (static_cast<std::int32_t>(now - item.release_at) >= 0) {
             ++stats_.released;
-            // NOLINTNEXTLINE(bugprone-unused-return-value): a failing inner send is the inner's.
-            static_cast<void>(inner_->send(item.data));
+            if (const auto sent = inner_->send(item.data); !sent && result) {
+                result = sent; // the first failure is reported, the rest are still released
+            }
         } else {
             keep.push_back(std::move(item));
         }
     }
     queue_ = std::move(keep);
+    return result;
+}
+
+std::chrono::milliseconds FaultInjectingTransport::until_next_release() const {
+    constexpr std::int64_t ticks_per_ms = 100; // 10 microsecond ticks
+    const std::uint32_t now = clock_().count();
+    std::int64_t soonest = std::numeric_limits<std::int64_t>::max();
+    for (const auto& item : queue_) {
+        soonest = std::min<std::int64_t>(soonest, static_cast<std::int32_t>(item.release_at - now));
+    }
+    if (soonest <= 0) {
+        return std::chrono::milliseconds{0};
+    }
+    return std::chrono::milliseconds{(soonest + ticks_per_ms - 1) / ticks_per_ms};
 }
 
 Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) {
-    release_due();
+    const Result<void> released = release_due();
     ++stats_.sent;
     if (roll(drop_)) {
         ++stats_.dropped;
@@ -68,13 +86,25 @@ Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) 
             result = sent;
         }
     }
+    if (result && !released) {
+        return released; // a delayed datagram released now could not be sent
+    }
     return result;
 }
 
 Result<std::size_t> FaultInjectingTransport::receive(std::span<std::byte> buffer,
                                                      std::chrono::milliseconds timeout) {
-    release_due();
-    return inner_->receive(buffer, timeout);
+    if (const auto released = release_due(); !released) {
+        return std::unexpected(released.error());
+    }
+    // Never sleep past the moment a delayed datagram is due: wake for it, release it, and let the
+    // caller poll again.
+    const bool capped = !queue_.empty() && until_next_release() < timeout;
+    const auto received = inner_->receive(buffer, capped ? until_next_release() : timeout);
+    if (const auto released = release_due(); !released) {
+        return std::unexpected(released.error());
+    }
+    return received;
 }
 
 } // namespace cigi

@@ -58,7 +58,7 @@ public:
         static_cast<void>(session_.request_mode(config_.requested_mode));
         if (config_.database) {
             // NOLINTNEXTLINE(bugprone-unused-return-value): validated by Host::over.
-            static_cast<void>(session_.request_database(*config_.database));
+            static_cast<void>(request_database(*config_.database));
         }
         session_.handlers().on_error([this](const Error& e) { report(e); });
     }
@@ -70,6 +70,14 @@ public:
 
     Result<PollStatus> poll(milliseconds timeout);
     void close(bool notify);
+
+    Result<void> request_database(int n) {
+        auto requested = session_.request_database(n);
+        if (requested) {
+            database_ = n == 0 ? std::nullopt : std::optional<int>{n};
+        }
+        return requested;
+    }
 
     void note_add_failure(const Error& error) {
         if (error.code == ErrorCode::BufferTooSmall) {
@@ -107,6 +115,7 @@ private:
     void refresh_state(TimePoint now);
     void on_datagram(std::span<const std::byte> datagram);
     void ig_restarted(TimePoint now, const char* why);
+    void replay_startup();
     void check_timeout(TimePoint now);
     [[nodiscard]] TimePoint next_wake(TimePoint now) const;
     Result<bool> maybe_send(TimePoint now);
@@ -126,7 +135,8 @@ private:
     TimePoint last_rx_;
     TimePoint last_probe_;
     std::optional<TimePoint> last_sent_;
-    std::uint32_t stale_run_ = 0;
+    std::uint32_t stale_run_ = 0;          ///< Consecutive stale or duplicate Start of Frames.
+    std::optional<int> database_;          ///< Last database asked for, replayed after a restart.
     bool warned_fragmentation_ = false;
     HostStats stats_;
 
@@ -136,8 +146,8 @@ private:
 };
 
 void HostCore::set_state(LinkState to, TimePoint now, bool notify) {
-    if (to == state_) {
-        return;
+    if (to == state_ || state_ == LinkState::Closed) {
+        return; // Closed is final: a callback that closed the Host must not be undone
     }
     const LinkState from = state_;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-*): LinkState values index the array.
@@ -173,9 +183,17 @@ void HostCore::refresh_state(TimePoint now) {
 void HostCore::ig_restarted(TimePoint now, const char* why) {
     ++stats_.ig_restarts;
     log_->warn("IG restarted ({}): replaying start-up", why);
+    replay_startup();
+    set_state(LinkState::WaitingForIg, now);
+}
+
+void HostCore::replay_startup() {
     session_.reset_peer();
     stale_run_ = 0;
-    set_state(LinkState::WaitingForIg, now);
+    if (database_) { // the session forgets a request once the IG accepted it
+        // NOLINTNEXTLINE(bugprone-unused-return-value): the number was validated when stored.
+        static_cast<void>(session_.request_database(*database_));
+    }
 }
 
 void HostCore::on_datagram(std::span<const std::byte> datagram) {
@@ -186,22 +204,29 @@ void HostCore::on_datagram(std::span<const std::byte> datagram) {
         report(received.error());
         return;
     }
+    if (!transport_) {
+        return; // a handler or callback closed the Host
+    }
     last_rx_ = now;
-    if (received->stale) {
-        // A few frames behind the newest: reordering, unless it goes on for longer than the
-        // stale window - then the IG restarted within that window of its old number
-        // (docs/design/04-sessions.md, "Limitation").
+    if (received->stale || received->duplicate) {
+        // Reordering or a repeat - unless it goes on for longer than the stale window: then the IG
+        // restarted and is counting up to its old number again (docs/design/04-sessions.md,
+        // "Limitation").
         if (++stale_run_ > config_.session.stale_window) {
             ig_restarted(now, "stale run");
         }
         return;
     }
-    if (received->duplicate) {
-        return;
-    }
+    const bool after_stale_run = stale_run_ > 0;
     stale_run_ = 0;
     if (received->frame_regressed) {
         ig_restarted(now, "frame number regressed");
+        return;
+    }
+    // An IG restarted within the stale window of its old number counts 0..N-1 (stale), N
+    // (duplicate) and then fresh numbers, now in Reset/Standby: it is not an IG-side mode change.
+    if (after_stale_run && is_flowing(state_) && session_.ig_mode() == IgMode::ResetStandby) {
+        ig_restarted(now, "reset after stale frames");
         return;
     }
     refresh_state(now);
@@ -212,8 +237,7 @@ void HostCore::check_timeout(TimePoint now) {
         ++stats_.link_losses;
         log_->warn("no message from the IG for {} ms: link lost",
                    std::chrono::duration_cast<milliseconds>(now - last_rx_).count());
-        session_.reset_peer();
-        stale_run_ = 0;
+        replay_startup();
         set_state(LinkState::Lost, now);
     }
 }
@@ -260,6 +284,9 @@ Result<PollStatus> HostCore::poll(milliseconds timeout) {
     }
     const TimePoint now = clock_.now();
     check_timeout(now);
+    if (state_ == LinkState::Closed) {
+        return status; // on_state_change closed the Host
+    }
     const auto sent = maybe_send(now);
     if (!sent) {
         return std::unexpected(sent.error());
@@ -269,6 +296,9 @@ Result<PollStatus> HostCore::poll(milliseconds timeout) {
 }
 
 Result<bool> HostCore::maybe_send(TimePoint now) {
+    if (!transport_) {
+        return false;
+    }
     bool with_user_content = false;
     bool probe = false;
     if (config_.synchronous) {
@@ -295,6 +325,9 @@ Result<bool> HostCore::maybe_send(TimePoint now) {
 }
 
 Result<void> HostCore::send_message(TimePoint now, bool with_user_content) {
+    if (!transport_) {
+        return {};
+    }
     // NOLINTNEXTLINE(bugprone-unused-return-value): IG Control always fits.
     static_cast<void>(session_.begin_frame());
     if (with_user_content && is_flowing(state_) && frame_cb_) {
@@ -306,7 +339,7 @@ Result<void> HostCore::send_message(TimePoint now, bool with_user_content) {
         HostFrame frame{session_, *this, state_,
                         sof && sof->timestamp_valid ? sof->timestamp : Timestamp{}, since};
         frame_cb_(frame);
-        if (state_ == LinkState::Closed) {
+        if (!transport_) {
             return {}; // the callback closed the Host
         }
     }
@@ -420,7 +453,7 @@ Result<void> Host::request_mode(IgMode mode) {
     return core_->session().request_mode(mode);
 }
 Result<void> Host::request_database(int n) {
-    return core_->session().request_database(n);
+    return core_->request_database(n);
 }
 LinkState Host::state() const noexcept {
     return core_->state();

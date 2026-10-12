@@ -334,5 +334,16 @@ TEST(IgFacade, IsMovable) {
     EXPECT_EQ(view.session().mode(), IgMode::Operate);
 }
 
+TEST(IgFacade, ClosingFromOnErrorEndsThePoll) {
+    IgFixture f;
+    f.ig.on_error([&](const Error&) { f.ig.close(); });
+    f.peer.send(Bytes(3)); // not a message
+    f.peer.send(control_message(1, IgMode::Operate));
+    f.clock.advance(frame_ticks);
+    EXPECT_TRUE(f.ig.poll(0ms));
+    EXPECT_TRUE(f.peer.received().empty());
+    EXPECT_TRUE(f.ig.poll(0ms)); // closed: a no-op
+}
+
 } // namespace
 // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

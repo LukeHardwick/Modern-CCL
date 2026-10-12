@@ -187,27 +187,45 @@ TEST(HostLink, AnIgRestartedFarBackIsDetectedAndStartUpIsReplayed) {
     EXPECT_EQ(rig.ig().stats().restarts, 1U);
 }
 
-TEST(HostLink, AnIgRestartedAfterThreeFramesRecoversThroughTheStaleFrames) {
-    Rig rig;
-    std::vector<Transition> changes;
-    watch(rig.host(), changes);
-    rig.steps(3);
-    ASSERT_EQ(rig.host().state(), LinkState::Operate);
-    changes.clear();
+TEST(HostLink, AnIgRestartedWithinTheStaleWindowIsRecognisedAndStartUpIsReplayed) {
+    // The restarted IG counts 0, 1, ... again while the Host's newest number N is still inside
+    // the stale window: 0..N-1 are stale, N a duplicate, and N+1 the first fresh one - which
+    // reports Reset/Standby while the Host is in Operate (docs/design/04-sessions.md).
+    for (const int frames_before : {3, 5, 7}) {
+        Rig rig;
+        std::vector<Transition> changes;
+        watch(rig.host(), changes);
+        rig.steps(frames_before);
+        ASSERT_EQ(rig.host().state(), LinkState::Operate) << frames_before;
+        changes.clear();
 
-    ASSERT_TRUE(rig.ig().poll(0ms)); // take in the Host's last message, then restart the IG
-    rig.ig().restart();              // frame numbers 0, 1, 2 are now stale or duplicates
-    rig.steps(3);
-    EXPECT_EQ(rig.host().state(), LinkState::Operate); // nothing it said was current
-    EXPECT_GE(rig.host().session().stats().stale_frames, 2U);
-    ASSERT_TRUE(rig.run_until(LinkState::Standby, 20)); // the first fresh SOF says Standby
-    ASSERT_TRUE(rig.run_until(LinkState::Operate, 20)); // and the Host asks for Operate again
-    EXPECT_EQ(rig.host().stats().ig_restarts, 0U);      // not a regression: within the window
-    const std::vector<Transition> expected{
-        {LinkState::Operate, LinkState::Standby},
-        {LinkState::Standby, LinkState::Operate},
-    };
-    EXPECT_EQ(changes, expected);
+        ASSERT_TRUE(rig.ig().poll(0ms)); // take in the Host's last message, then restart the IG
+        rig.ig().restart();
+        for (int i = 0; i < 40 && rig.host().stats().ig_restarts == 0; ++i) {
+            rig.step();
+        }
+        ASSERT_EQ(rig.host().stats().ig_restarts, 1U) << frames_before;
+        ASSERT_TRUE(rig.run_until(LinkState::Operate, 20)) << frames_before;
+        EXPECT_EQ(rig.host().stats().ig_restarts, 1U) << frames_before;
+        EXPECT_GE(rig.host().session().stats().stale_frames, 1U);
+        ASSERT_GE(changes.size(), 2U);
+        EXPECT_EQ(changes.front(), (Transition{LinkState::Operate, LinkState::WaitingForIg}));
+        EXPECT_EQ(changes.back().second, LinkState::Operate);
+        EXPECT_EQ(rig.ig().stats().restarts, 1U);
+    }
+}
+
+TEST(HostLink, AnIgDroppingToStandbyWithoutStaleFramesIsJustAModeChange) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    peer.send(sof_message(10, IgMode::Operate));
+    ASSERT_TRUE(host.poll(0ms));
+    ASSERT_EQ(host.state(), LinkState::Operate);
+    peer.send(sof_message(11, IgMode::ResetStandby));
+    ASSERT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Standby);
+    EXPECT_EQ(host.stats().ig_restarts, 0U);
 }
 
 TEST(HostLink, ALongRunOfStaleFramesCountsAsARestart) {
@@ -653,6 +671,102 @@ TEST(HostFailure, LinkStateHasNamesAndTraits) {
     EXPECT_FALSE(EnumTraits<LinkState>::is_defined(static_cast<LinkState>(link_state_count)));
     EXPECT_EQ(to_string(static_cast<LinkState>(200)), "?");
     EXPECT_EQ(to_string(LinkState::LoadingDatabase), "LoadingDatabase");
+}
+
+// ---- close from inside a callback ---------------------------------------------------------------
+
+TEST(HostClose, FromAPacketHandlerStaysClosed) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    host.on<HatHotResponse>([&](const HatHotResponse&) { host.close(); });
+    Bytes m = sof_message(5, IgMode::Operate);
+    const Bytes response = encoded(HatHotResponse{});
+    m.insert(m.end(), response.begin(), response.end());
+    peer.send(m);
+    peer.send(sof_message(6, IgMode::Operate)); // already queued: must not be read
+    EXPECT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Closed);
+    EXPECT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Closed);
+}
+
+TEST(HostClose, FromOnErrorStaysClosed) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    host.on_error([&](const Error&) { host.close(); });
+    peer.send(Bytes(3)); // not a message
+    peer.send(sof_message(1, IgMode::Operate));
+    EXPECT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Closed);
+}
+
+TEST(HostClose, FromOnStateChangeToLostStaysClosedInBothModes) {
+    for (const bool synchronous : {true, false}) {
+        RawPeer peer;
+        FakeClock const clock;
+        HostConfig config = host_config_with(clock);
+        config.synchronous = synchronous;
+        auto host = Host::over(config, peer.take_other()).value();
+        host.on_state_change([&](LinkState, LinkState to) {
+            if (to == LinkState::Lost) {
+                host.close();
+            }
+        });
+        peer.send(sof_message(1, IgMode::Operate));
+        ASSERT_TRUE(host.poll(0ms));
+        ASSERT_EQ(host.state(), LinkState::Operate);
+        clock.advance(500'000); // 5 s of silence
+        EXPECT_TRUE(host.poll(0ms)) << synchronous;
+        EXPECT_EQ(host.state(), LinkState::Closed) << synchronous;
+        EXPECT_TRUE(host.poll(0ms)) << synchronous;
+    }
+}
+
+TEST(HostClose, FromOnRestartStaysClosed) {
+    RawPeer peer;
+    FakeClock const clock;
+    auto host = Host::over(host_config_with(clock), peer.take_other()).value();
+    host.on_state_change([&](LinkState, LinkState to) {
+        if (to == LinkState::WaitingForIg) {
+            host.close();
+        }
+    });
+    peer.send(sof_message(1000, IgMode::Operate));
+    ASSERT_TRUE(host.poll(0ms));
+    peer.send(sof_message(5, IgMode::Operate)); // far back: the IG restarted
+    EXPECT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Closed);
+}
+
+// ---- database replay ----------------------------------------------------------------------------
+
+TEST(HostLink, AnIgRestartReplaysTheDatabaseRequest) {
+    HostConfig config;
+    config.database = 5;
+    Rig rig{config, IgConfig{}};
+    std::vector<int> requests;
+    rig.ig().on_database_request([&](std::int8_t n) {
+        requests.push_back(n);
+        rig.ig().set_database(static_cast<std::int8_t>(n)); // loaded at once
+    });
+    ASSERT_TRUE(rig.run_until(LinkState::Operate));
+    ASSERT_EQ(requests, std::vector<int>{5});
+
+    ASSERT_TRUE(rig.host().request_database(7)); // a later request replaces the configured one
+    rig.steps(5);
+    ASSERT_EQ(requests, (std::vector<int>{5, 7}));
+    ASSERT_TRUE(rig.ig().poll(0ms));
+    rig.ig().restart();
+    for (int i = 0; i < 40 && rig.host().stats().ig_restarts == 0; ++i) {
+        rig.step();
+    }
+    ASSERT_EQ(rig.host().stats().ig_restarts, 1U);
+    ASSERT_TRUE(rig.run_until(LinkState::Operate, 50));
+    rig.steps(3);
+    ASSERT_GE(requests.size(), 3U);
+    EXPECT_EQ(requests.back(), 7);
 }
 
 } // namespace

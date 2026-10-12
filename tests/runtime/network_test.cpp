@@ -1,10 +1,12 @@
 // Host and Ig facades over real loopback UDP, each running on its own thread (label: network).
 // Timing is lenient: every wait has a generous limit and nothing depends on exact rates.
 
+#include "../session/support.hpp"
 #include "cigi/host.hpp"
 #include "cigi/ig.hpp"
 #include "cigi/transport/udp.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
@@ -163,6 +165,34 @@ TEST(Network, AnIgWithoutAHostStaysSilentUntilItHearsFromOne) {
         ASSERT_TRUE(ig.poll(20ms));
     }
     EXPECT_EQ(ig.stats().frames_sent, 0U);
+}
+
+TEST(Network, AStrayDatagramDoesNotRedirectAnIgThatLearnsItsHost) {
+    const std::uint16_t ig_port = free_port();
+    IgConfig config;
+    config.listen_address = "127.0.0.1";
+    config.listen_port = ig_port;
+    auto ig = Ig::connect(config).value();
+    auto host =
+        transport::UdpEndpoint::open(
+            {.local_address = "127.0.0.1", .remote_address = "127.0.0.1", .remote_port = ig_port})
+            .value();
+    auto stray =
+        transport::UdpEndpoint::open(
+            {.local_address = "127.0.0.1", .remote_address = "127.0.0.1", .remote_port = ig_port})
+            .value();
+    const auto junk = test::Bytes(5, std::byte{0xFF});
+    ASSERT_TRUE(stray.send(junk)); // arrives first, parses as nothing
+    ASSERT_TRUE(ig.poll(20ms));
+    ASSERT_TRUE(host.send(test::control_message(1, IgMode::Operate)));
+    ASSERT_TRUE(wait_for([&] { return ig.poll(20ms).has_value() && ig.stats().frames_sent > 0; }));
+    ASSERT_TRUE(stray.send(junk)); // after the Host was learnt: still no redirect
+    for (int i = 0; i < 5; ++i) {
+        ASSERT_TRUE(ig.poll(20ms));
+    }
+    std::array<std::byte, 2048> buffer{};
+    EXPECT_TRUE(host.receive(buffer, 1s).has_value()); // the Start of Frame came to the Host
+    EXPECT_EQ(stray.receive(buffer, 50ms).error().code, ErrorCode::Timeout);
 }
 
 TEST(Network, AnAsynchronousHostSendsAtItsOwnRate) {
