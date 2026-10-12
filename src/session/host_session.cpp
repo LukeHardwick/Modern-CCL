@@ -17,7 +17,9 @@ HostSession::HostSession(SessionConfig config)
       log_(detail::resolve_logger(config_)),
       storage_(std::max(config_.max_message_bytes, min_message_bytes)),
       builder_(Direction::HostToIg, storage_), next_frame_(config_.initial_frame_number),
-      ig_frames_(config_.stale_window) {}
+      ig_frames_(config_.stale_window) {
+    handlers_.ignore_user_packets(config_.ignore_user_packets);
+}
 
 bool HostSession::ready_to_send() const noexcept {
     return !config_.synchronous || ready_;

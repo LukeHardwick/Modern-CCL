@@ -42,8 +42,10 @@ public:
         }
         const std::size_t n = encoded_size(p);
         // ICD 4.3: a user-defined packet is 4 + 4n bytes and a multiple of 8.
-        if (is_user_opcode(P::opcode) && !is_valid_user_size(n)) {
-            return fail(ErrorCode::InvalidPacketSize);
+        if constexpr (is_user_opcode(P::opcode)) {
+            if (!is_valid_user_size(n)) {
+                return fail(ErrorCode::InvalidPacketSize);
+            }
         }
         if (n > storage_.size() - size_) {
             return fail(ErrorCode::BufferTooSmall);

@@ -232,7 +232,9 @@ DispatchStats deliver_message(const Dispatcher<Set>& handlers, const MessageView
             handlers.deliver(adapt_received(p, peer));
         }
     };
-    return dispatch<Set>(view, visitor, [&](const Error& e) { handlers.deliver(e); });
+    return dispatch<Set>(
+        view, visitor, [&](const Error& e) { handlers.deliver(e); },
+        handlers.ignoring_user_packets());
 }
 
 /// The logger to use: the configured one, or a silent one.

@@ -20,7 +20,8 @@ inline constexpr std::uint8_t user_opcode_max = 255;
 
 /// True if `opcode` lies in the user-defined range.
 [[nodiscard]] constexpr bool is_user_opcode(std::uint8_t opcode) noexcept {
-    return opcode >= user_opcode_min && opcode <= user_opcode_max;
+    static_assert(user_opcode_max == 0xFF, "the upper bound is the largest 8-bit opcode");
+    return opcode >= user_opcode_min;
 }
 
 /// True if `size` is a legal user-defined packet size (ICD 4.3): 4 + 4n, a multiple of 8 (ICD

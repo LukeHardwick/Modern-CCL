@@ -34,7 +34,9 @@ IgSession::IgSession(SessionConfig config)
       log_(detail::resolve_logger(config_)),
       storage_(std::max(config_.max_message_bytes, min_message_bytes)),
       builder_(Direction::IgToHost, storage_), next_frame_(config_.initial_frame_number),
-      host_frames_(config_.stale_window) {}
+      host_frames_(config_.stale_window) {
+    handlers_.ignore_user_packets(config_.ignore_user_packets);
+}
 
 Result<void> IgSession::reject(const Error& error) {
     ++stats_.rejected_packets;

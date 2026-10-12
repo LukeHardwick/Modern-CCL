@@ -33,7 +33,7 @@ template <class... Fs> struct overloaded : Fs... {
 /// What one dispatch pass did.
 struct DispatchStats {
     std::size_t handled = 0; ///< Known packets given to a handler.
-    std::size_t ignored = 0; ///< Known packets with no handler.
+    std::size_t ignored = 0; ///< Known packets with no handler, and user packets switched off.
     std::size_t unknown = 0; ///< Packets with an opcode outside the set (handled or not).
     std::size_t errors = 0;  ///< Header errors (at most one) plus body errors.
 
@@ -119,11 +119,12 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
 /// accepts `const UnknownPacket&` it receives unknown opcodes. `on_error(const Error&)` is
 /// optional. No allocation. A second IG Control / Start of Frame in a message is reported as
 /// DuplicateFramePacket and skipped. WrongDirection arises only if `Set` and the message direction
-/// disagree; an opposite-direction packet in a matching set is an UnknownPacket.
+/// disagree; an opposite-direction packet in a matching set is an UnknownPacket. With
+/// `ignore_user` user-defined packets (201-255) are skipped and counted as ignored (ICD 4.3).
 // NOLINTBEGIN(cppcoreguidelines-missing-std-forward): both are called repeatedly, never moved.
 template <class Set, class Visitor, class OnError = detail::IgnoreErrors>
 constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
-                                 OnError&& on_error = {}) {
+                                 OnError&& on_error = {}, bool ignore_user = false) {
     static_assert(detail::AcceptsAny<Set, Visitor>::value,
                   "dispatch: the visitor accepts no packet of the set and not UnknownPacket");
     auto on_packet = [&]([[maybe_unused]] const auto& p) {
@@ -139,7 +140,7 @@ constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
             static_cast<void>(visitor(p));
         }
     };
-    return detail::walk<Set>(view, on_packet, on_unknown, on_error);
+    return detail::walk<Set>(view, on_packet, on_unknown, on_error, ignore_user);
 }
 // NOLINTEND(cppcoreguidelines-missing-std-forward)
 
