@@ -30,8 +30,11 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   (report facade gaps instead) or `apps/ig_viewer/`.
 - **T09c merged `d348d73`** (Opus review fixes applied; macOS 671/671, 98.3 % lines; Linux 668/668).
   Notes for T09d: IG dispatches before latching the sender (ig.cpp ~147-161); latch-retry test needs a seam.
-- **T22a** `task/t22a-sample-models`: research approved; modelling by a fresh Sonnet agent with
-  4 image checkpoints (Hawk exterior, Hawk cockpit, helicopter+tank, truck+LODs).
+- **T22a** `task/t22a-sample-models` @ `cbf595a`: CP1 (Hawk exterior) accepted with fixes.
+  **Handoff:** see the "Handoff — 2026-10-12 evening" section at the end of the T22a brief. Next is
+  CP2 (fold-in fixes + cockpit) then CP3 (jet LODs + wrap-up) with a **fresh Opus 5.5** agent/session,
+  images at each checkpoint. Aircraft only today; other vehicles later. No worktree holds the branch.
+- **T09d** `task/t09d-facade-peer`: Sonnet agent running (from `da7a213`). Then T09b Part 2.
 Next: T09b Part 2 after T09 merges (reuses its CLI11/options) → T11 (ask the user before it
 downloads/builds the LGPL CCL) → M1.
 
