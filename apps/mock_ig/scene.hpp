@@ -218,8 +218,8 @@ public:
     void register_all_handlers(Handlers& dispatcher, HatHotResponder* responder = nullptr);
 
     /// Count (and log) a packet with an unknown opcode / a decode error.
-    void note_unknown(const UnknownPacket& packet);
-    void note_error(const Error& error);
+    void note_unknown(const UnknownPacket& u);
+    void note_error(const Error& e);
 
     // ---- time ----
     /// Integrate Rate Control over `dt` seconds (entities and parts that are Active), resolve

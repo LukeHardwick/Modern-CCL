@@ -268,7 +268,7 @@ TEST(DemoPair, AStraySenderCannotDriveTheScene) {
     std::thread stray_thread([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds{500});
         for (int i = 0; i < 30; ++i) {
-            static_cast<void>((*stray)->send(builder.bytes()));
+            EXPECT_TRUE((*stray)->send(builder.bytes()).has_value());
             std::this_thread::sleep_for(std::chrono::milliseconds{20});
         }
     });

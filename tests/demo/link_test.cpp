@@ -153,15 +153,15 @@ std::vector<Frame> read_frames(const std::string& pcap) {
     };
     while (pos + 16 <= pcap.size()) {
         const std::size_t len =
-            static_cast<std::size_t>(at(pos + 8)) | (static_cast<std::size_t>(at(pos + 9)) << 8);
+            static_cast<std::size_t>(at(pos + 8)) + (static_cast<std::size_t>(at(pos + 9)) * 256U);
         const std::size_t ip = pos + 16;
         Frame f;
         for (std::size_t i = 0; i < 4; ++i) {
             f.src_ip.at(i) = at(ip + 12 + i);
             f.dst_ip.at(i) = at(ip + 16 + i);
         }
-        f.src_port = (at(ip + 20) << 8) | at(ip + 21);
-        f.dst_port = (at(ip + 22) << 8) | at(ip + 23);
+        f.src_port = (at(ip + 20) * 256) + at(ip + 21);
+        f.dst_port = (at(ip + 22) * 256) + at(ip + 23);
         f.payload = len - 28;
         frames.push_back(f);
         pos = ip + len;

@@ -16,7 +16,8 @@ using namespace std::chrono_literals;
 
 TEST(IgWithScene, FacadeErrorAndUnknownHooksStillFire) {
     auto [ig_side, host_side] = make_memory_transport_pair();
-    auto ig = Ig::over(IgConfig{}, std::move(ig_side));
+    const IgConfig config;
+    auto ig = Ig::over(config, std::move(ig_side));
     ASSERT_TRUE(ig.has_value());
 
     mock::SceneModel scene;
