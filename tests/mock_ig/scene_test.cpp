@@ -883,7 +883,7 @@ TEST(SceneDispatch, UnknownOpcodesAndBadPacketsAreCountedNotFatal) {
     // The unknown opcode is logged once, the error each time.
     std::size_t unknown_lines = 0;
     for (const auto& line : scene.log()) {
-        unknown_lines += line.contains("unknown opcode 201") ? 1 : 0;
+        unknown_lines += line.contains("unknown opcode 201") ? 1U : 0U;
     }
     EXPECT_EQ(unknown_lines, 1U);
     EXPECT_NE(scene.log().back().find("decode error"), std::string::npos);
