@@ -5,6 +5,9 @@
 `cigi::tools::PcapWriter`), so you can see the start-up exchange the library actually produces,
 decoded by an independent tool. A small recording `DatagramTransport` decorator sits between each
 facade and the wire; the clock is stepped by hand at 60 Hz, so the capture is identical on every run.
+Exception: the recorder deliberately rewrites the Host's 4th datagram into the opposite byte order
+to simulate a big-endian Host and show the Byte Swap field; the library itself always sends native
+order.
 The larger verification of every MVP packet is in `docs/interop/wireshark.md`.
 
 ## Prerequisites
@@ -45,10 +48,11 @@ Host's IG Control.
 
 | Frames | What |
 |---|---|
-| 1-2 | The Host's first IG Control (a probe, requesting Operate and database 1) and the IG's first SOF |
+| 1 | IG SOF frame 0 (Reset/Standby, database 0); shown as Unknown by the dissector, see the caveats |
+| 2 | The Host's probe IG Control (requests Operate and database 1); the Host repeats database 1 in frames 4 and 6 |
 | 3, 5 | SOF IG frames 1-2 in Reset/Standby (the IG has accepted the request but is not ready) |
-| 7 onwards | SOF in Operate; database -1 (loading) at IG frames 3-5, then 1 (loaded) |
-| 8 | IG Control host frame 3 in the **foreign** byte order: Byte Swap shows `0x8000` (Big-Endian) |
+| 7-17 odd | SOF in Operate from IG frame 3; database -1 (loading) in frames 7, 9, 11, then 1 (loaded) from frame 13 |
+| 8 | IG Control host frame 3 in the **foreign** byte order, rewritten by this example (not the library): Byte Swap shows `0x8000` (Big-Endian) |
 | 19 | The Host's closing IG Control: Reset/Standby (ICD 2.8) |
 
 Every IG Control's *Last IG Frame Number* equals the SOF just received; every SOF's *Last Host Frame

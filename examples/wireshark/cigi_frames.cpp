@@ -1,6 +1,8 @@
 // Runs a real cigi::Host and cigi::Ig back to back over the in-memory transport and writes every
 // datagram they send into a pcap file, so Wireshark shows the start-up exchange the library really
-// produces (ICD 2.8, 4.1.1, 4.2.1).
+// produces (ICD 2.8, 4.1.1, 4.2.1). Exception: the recorder deliberately rewrites the Host's 4th
+// datagram into the opposite byte order to simulate a big-endian Host and show the Byte Swap field;
+// the library itself always sends native order.
 // Usage: cigi_frames <output-dir>   (writes cigi_frames.pcap, via cigi::tools::PcapWriter)
 // See README.md in this directory; open the pcap in Wireshark or tshark.
 //
@@ -27,6 +29,7 @@
 
 namespace {
 
+constexpr std::size_t ig_control_size = 24;
 constexpr int step_count = 9;       // 60 Hz steps; the exchange settles within a few.
 constexpr int foreign_datagram = 4; // The Host's 4th datagram is sent in the other byte order.
 constexpr int operate_step = 3;     // The IG reports Operate from this step on.
@@ -75,7 +78,9 @@ public:
 
     cigi::Result<void> send(std::span<const std::byte> datagram) override {
         std::array<std::byte, 64> copy{};
-        const bool swap = ++sent_ == foreign_nth_ && datagram.size() <= copy.size();
+        // Only a bare 24-byte IG Control (opcode 1) is rewritten; anything else is left alone.
+        const bool swap = ++sent_ == foreign_nth_ && datagram.size() == ig_control_size &&
+                          std::to_integer<int>(datagram.front()) == cigi::ig_control_opcode;
         std::span<const std::byte> out = datagram;
         if (swap) {
             std::ranges::copy(datagram, copy.begin());
