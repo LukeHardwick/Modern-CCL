@@ -12,6 +12,7 @@
 #include <raymath.h>
 #include <rlgl.h>
 #include <string>
+#include <vector>
 
 namespace cigi::viewer {
 
@@ -584,19 +585,57 @@ void Renderer::draw_overlay(const CameraResult& cam, const SkyState& sky,
     if (options.labels) {
         const Vector3 forward =
             Vector3Normalize(Vector3Subtract(cam.camera.target, cam.camera.position));
-        for (const Label& l : labels_) {
+        // Greedy de-overlap: the selected entity is placed first, then the rest in ID order; a
+        // label that would overlap an earlier one is lifted in steps and joined to its anchor by
+        // a leader line, so adjacent entities (e.g. 3 and 4) stay legible.
+        struct Placed {
+            int x, y, w, h;
+        };
+        std::vector<Placed> placed;
+        placed.reserve(labels_.size());
+        const auto overlaps = [&placed](int x, int y, int w, int h) {
+            return std::ranges::any_of(placed, [&](const Placed& q) {
+                return x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h;
+            });
+        };
+        const auto draw_label = [&](const Label& l) {
             const Vector3 p = to_gl(l.position);
             if (Vector3DotProduct(Vector3Subtract(p, cam.camera.position), forward) <= 1.0F) {
-                continue; // behind the camera
+                return; // behind the camera
             }
             const Vector2 s = GetWorldToScreen(p, cam.camera);
             const std::string text = l.id == 0 ? "0 ownship" : std::to_string(l.id);
             const int size = l.id == selected ? 20 : 16;
-            const int w = MeasureText(text.c_str(), size);
+            const int w = MeasureText(text.c_str(), size) + 6;
+            const int h = size + 2;
             const int x = static_cast<int>(s.x) - (w / 2);
-            const int y = static_cast<int>(s.y) - size;
-            DrawText(text.c_str(), x + 1, y + 1, size, Fade(BLACK, 0.8F));
-            DrawText(text.c_str(), x, y, size, id_color(l.id, 0.45F, 1.0F));
+            int y = static_cast<int>(s.y) - h - 4;
+            int steps = 0;
+            while (steps < 12 && overlaps(x, y, w, h)) {
+                y -= h + 1;
+                ++steps;
+            }
+            if (steps == 12) {
+                return; // no room: drop the label rather than draw an unreadable pile
+            }
+            placed.push_back({x, y, w, h});
+            const Color c = id_color(l.id, 0.45F, 1.0F);
+            if (steps > 0) {
+                DrawLine(static_cast<int>(s.x), static_cast<int>(s.y), static_cast<int>(s.x),
+                         y + h, Fade(c, 0.8F));
+            }
+            DrawRectangle(x, y, w, h, Fade(BLACK, 0.45F));
+            DrawText(text.c_str(), x + 3, y + 1, size, c);
+        };
+        for (const Label& l : labels_) {
+            if (l.id == selected) {
+                draw_label(l);
+            }
+        }
+        for (const Label& l : labels_) {
+            if (l.id != selected) {
+                draw_label(l);
+            }
         }
     }
     const char* mode = state.mode == CameraKind::Host    ? "Host view"

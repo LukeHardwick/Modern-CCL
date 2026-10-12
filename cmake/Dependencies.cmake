@@ -134,6 +134,9 @@ if(CIGI_BUILD_VIEWER)
     target_include_directories(cigi_imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${rlimgui_SOURCE_DIR})
     target_link_libraries(cigi_imgui PUBLIC raylib)
     target_compile_features(cigi_imgui PUBLIC cxx_std_17)
+    # 32-bit draw indices: the map window with many entities and trails exceeds 65535 vertices.
+    # PUBLIC so rlImGui and the viewer agree with imgui.cpp on the ImDrawIdx type.
+    target_compile_definitions(cigi_imgui PUBLIC ImDrawIdx=unsigned\ int)
     if(MSVC)
         target_compile_options(cigi_imgui PRIVATE /w)
     else()

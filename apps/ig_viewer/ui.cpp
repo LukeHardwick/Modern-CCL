@@ -633,13 +633,14 @@ void draw_map(AppState& app) {
     // Entities.
     const Entity* nearest = nullptr;
     float nearest_dist = 14.0F;
+    std::vector<ImVec4> label_rects; // placed ID labels (min.x, min.y, max.x, max.y)
     for (const auto& [id, e] : scene.entities()) {
         if (!e.visible) {
             continue;
         }
         if (app.draw.trails && e.trail.size() > 1) {
             std::vector<ImVec2> pts;
-            // At most ~24 points per entity: ImDrawList has a 16-bit vertex budget per window.
+            // ~24 points per entity keeps the map cheap (ImDrawIdx is 32-bit, see Dependencies.cmake).
             const std::size_t first = e.trail.size() > 192 ? e.trail.size() - 192 : 0;
             for (std::size_t i = first; i < e.trail.size(); i += 8) {
                 pts.push_back(to_screen(e.trail.at(i).x, e.trail.at(i).y));
@@ -683,8 +684,28 @@ void draw_map(AppState& app) {
             dl->AddCircle(s, r + 4.0F, IM_COL32(255, 235, 60, 255), 24, 2.0F);
         }
         if (app.draw.labels && (scale > 0.05F || id == app.selected || id < 100)) {
-            dl->AddText({s.x + r + 3.0F, s.y - 6.0F}, IM_COL32(255, 255, 255, 235),
-                        std::to_string(id).c_str());
+            // Try the right of the icon, then above, below and left; take the first free spot
+            // so neighbouring entities (e.g. 3 and 4) never print on top of each other.
+            const std::string text = std::to_string(id);
+            const ImVec2 ts = ImGui::CalcTextSize(text.c_str());
+            const std::array<ImVec2, 6> candidates{{{s.x + r + 3.0F, s.y - (ts.y * 0.5F)},
+                                                    {s.x + r + 3.0F, s.y - r - ts.y},
+                                                    {s.x + r + 3.0F, s.y + r},
+                                                    {s.x - r - 3.0F - ts.x, s.y - (ts.y * 0.5F)},
+                                                    {s.x - (ts.x * 0.5F), s.y - r - ts.y - 6.0F},
+                                                    {s.x - (ts.x * 0.5F), s.y + r + 6.0F}}};
+            for (const ImVec2& c : candidates) {
+                const ImVec4 rect{c.x - 1.0F, c.y, c.x + ts.x + 1.0F, c.y + ts.y};
+                const bool free = std::ranges::none_of(label_rects, [&](const ImVec4& q) {
+                    return rect.x < q.z && q.x < rect.z && rect.y < q.w && q.y < rect.w;
+                });
+                if (free) {
+                    label_rects.push_back(rect);
+                    dl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, IM_COL32(0, 0, 0, 120));
+                    dl->AddText(c, IM_COL32(255, 255, 255, 235), text.c_str());
+                    break;
+                }
+            }
         }
         const float d = std::hypot(io.MousePos.x - s.x, io.MousePos.y - s.y);
         if (d < nearest_dist) {
