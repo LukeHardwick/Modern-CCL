@@ -18,7 +18,7 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the brief + the "Remaining" list below (better when the old context is long).
 
 ## `main`
-`main` contains T00–T08, T10, T17 and T09b Part 1 (see README.md). macOS check.sh --coverage 563/563, 98.4 % lines. All checks green at `5a20b87`
+`main` contains T00–T08, T09a, T09b Part 1, T10 and T17 (see README.md). T09a merge: macOS 645/645 (98.2 % lines), Linux GCC debug + ASan 642/642. All checks green at `5a20b87`
 (macOS 416 tests, Linux GCC debug + ASan 413).
 
 ## Open task branches
@@ -32,7 +32,6 @@ Worktrees live under `.claude/worktrees/` in the main checkout.
 
 | Task | Branch | Worktree | Head | Based on | State |
 |---|---|---|---|---|---|
-| T09a Host/Ig facade | `task/t09a-host-ig-facade` | `agent-a7ac964648ce5a2d4` | `09e82c1` | `5a20b87` | implementation + docs done; debug 478/478 |
 | T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `8971714` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
 
 Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
@@ -45,17 +44,21 @@ macOS 547/547 (mock_ig 99.2 % lines), Linux GCC debug + ASan 544/544 (after a -W
 test fix). `--stress` capped at 1000 (guess; measure the datagram limit in Part 2).
 Part 2 (network mode + fault panel) starts after T09a is merged — see the brief.
 
-### T09a — remaining
-1. **Fix clang-tidy errors in `examples/host_minimal.cpp`** (only file failing; format, debug and
-   asan pass with 478/478): replace `printf`/`fprintf` with `std::println`, `atoi` with
-   `std::from_chars`, `argv` pointer arithmetic with `std::span(argv, argc)`, make the static
-   `g_stop` initialisation non-throwing (e.g. `std::atomic<bool>` + `std::stop_source` created in
-   `main`), `string_view::data()` → pass sizes / use `std::string`. Keep it ≤ 80 lines and matching
-   the brief's target usage. Then full `check.sh --coverage` and Linux check.
-2. Opus review (focus: state machine vs ICD §2.8, Lost/restart handling incl. "> stale_window
-   consecutive stale frames = restart" with an IG restarted after 3 frames, fault transport,
-   steady-state allocation, `examples/host_minimal.cpp` matches the brief's target usage).
-3. Merge. Then start **T09b Part 2** and **T09** in parallel (T09 also needs T09b P1 merged).
+### T09a — merged
+Three Opus review rounds (blocker: close() from callbacks used a null transport; database replay on
+restart / not on a mere Lost blip; stale+duplicate restart rule with `saw_stale_`; Ig latches the
+first parsed Host; FaultInjectingTransport release semantics; latch hooks made internal; MSVC
+aligned new/delete in tests/support/counting_new.hpp). Deviation: `HostConfig::probe_interval`.
+**Follow-ups (small, not blocking):**
+- Standby false positive: Host-requested Standby + one reordered stale frame before the IG's
+  first Standby SOF counts as a restart (and replays the database). Skip the rule when the
+  requested mode is Standby.
+- FaultInjectingTransport header: a failing `send()` returns its own error and drops (still
+  counts) the deferred one — document it.
+- examples/host_minimal.cpp:19 comment still says "a plain flag is async-signal-safe".
+- Tests: "-n after Lost", "request_database while Lost", IgCore-level latch retry; Ig logs
+  "Host connected" on every failed latch attempt (ig.cpp:149-151).
+- `on_user<P>` → T09c.
 
 ### T12 — remaining
 1. Verify the Linux libFuzzer path: commit `12134c4` switched the Docker image/preset to libc++
