@@ -2,6 +2,7 @@
 # dependencies; shared by the viewer (apps/ig_viewer) and the headless demo IG.
 add_library(cigi_mock_ig STATIC
     describe.cpp
+    panel_layout.cpp
     geo.cpp
     hat_hot.cpp
     mock_ig.cpp
