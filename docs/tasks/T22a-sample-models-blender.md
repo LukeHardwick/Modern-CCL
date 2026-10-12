@@ -3,8 +3,23 @@
 Tools track · Depends on T20 (manifest format) · Runs before T22 · Branch `task/t22a-sample-models`
 Follow the shared rules in [README.md](README.md) (rule 6 does not apply).
 
-> **📌 User input first (2026-10-12):** do not start or launch this task until the user has
-> given their extra requirements for it. Ask them first; fold their answers into this brief.
+## User requirements (2026-10-12, replace the earlier 📌 "ask first" marker)
+1. **Research the best storage format** for the models: it must work with the current viewer
+   (raylib 6.0 + cgltf, see T22) and should carry over to a possible Unreal Engine IG later (T28,
+   still 🔒 locked: research only, no Unreal work) and to other IGs/tools (interop). Compare at
+   least glTF 2.0 (.glb vs .gltf+bin), FBX, USD/USDZ, OBJ; also whether the `.blend` source should
+   be committed next to the script. Cover: node hierarchy + names + pivots for articulated parts,
+   axes/units, materials (PBR metallic-roughness), LODs, textures, licensing/tooling, Unreal's
+   import path (Interchange glTF importer, FBX, USD), raylib/cgltf support limits.
+2. **Research realistic fidelity**: how much detail is worth adding given the viewer (raylib,
+   simple lighting), file size targets and a script-generated workflow. E.g. bevels, normals and
+   smoothing, more parts (doors, hatches), PBR materials, baked AO, simple procedural textures,
+   decals/markings, LODs. Recommend a level and justify it.
+3. **Improve the existing jet** where the research says it is worth it, and build the helicopter,
+   tank and truck to the same level.
+Write the findings to `docs/research/03-model-format-and-fidelity.md` (sources cited with
+links + access date). If the recommendation changes this brief's format, sizes or the T22 loader
+plan, say so in the research doc and the report; do not edit T22's brief (the planner does).
 
 ## Why (planner, 2026-10-12)
 Free CC0/CC-BY models rarely have separate, correctly pivoted nodes for articulated parts (CIGI
