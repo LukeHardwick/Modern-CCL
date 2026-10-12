@@ -1,0 +1,48 @@
+# libFuzzer dictionary for CIGI 3.3 (opcodes, sizes, magic numbers, version bytes).
+# Byte layout: ICD 2.6 (packet header), 4.1.1 (IG Control), 4.2.1 (Start of Frame).
+
+# Frame packet openers: opcode, size 24 / 16, major version 3.
+"\x01\x18\x03"
+"\x65\x18\x03"
+"\x01\x10\x03"
+"\x65\x10\x03"
+
+# Byte Swap Magic Number in both byte orders (bytes 6-7).
+"\x00\x80"
+"\x80\x00"
+
+# Flags byte with minor versions 0-3 (high nibble), with and without Operate mode.
+"\x30"
+"\x3D"
+"\x20"
+"\x10"
+"\x00"
+
+# Opcodes of other packets (a few host->IG, IG->host, user-defined), each with a plausible size.
+"\x02\x10"
+"\x03\x30"
+"\x04\x20"
+"\x05\x18"
+"\x06\x28"
+"\x07\x10"
+"\x0A\x18"
+"\x17\x10"
+"\x66\x18"
+"\x67\x28"
+"\x6A\x28"
+"\x6B\x10"
+"\xC9\x08"
+"\xFF\x08"
+
+# Boundary packet sizes.
+"\x00"
+"\x08"
+"\xF8"
+"\xFF"
+
+# Interesting 32-bit values (frame numbers, timestamps).
+"\xFF\xFF\xFF\xFF"
+"\x00\x00\x00\x00"
+"\x01\x00\x00\x00"
+"\x00\x00\x00\x01"
+"\x80\x00\x00\x00"
