@@ -15,7 +15,9 @@
 #include "cigi/datagram_transport.hpp"
 #include "cigi/link_state.hpp"
 #include "cigi/packet_set.hpp"
+#include "cigi/detail/user_handlers.hpp"
 #include "cigi/packets.hpp"
+#include "cigi/user_packet.hpp"
 #include "cigi/session/ig_session.hpp"
 
 #include <chrono>
@@ -116,6 +118,19 @@ public:
         session().handlers().template on<P>(std::forward<F>(handler));
     }
     void on_unknown(std::function<void(const UnknownPacket&)> handler);
+    /// Handler for the user-defined packet type P (ICD 2.10, 4.3; opcodes 201-255), decoded in
+    /// the peer's byte order. P must be a UserDefinedPacket whose direction this side receives
+    /// (Host -> IG or Both), checked at compile time. Registering another type or handler for the
+    /// same opcode REPLACES the earlier one. A user opcode with no handler goes to on_unknown. A
+    /// packet that does not decode as P goes to on_error. With `config.session.ignore_user_packets`
+    /// nothing is delivered. Receiving does not allocate. Do not register from inside a handler.
+    /// (Do not also set a handler through session().handlers().on_unknown(): it would replace
+    /// the facade's own.)
+    template <class P, class F>
+        requires(IgReceivableUserPacket<P> && std::invocable<F&, const P&>)
+    void on_user(F&& handler) {
+        set_user_handler(P::opcode, detail::make_user_slot<P>(std::forward<F>(handler)));
+    }
     void on_error(std::function<void(const Error&)> handler);
     /// Accept (true) or refuse (false) a Host's request for a different mode. On true the
     /// application calls set_mode() when the transition is done. Without it every request is
@@ -160,6 +175,7 @@ public:
     [[nodiscard]] const IgSession& session() const noexcept;
 
 private:
+    void set_user_handler(std::uint8_t opcode, detail::UserHandlers::Slot slot);
     explicit Ig(std::unique_ptr<detail::IgCore> core) noexcept;
 
     std::unique_ptr<detail::IgCore> core_;

@@ -40,7 +40,7 @@ struct SessionConfig {
     bool validate_outgoing = false;
     /// ICD 4.3: skip user-defined packets (opcodes 201-255) on receive. They then reach neither a
     /// handler nor on_unknown. Off by default, so they arrive as unknown packets (the sessions'
-    /// sets hold no user packets; typed user packets in sessions are deferred to the facade).
+    /// sets hold no user packets; Host::on_user / Ig::on_user decode them for you).
     bool ignore_user_packets = false;
     /// Size of the buffer a message is built in (at least one frame packet, 24 bytes).
     std::size_t max_message_bytes = 16384;

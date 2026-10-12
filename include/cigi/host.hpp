@@ -17,7 +17,9 @@
 #include "cigi/datagram_transport.hpp"
 #include "cigi/link_state.hpp"
 #include "cigi/packet_set.hpp"
+#include "cigi/detail/user_handlers.hpp"
 #include "cigi/packets.hpp"
+#include "cigi/user_packet.hpp"
 #include "cigi/session/host_session.hpp"
 
 #include <array>
@@ -168,6 +170,19 @@ public:
     }
     /// Handler for packets with an opcode outside the session's set.
     void on_unknown(std::function<void(const UnknownPacket&)> handler);
+    /// Handler for the user-defined packet type P (ICD 2.10, 4.3; opcodes 201-255), decoded in
+    /// the peer's byte order. P must be a UserDefinedPacket whose direction this side receives
+    /// (IG -> Host or Both), checked at compile time. Registering another type or handler for the
+    /// same opcode REPLACES the earlier one. A user opcode with no handler goes to on_unknown. A
+    /// packet that does not decode as P goes to on_error. With `config.session.ignore_user_packets`
+    /// nothing is delivered. Receiving does not allocate. Do not register from inside a handler.
+    /// (Do not also set a handler through session().handlers().on_unknown(): it would replace
+    /// the facade's own.)
+    template <class P, class F>
+        requires(HostReceivableUserPacket<P> && std::invocable<F&, const P&>)
+    void on_user(F&& handler) {
+        set_user_handler(P::opcode, detail::make_user_slot<P>(std::forward<F>(handler)));
+    }
     /// Handler for non-fatal problems: undecodable datagrams and packets, oversize add().
     void on_error(std::function<void(const Error&)> handler);
     /// Called on every change of link state, after the state has changed.
@@ -203,6 +218,7 @@ public:
     [[nodiscard]] const HostSession& session() const noexcept;
 
 private:
+    void set_user_handler(std::uint8_t opcode, detail::UserHandlers::Slot slot);
     explicit Host(std::unique_ptr<detail::HostCore> core) noexcept;
 
     std::unique_ptr<detail::HostCore> core_;

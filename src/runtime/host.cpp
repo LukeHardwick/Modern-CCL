@@ -61,6 +61,8 @@ public:
             static_cast<void>(request_database(*config_.database));
         }
         session_.handlers().on_error([this](const Error& e) { report(e); });
+        session_.handlers().on_unknown(
+            [this](const UnknownPacket& u) { users_.dispatch(u, [this](const Error& e) { report(e); }); });
     }
     HostCore(const HostCore&) = delete;
     HostCore& operator=(const HostCore&) = delete;
@@ -102,6 +104,10 @@ public:
     [[nodiscard]] const HostSession& session() const noexcept { return session_; }
 
     void on_error(std::function<void(const Error&)> f) { error_cb_ = std::move(f); }
+    void on_unknown(std::function<void(const UnknownPacket&)> f) { users_.set_fallback(std::move(f)); }
+    void set_user_handler(std::uint8_t opcode, UserHandlers::Slot slot) {
+        users_.set(opcode, std::move(slot));
+    }
     void on_state_change(std::function<void(LinkState, LinkState)> f) { state_cb_ = std::move(f); }
     void on_frame(std::function<void(HostFrame&)> f) { frame_cb_ = std::move(f); }
 
@@ -143,6 +149,7 @@ private:
     bool warned_fragmentation_ = false;
     HostStats stats_;
 
+    UserHandlers users_;
     std::function<void(const Error&)> error_cb_;
     std::function<void(LinkState, LinkState)> state_cb_;
     std::function<void(HostFrame&)> frame_cb_;
@@ -447,7 +454,10 @@ Result<Host> Host::connect(HostConfig config) {
 }
 
 void Host::on_unknown(std::function<void(const UnknownPacket&)> handler) {
-    core_->session().handlers().on_unknown(std::move(handler));
+    core_->on_unknown(std::move(handler));
+}
+void Host::set_user_handler(std::uint8_t opcode, detail::UserHandlers::Slot slot) {
+    core_->set_user_handler(opcode, std::move(slot));
 }
 void Host::on_error(std::function<void(const Error&)> handler) {
     core_->on_error(std::move(handler));
