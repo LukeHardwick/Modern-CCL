@@ -1,7 +1,10 @@
 # Headless mock IG: scene model, HAT/HOT responder, synthetic terrain, scripted host. No graphics
 # dependencies; shared by the viewer (apps/ig_viewer) and the headless demo IG.
+# panel_layout.cpp is viewer UI maths (window-relative panel placement), kept here only so it can
+# be unit tested without a window or the graphics dependencies.
 add_library(cigi_mock_ig STATIC
     describe.cpp
+    panel_layout.cpp
     geo.cpp
     hat_hot.cpp
     mock_ig.cpp

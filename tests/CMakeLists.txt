@@ -46,6 +46,7 @@ if(CIGI_BUILD_MOCK_IG)
         mock_ig/geo_test.cpp
         mock_ig/hat_hot_test.cpp
         mock_ig/mock_ig_test.cpp
+        mock_ig/panel_layout_test.cpp
         mock_ig/scene_test.cpp
         mock_ig/scripted_host_test.cpp
         mock_ig/sky_test.cpp

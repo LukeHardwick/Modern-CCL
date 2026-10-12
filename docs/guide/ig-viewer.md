@@ -32,7 +32,8 @@ Options:
 |---|---|
 | `--scripted` | built-in scripted Host (the only mode in Part 1) |
 | `--origin LAT,LON` | scenario centre, degrees (default 51.5,-0.12) |
-| `--width N --height N` | window size (default 1280x720) |
+| `--width N --height N` | window size (default 1280x720, minimum 320x240) |
+| `--fullscreen` | start in borderless fullscreen (same as pressing `F`) |
 | `--camera host\|chase\|free` | initial camera |
 | `--ui none\|map\|all` | panels shown at start |
 | `--select ID` | entity selected at start |
@@ -48,6 +49,8 @@ Options:
 | `C` | cycle camera: Host view, Chase, Free |
 | `P` / `N` | pause / single-step the simulation |
 | `Tab` | hide / show all panels |
+| `F` or `F11` | toggle borderless fullscreen (`Esc` leaves fullscreen; in a window it quits) |
+| `L` | reset the panels to the automatic layout |
 | Chase: left-drag, wheel | orbit the selected entity, zoom |
 | Free: `WASD`, `Q`/`E`, right-drag | fly, down/up, look (`Shift` faster, `Ctrl` slower) |
 | Map: drag, wheel, click | pan, zoom, select the nearest entity |
@@ -82,6 +85,17 @@ selected entity, **Free** is a fly camera.
 - **HAT/HOT log** - recent requests with kind, period and results.
 - **IG log** - entity creation/destruction and ignored packets.
 
+## Window size and fullscreen
+
+The panels are placed from the current window size (`mock::compute_panel_layout`): a left and a
+right column at 1100 px wide and above, one column below that. When the window is resized, goes
+fullscreen or a panel is shown or hidden, the layout is recomputed and applied once; between
+those events you can move and resize panels freely (`L` re-applies the automatic layout). If the
+window is too small, the least important panels (IG log, HAT/HOT, inspector, ...) collapse to
+their title bar; click the arrow to open one. The native macOS green button is just another
+resize; in that mode `F`/`F11`/`Esc` do nothing (GLFW cannot leave a native Space), so leave it
+with the green button. Fullscreen is borderless (a window the size of the monitor), which keeps the HiDPI scale.
+
 ## What the colours mean
 
 - Each entity has a colour derived from its Entity ID, used for its shape, trail, label and map
@@ -113,6 +127,10 @@ stress before this fix is gone.)
 - Part 1 has no network input; the scripted Host is the only source.
 - Flat-earth local frame around the origin (ENU); intended for scenes within a few tens of km.
 - Entity shapes are chosen from the Entity Type only (aircraft/vehicle/other); no models.
-- OpenGL is deprecated on macOS (raylib still uses it); high-DPI scaling is not tuned.
+- OpenGL is deprecated on macOS (raylib still uses it).
 - Windows/MSVC is expected to work but is unverified; the Linux build of the viewer is not
   required (`cigi_mock_ig` itself builds everywhere).
+
+Developer note: three hidden options (not in `--help`) exercise the resize paths in offline
+captures: `--hidpi` (HiDPI framebuffer, so the PNG is 2x on Retina), `--resize-to WxH` (resize at
+frame 3) and `--toggle-fs N` (toggle fullscreen every N frames).

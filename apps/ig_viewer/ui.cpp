@@ -44,6 +44,50 @@ const char* shape_name(std::uint16_t type) {
     return "other";
 }
 
+/// Position/size the next window from the current layout. The layout is forced only on the frame
+/// it was recomputed (window resized, fullscreen toggled, ...); otherwise the user's placement
+/// wins.
+void place_panel(const UiState& ui, mock::PanelId id) {
+    const mock::PanelRect& r = ui.layout[id];
+    const ImGuiCond cond = ui.apply_layout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos({r.x, r.y}, cond);
+    ImGui::SetNextWindowSize({r.w, r.h}, cond);
+    if (ui.apply_layout) {
+        ImGui::SetNextWindowCollapsed(r.collapsed, ImGuiCond_Always);
+    }
+}
+
+/// Recompute the layout when the (logical) window size, the UI mode or the visible set changed.
+/// ImGui's DisplaySize is the logical size that rlImGui derived from the raylib screen size, so
+/// it is in the same units as every ImGui coordinate (no Retina factor to apply here).
+void update_layout(UiState& ui) {
+    const ImVec2 size = ImGui::GetIO().DisplaySize;
+    if (size.x <= 0.0F || size.y <= 0.0F) {
+        // Minimised: not a real resize; keep the user's arrangement for the restore.
+        ui.apply_layout = false;
+        return;
+    }
+    mock::LayoutInput in;
+    in.width = size.x;
+    in.height = size.y;
+    in.title_bar_h = ImGui::GetFrameHeight();
+    in.map_only = ui.mode == UiMode::Map;
+    in.visible = {
+        ui.show_link,    ui.show_view, ui.show_entities, ui.show_selected, ui.show_inspector,
+        ui.show_hat_hot, true,         ui.show_map};
+    const bool changed = size.x != ui.layout_w || size.y != ui.layout_h ||
+                         ui.mode != ui.layout_mode || in.visible != ui.layout_visible;
+    ui.apply_layout = changed || ui.relayout_requested;
+    if (ui.apply_layout) {
+        ui.layout = mock::compute_panel_layout(in);
+        ui.layout_w = size.x;
+        ui.layout_h = size.y;
+        ui.layout_mode = ui.mode;
+        ui.layout_visible = in.visible;
+        ui.relayout_requested = false;
+    }
+}
+
 void text(const std::string& s) {
     ImGui::TextUnformatted(s.c_str());
 }
@@ -56,8 +100,7 @@ void select_entity(AppState& app, std::uint16_t id) {
 // ---- Link ---------------------------------------------------------------------------------
 
 void draw_link(AppState& app, const CameraResult& cam, const SkyState& sky, float fps) {
-    ImGui::SetNextWindowPos({10, 10}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({400, 270}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Link);
     if (!ImGui::Begin("Link", &app.ui.show_link)) {
         ImGui::End();
         return;
@@ -101,8 +144,7 @@ void draw_link(AppState& app, const CameraResult& cam, const SkyState& sky, floa
 // ---- Entities -----------------------------------------------------------------------------
 
 void draw_entities(AppState& app) {
-    ImGui::SetNextWindowPos({10, 290}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({640, 280}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Entities);
     if (!ImGui::Begin("Entities", &app.ui.show_entities)) {
         ImGui::End();
         return;
@@ -212,8 +254,7 @@ void draw_entities(AppState& app) {
 // ---- Selected entity ----------------------------------------------------------------------
 
 void draw_selected(AppState& app) {
-    ImGui::SetNextWindowPos({10, 580}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({640, 310}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Selected);
     if (!ImGui::Begin("Selected entity", &app.ui.show_selected)) {
         ImGui::End();
         return;
@@ -325,8 +366,7 @@ void describe_message(std::span<const std::byte> bytes, const char* tag,
 }
 
 void draw_inspector(AppState& app) {
-    ImGui::SetNextWindowPos({1180, 440}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({420, 230}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Inspector);
     if (!ImGui::Begin("Packet inspector", &app.ui.show_inspector)) {
         ImGui::End();
         return;
@@ -385,8 +425,7 @@ void draw_inspector(AppState& app) {
 // ---- HAT/HOT log --------------------------------------------------------------------------
 
 void draw_hat_hot(AppState& app) {
-    ImGui::SetNextWindowPos({1180, 680}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({420, 210}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::HatHot);
     if (!ImGui::Begin("HAT/HOT log", &app.ui.show_hat_hot)) {
         ImGui::End();
         return;
@@ -439,8 +478,7 @@ void draw_hat_hot(AppState& app) {
 }
 
 void draw_log(AppState& app) {
-    ImGui::SetNextWindowPos({660, 700}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({510, 190}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Log);
     if (!ImGui::Begin("IG log")) {
         ImGui::End();
         return;
@@ -457,8 +495,7 @@ void draw_log(AppState& app) {
 // ---- View options ---------------------------------------------------------------------------
 
 void draw_view_options(AppState& app) {
-    ImGui::SetNextWindowPos({420, 10}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({210, 260}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::View);
     if (!ImGui::Begin("View", &app.ui.show_view)) {
         ImGui::End();
         return;
@@ -481,8 +518,7 @@ void draw_view_options(AppState& app) {
 // ---- Map ------------------------------------------------------------------------------------
 
 void draw_map(AppState& app) {
-    ImGui::SetNextWindowPos({1180, 10}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({420, 420}, ImGuiCond_FirstUseEver);
+    place_panel(app.ui, mock::PanelId::Map);
     if (!ImGui::Begin("Map", &app.ui.show_map)) {
         ImGui::End();
         return;
@@ -752,6 +788,7 @@ void draw_ui(AppState& app, const CameraResult& cam, const SkyState& sky, float 
     if (app.ui.mode == UiMode::None) {
         return;
     }
+    update_layout(app.ui);
     if (app.ui.show_map) {
         draw_map(app);
     }

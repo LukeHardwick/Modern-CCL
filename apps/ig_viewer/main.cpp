@@ -112,6 +112,46 @@ void run_simulation(AppState& app, float frame_time, bool fixed_step) {
     }
 }
 
+/// Aspect ratio of the 3-D viewport. BeginMode3D() builds its projection from the framebuffer
+/// (render) size, so use the same pair here; the screen size is in logical points and only
+/// agrees with it up to integer rounding on a Retina display.
+float viewport_aspect() {
+    return static_cast<float>(GetRenderWidth()) /
+           static_cast<float>(std::max(GetRenderHeight(), 1));
+}
+
+bool is_fullscreen() {
+    return IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
+}
+
+/// True when the window fills its monitor without our borderless mode: the native macOS
+/// fullscreen Space entered with the green button (which arrives only as a resize).
+bool in_native_fullscreen() {
+    if (is_fullscreen()) {
+        return false;
+    }
+    const int monitor = GetCurrentMonitor();
+    return GetScreenWidth() >= GetMonitorWidth(monitor) &&
+           GetScreenHeight() >= GetMonitorHeight(monitor);
+}
+
+void set_fullscreen(bool on) {
+    // PLATFORM: borderless fullscreen (a window the size of the current monitor) rather than
+    // raylib's ToggleFullscreen(). ToggleFullscreen() switches raylib to "physical pixel" mode,
+    // where GetScreenWidth() jumps from logical points to device pixels and GetWindowScaleDPI()
+    // reports 1; on a macOS Retina display that disagrees with the 2x framebuffer scale ImGui
+    // was told about and leaves the UI mis-sized. ToggleBorderlessWindowed() keeps the logical
+    // coordinate system and the HiDPI scale, so only the window size changes. The native macOS
+    // green button (a Space) also arrives as a plain resize, so the layout needs no special
+    // handling. GLFW cannot leave a native Space, so F/F11/Esc ignore it (in_native_fullscreen).
+    // Whether this borderless window covers the menu bar and Dock is unverified: raylib asks GLFW
+    // for a monitor-sized window on the monitor, which on macOS is normally a full-screen window
+    // that hides both, but I have not checked it by eye.
+    if (is_fullscreen() != on) {
+        ToggleBorderlessWindowed();
+    }
+}
+
 bool save_screenshot(const std::string& path) {
     Image image = LoadImageFromScreen();
     const bool ok = ExportImage(image, path.c_str());
@@ -146,6 +186,9 @@ int main(int argc, char** argv) {
         // PLATFORM: HiDPI scaling and vsync are requested through raylib's window flags; macOS
         // Retina displays render at the logical size times the scale factor.
         flags |= FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI;
+    } else if (args.hidpi) {
+        flags |=
+            FLAG_WINDOW_HIGHDPI; // test hook: captures are then framebuffer-sized (2x on Retina)
     }
     SetConfigFlags(flags);
     SetTraceLogLevel(LOG_WARNING);
@@ -158,7 +201,14 @@ int main(int argc, char** argv) {
         SetTargetFPS(60);
     }
     rlImGuiSetup(true);
-    ImGui::GetIO().IniFilename = nullptr; // panel layout is fixed by the first-use defaults
+    // Panel layout comes from the window size (mock::compute_panel_layout), not from a saved file.
+    ImGui::GetIO().IniFilename = nullptr;
+    // Esc leaves fullscreen first and quits only from a normal window (see the loop).
+    SetExitKey(KEY_NULL);
+    SetWindowMinSize(320, 240); // the smallest size the panel layout is designed for
+    if (args.fullscreen) {
+        set_fullscreen(true);
+    }
 
     int exit_code = EXIT_SUCCESS;
     {
@@ -172,15 +222,35 @@ int main(int argc, char** argv) {
         int frame = 0;
         while (!WindowShouldClose()) {
             const float frame_time = std::max(GetFrameTime(), 0.0001F);
-            const float aspect =
-                static_cast<float>(GetScreenWidth()) / static_cast<float>(GetScreenHeight());
+            if (args.resize_w > 0 && frame == 3) {
+                SetWindowSize(args.resize_w, args.resize_h); // test hook for the resize path
+            }
+            if (args.toggle_fs > 0 && frame > 0 && frame % args.toggle_fs == 0) {
+                set_fullscreen(!is_fullscreen()); // test hook: same path as the F key
+            }
             const mock::SceneModel& scene = app.ig.scene();
 
             // Input first, against the camera as drawn last frame.
             const ImGuiIO& io = ImGui::GetIO();
             if (!io.WantTextInput) {
+                // In native fullscreen (green button) F/F11/Esc must not stack our borderless mode
+                // on top of it or quit by accident; the user leaves it with the green button.
+                const bool native_fs = in_native_fullscreen();
+                if ((IsKeyPressed(KEY_F) || IsKeyPressed(KEY_F11)) && !native_fs) {
+                    set_fullscreen(!is_fullscreen());
+                }
+                if (IsKeyPressed(KEY_ESCAPE) && !native_fs) {
+                    if (is_fullscreen()) {
+                        set_fullscreen(false);
+                    } else {
+                        break;
+                    }
+                }
+                if (IsKeyPressed(KEY_L)) {
+                    app.ui.relayout_requested = true;
+                }
                 if (IsKeyPressed(KEY_C)) {
-                    cycle_camera(app, make_camera(scene, app.cam, aspect));
+                    cycle_camera(app, make_camera(scene, app.cam, viewport_aspect()));
                 }
                 if (IsKeyPressed(KEY_P)) {
                     app.paused = !app.paused;
@@ -195,11 +265,16 @@ int main(int argc, char** argv) {
             update_camera_input(app, frame_time);
             run_simulation(app, frame_time, offline_capture);
 
-            const CameraResult cam = make_camera(scene, app.cam, aspect);
+            // Sizes are read after the input above, which may have toggled fullscreen. 2-D drawing
+            // (background, labels, HUD, ImGui) uses logical screen points; raylib scales them to
+            // the framebuffer on HiDPI displays. The 3-D viewport uses the render size.
+            const int screen_w = GetScreenWidth();
+            const int screen_h = GetScreenHeight();
+            const CameraResult cam = make_camera(scene, app.cam, viewport_aspect());
             const SkyState sky = compute_sky(scene);
 
             BeginDrawing();
-            renderer.draw_background(sky, cam, GetScreenWidth(), GetScreenHeight());
+            renderer.draw_background(sky, cam, screen_w, screen_h);
             rlSetClipPlanes(cam.near_m, cam.far_m);
             BeginMode3D(cam.camera);
             renderer.draw_world(scene, sky, cam, app.draw, app.selected,

@@ -17,6 +17,11 @@ struct Args {
     double origin_lon = -0.12;
     int width = 1280;
     int height = 720;
+    bool fullscreen = false; ///< Start in borderless fullscreen (--fullscreen).
+    bool hidpi = false;      ///< Hidden: request a HiDPI framebuffer in capture mode.
+    int resize_w = 0;        ///< Hidden: --resize-to WxH, resize the window at frame 3.
+    int resize_h = 0;
+    int toggle_fs = 0; ///< Hidden: --toggle-fs N, toggle fullscreen at frames N, 2N, ...
     std::optional<std::string> screenshot; ///< Render --frames frames, save a PNG, exit.
     int frames = 120;
     int stress = 0;                       ///< Hidden: extra scripted entities.
