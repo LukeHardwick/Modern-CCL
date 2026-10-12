@@ -17,6 +17,7 @@ option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and platform helpers"
        ${_cigi_top})
+option(CIGI_BUILD_VIEWER "Build apps/ig_viewer (fetches raylib, Dear ImGui and rlImGui)" OFF)
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
@@ -127,6 +128,12 @@ endif()
 
 if(CIGI_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+# The mock IG (no graphics dependencies) builds everywhere; the viewer only on request.
+add_subdirectory(apps/mock_ig)
+if(CIGI_BUILD_VIEWER)
+    add_subdirectory(apps/ig_viewer)
 endif()
 
 if(CIGI_BUILD_TESTS)
