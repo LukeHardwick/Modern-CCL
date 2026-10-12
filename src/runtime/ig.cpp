@@ -153,12 +153,12 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         if (!transport_) {
             return status; // a handler closed the IG
         }
-        if (!host_known_ || !connected_) {
-            log_->info("Host connected");
-        }
         if (!host_known_ && learner_ != nullptr && !learner_->latch_peer()) {
             log_->warn("cannot adopt the sender of the Host message as the Host");
             continue; // stay unknown: the next message tries again
+        }
+        if (!host_known_ || !connected_) {
+            log_->info("Host connected"); // only once the Host is really adopted
         }
         host_known_ = true;
         connected_ = true;

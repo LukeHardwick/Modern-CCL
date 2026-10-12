@@ -257,7 +257,9 @@ void HostCore::on_datagram(std::span<const std::byte> datagram) {
     }
     // An IG restarted within the stale window of its old number counts 0..N-1 (stale), N
     // (duplicate) and then fresh numbers, now in Reset/Standby: it is not an IG-side mode change.
-    if (after_stale_run && is_flowing(state_) && session_.ig_mode() == IgMode::ResetStandby) {
+    // Not when the Host itself asked for Standby: that is the expected answer.
+    if (after_stale_run && is_flowing(state_) && session_.ig_mode() == IgMode::ResetStandby &&
+        session_.requested_mode() != IgMode::ResetStandby) {
         ig_restarted(now, "reset after stale frames");
         return;
     }
