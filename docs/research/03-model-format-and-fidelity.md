@@ -79,6 +79,9 @@ Conventions fixed for all four models (enforced in the script):
 
 * Unique lowercase snake_case node names, as in the T22a brief; `_l` / `_r` = left / right of the
   vehicle looking forward.
+* Handedness: glTF has +Z front and +Y up, so the vehicle's right is -X (spec: "-X right"); a
+  vehicle's left part therefore sits at +X. The existing `jet.glb` has `aileron_r` at +X, i.e.
+  on the vehicle's left: this is a bug to fix in Phase 2 (swap the `_l`/`_r` sides).
 * Origin: aircraft at the centre of gravity; ground vehicles at the centre of the ground contact
   patch (so the CIGI entity reference point sits on the ground).
 * Hierarchy: one root (the body node: `fuselage`, `hull`, `cab`, ...). Fixed detail parts are
