@@ -72,6 +72,19 @@ Linux GCC debug + ASan 655/655. Notes: `docs/releases/v0.2.0.md`. `v0.1.0` (2026
 was the foundation. Tagged at the user's request before their hand test of the viewer: still to
 check by hand: green button, live F/F11/Esc, edge-drag (listed as a known limitation). New work: **T09c**, T09b Part 2, T09.
 
+## Tools track: productionise `ig_viewer` / mock IG (planned 2026-10-12, NOT launched)
+Briefs T20–T27 written on branch `claude/ig-viewer-mock-ig-productionize-96da85`; the user wants to
+review them before any agent runs. User decisions: aimed at both dev/test and demo use; database
+= folder + TOML manifest per CIGI Database Number; glTF models with primitive fallback; heightmap
+terrain shared by HAT/HOT and rendering (in `cigi_mock_ig`, so `demo_ig` agrees); network mode,
+scenario files, record/replay (pcap) and config file all in scope; Genesis-matching entity
+numbers via a configurable mapping; macOS + Linux + Windows; small CC0 sample assets in the repo.
+**Libraries approved:** toml++ (hand-edited files) + glaze (JSON, machine files). T20 also
+evaluates glaze's TOML reader. T27 (interactive Host) is optional.
+**Before launching T21/T22:** the user supplies the sample assets (one SRTM3 tile; CC0 glTF jet,
+helicopter, tank, truck ≤ 5 MB with credits); agents must not download.
+Order: T09b P2 ‖ T20 → T21 ‖ T22 ‖ T24 → T23 ‖ T25 (‖ T27) → T26.
+
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
 the user). Phase B: T13–T16 (independent), T18, T19.
