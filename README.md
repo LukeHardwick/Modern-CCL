@@ -33,6 +33,7 @@ Full walk-through: [docs/guide/host-quickstart.md](docs/guide/host-quickstart.md
 | `cigi::session` | `HostSession` / `IgSession` (spdlog) |
 | `cigi::runtime` | `cigi::Host` / `cigi::Ig` facade, UDP (Boost.Asio), fault-injecting transport |
 | `cigi_mock_ig` | headless mock-IG core (`-DCIGI_BUILD_MOCK_IG`, on by default at top level) |
+| `demo_ig`, `demo_host` | headless mock IG and a demo Host to try the library on one machine, with fault injection and `--pcap` (CLI11) — [guide](docs/guide/trying-it-out.md), `scripts/demo.sh` |
 | `ig_viewer` | 3-D mock-IG viewer, raylib + Dear ImGui (`-DCIGI_BUILD_VIEWER=ON`; on in `clang-debug`) — [guide](docs/guide/ig-viewer.md) |
 | `examples/` | `minimal_roundtrip`, `dispatch_example`, `user_packet`, `host_minimal`, `wireshark/cigi_frames` |
 | `fuzz/` | libFuzzer targets; corpora replayed as ctests — `scripts/fuzz.sh` |
@@ -46,7 +47,7 @@ Design notes: [packets and messages](docs/design/03-packet-and-message-api.md),
 - macOS: Homebrew LLVM (`brew install llvm`) at `/opt/homebrew/opt/llvm` (clang++, clang-tidy,
   clang-format, llvm-cov, llvm-profdata). Presets link against its libc++.
 - Linux/GCC check: Docker (Colima on macOS) - uses `docker/gcc14.Dockerfile`.
-- Dependencies (GoogleTest, Boost.Asio, spdlog; raylib, Dear ImGui and rlImGui for the viewer)
+- Dependencies (GoogleTest, Boost.Asio, spdlog, CLI11; raylib, Dear ImGui and rlImGui for the viewer)
   are fetched with `FetchContent`; network needed on first configure.
 
 ## Presets
