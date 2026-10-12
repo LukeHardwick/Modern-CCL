@@ -22,12 +22,12 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T04](T04-mvp-view-celestial-packets.md) | View Control, View Definition, Celestial Sphere | A (MVP) | T02b | ✅ `d7f3779` |
 | [T05](T05-mvp-hat-hot-packets.md) | HAT/HOT Request, Response, Extended Response | A (MVP) | T02b | ✅ `315d0a7` |
 | [T06](T06-dispatch.md) | Packet registry & dispatch | A (MVP) | T03–T05 | ✅ `6dede26` |
-| [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ⏳ |
+| [T07](T07-sessions.md) | Host / IG sessions | A (MVP) | T06 | ✅ `0546d7e` |
 | [T08](T08-udp-transport.md) | UDP transport (Boost.Asio) + `platform::sleep_until` | A (MVP) | T02b | ✅ `fd5b167` |
 | [T09a](T09a-host-ig-facade.md) | High-level `cigi::Host` / `cigi::Ig` facade | A (MVP) | T07, T08 | ⏳ |
 | [T09b](T09b-ig-viewer.md) | Mock-IG core + visual `ig_viewer` (raylib + Dear ImGui) | A (MVP) | P1: T06 · P2: T09a | ⏳ |
 | [T09](T09-demo-apps.md) | `demo_host` + mock `demo_ig` (+ fault flags) | A (MVP) | T09a, T09b P1, T10 | ⏳ |
-| [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ⏳ |
+| [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ✅ `2781a3a` |
 | [T11](T11-ccl-interop.md) | CCL interoperability & differential tests | A (MVP) | T09 | ⏳ |
 | [T12](T12-fuzzing.md) | libFuzzer + hardening | A (MVP) | T06 | ⏳ |
 | **M1** | **MVP milestone: user trial + Windows/MSVC build** | | T03–T12 (incl. T09a, T09b) | |
