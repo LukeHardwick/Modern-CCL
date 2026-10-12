@@ -38,7 +38,7 @@ docker run --rm \
   -v modern-ccl-fuzz-corpus:/corpus -v "$root/build/fuzz-artifacts":/artifacts \
   "$image" bash -euo pipefail -c '
     cmake -S /src -B /work/linux-clang-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-      -DCMAKE_CXX_COMPILER=clang++ "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O1 -g" -DCIGI_ENABLE_FUZZING=ON -DCIGI_BUILD_TESTS=OFF \
+      -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O1 -g" -DCIGI_ENABLE_FUZZING=ON -DCIGI_BUILD_TESTS=OFF \
       -DCIGI_BUILD_EXAMPLES=OFF
     cmake --build /work/linux-clang-fuzz --target "fuzz_'"$target"'"
     mkdir -p "/corpus/'"$target"'"
