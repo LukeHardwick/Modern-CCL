@@ -156,3 +156,9 @@ Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-f
 All tests pass; two runs give byte-identical JSON; the CP1 baseline (report + heat maps) is
 committed; `docs/research/04-model-audit.md` explains the method in plain language; runtime
 reported.
+
+## Scope change — 2026-10-13 (user)
+Skip the CP1 baseline: no baseline report, no CP1 heat maps, no baseline section in
+`docs/research/04-model-audit.md`. One smoke run on CP1 is allowed only to prove the tool runs at
+full size and to measure the runtime. The model is evaluated when the new version (CP2a) is
+finished; the user sets the final gate values then.

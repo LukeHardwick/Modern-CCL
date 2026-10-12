@@ -42,7 +42,8 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
 - **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
   `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
   16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
-  (user's choice), based on the T22a branch. Stops after the CP1 baseline report; the planner
+  (user's choice), based on the T22a branch. Scope changed 2026-10-13: no CP1 baseline (the new
+  model is evaluated instead). Stops after the tool, tests and plain-language doc; the planner
   explains it to the user, then Opus review, then merge into the T22a branch.
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
