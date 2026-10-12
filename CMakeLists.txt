@@ -5,6 +5,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# No C++20 modules are used; module dependency scanning only adds dyndep steps (and trips a
+# ninja 1.12 assertion in the GCC 14 Docker build).
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 if(PROJECT_IS_TOP_LEVEL)
