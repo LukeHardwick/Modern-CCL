@@ -47,7 +47,7 @@ ignore). Start-up exchange: §2.8, §4.1.1 IG Control, §4.2.1 Start of Frame.
      drops (but still counts) the deferred datagram.
    - `examples/host_minimal.cpp:19`: the comment still says "a plain flag is async-signal-safe";
      correct it (only `volatile std::sig_atomic_t` / lock-free atomics are).
-   - `Ig` logs "Host connected" on every failed latch attempt (`src/facade/ig.cpp` ~149-151): log
+   - `Ig` logs "Host connected" on every failed latch attempt (`src/runtime/ig.cpp` ~149-151): log
      once per successful latch.
    - Missing tests: "-n after Lost", "request_database while Lost", IgCore-level latch retry.
 
