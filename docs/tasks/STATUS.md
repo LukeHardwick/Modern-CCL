@@ -10,9 +10,9 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the branch, an **independent Opus review** (read-only, against brief + ICD + shared rules), a
   feature breakdown posted in chat, fixes applied, then merge `--no-ff` into `main` and mark the task
   ✅ in README.md.
-- Nothing is pushed: `origin/main` is stale (`ce83731`). New agent worktrees can start from it, so
-  **every agent prompt must start with "verify base: `git log -1` must be `<main sha>`, otherwise
-  `git reset --hard <main sha>`"**.
+- The user pushes `main` and tags themselves (last push: `f64a910` + `v0.2.0`). Agent worktrees can
+  still start from an older base, so **every agent prompt must start with "verify base:
+  `git log -1` must be `<main sha>`, otherwise `git reset --hard <main sha>`"**.
 - Agents stopped by network/usage limits: commit their WIP on the task branch, then either resume
   them (SendMessage, same session) or start a fresh Sonnet agent **in the existing worktree** with
   the brief + the "Remaining" list below (better when the old context is long).
@@ -65,7 +65,7 @@ foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Lin
 429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
 are not templated on the packet set; user packets arrive via `on_unknown`).
 
-## Release v0.2.0 — tagged 2026-10-12 on `192392c` (annotated, local only; not pushed)
+## Release v0.2.0 — tagged 2026-10-12 on `192392c` (annotated; pushed to origin with `main` at `f64a910`)
 Contents: T00–T08, T09a, T09b Part 1, T10, T12, T17 + the viewer resize/fullscreen fix
 (`fix/viewer-resize`). Release candidate checks: macOS check.sh --coverage 658/658 (98.3 % lines),
 Linux GCC debug + ASan 655/655. Notes: `docs/releases/v0.2.0.md`. `v0.1.0` (2026-10-08, pushed)
