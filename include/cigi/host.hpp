@@ -15,12 +15,12 @@
 // calls poll()/run()/close(); call everything from that thread, or serialise access yourself.
 
 #include "cigi/datagram_transport.hpp"
+#include "cigi/detail/user_handlers.hpp"
 #include "cigi/link_state.hpp"
 #include "cigi/packet_set.hpp"
-#include "cigi/detail/user_handlers.hpp"
 #include "cigi/packets.hpp"
-#include "cigi/user_packet.hpp"
 #include "cigi/session/host_session.hpp"
+#include "cigi/user_packet.hpp"
 
 #include <array>
 #include <chrono>

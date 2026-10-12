@@ -33,7 +33,7 @@ public:
     void set_fallback(std::function<void(const UnknownPacket&)> f) { fallback_ = std::move(f); }
 
     /// The session's on_unknown handler body. `report` receives decode errors.
-    template <class Report> void dispatch(const UnknownPacket& packet, Report&& report) const {
+    template <class Report> void dispatch(const UnknownPacket& packet, const Report& report) const {
         if (is_user_opcode(packet.opcode)) {
             const Slot& slot = slots_.at(packet.opcode - user_opcode_min);
             if (slot) {
@@ -57,7 +57,11 @@ private:
 template <class P, class F> UserHandlers::Slot make_user_slot(F&& handler) {
     return [h = std::forward<F>(handler)](const UnknownPacket& u) mutable -> Result<void> {
         const RawPacket raw{
-            .opcode = u.opcode, .bytes = u.bytes, .offset = u.offset, .byte_order = u.byte_order};
+            .opcode = u.opcode,
+            .bytes = u.bytes,
+            .offset = u.offset,
+            .byte_order = u.byte_order,
+        };
         const auto decoded = raw.template decode_as<P>();
         if (!decoded) {
             return std::unexpected(decoded.error());

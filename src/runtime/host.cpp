@@ -61,8 +61,9 @@ public:
             static_cast<void>(request_database(*config_.database));
         }
         session_.handlers().on_error([this](const Error& e) { report(e); });
-        session_.handlers().on_unknown(
-            [this](const UnknownPacket& u) { users_.dispatch(u, [this](const Error& e) { report(e); }); });
+        session_.handlers().on_unknown([this](const UnknownPacket& u) {
+            users_.dispatch(u, [this](const Error& e) { report(e); });
+        });
     }
     HostCore(const HostCore&) = delete;
     HostCore& operator=(const HostCore&) = delete;
@@ -104,7 +105,9 @@ public:
     [[nodiscard]] const HostSession& session() const noexcept { return session_; }
 
     void on_error(std::function<void(const Error&)> f) { error_cb_ = std::move(f); }
-    void on_unknown(std::function<void(const UnknownPacket&)> f) { users_.set_fallback(std::move(f)); }
+    void on_unknown(std::function<void(const UnknownPacket&)> f) {
+        users_.set_fallback(std::move(f));
+    }
     void set_user_handler(std::uint8_t opcode, UserHandlers::Slot slot) {
         users_.set(opcode, std::move(slot));
     }

@@ -28,9 +28,8 @@ int main() {
         return EXIT_FAILURE;
     }
     for (const auto& item : *view) {
-        const auto decoded = item.and_then([](const cigi::RawPacket& raw) {
-            return raw.decode_as<cigi::IgControl>();
-        });
+        const auto decoded = item.and_then(
+            [](const cigi::RawPacket& raw) { return raw.decode_as<cigi::IgControl>(); });
         if (!decoded) {
             std::println("decode failed: {}", cigi::to_string(decoded.error().code));
             return EXIT_FAILURE;

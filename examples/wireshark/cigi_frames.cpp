@@ -27,10 +27,10 @@
 
 namespace {
 
-constexpr int step_count = 9;              // 60 Hz steps; the exchange settles within a few.
-constexpr int foreign_datagram = 4;        // The Host's 4th datagram is sent in the other byte order.
-constexpr int operate_step = 3;             // The IG reports Operate from this step on.
-constexpr int loaded_step = 6;              // ... and database 1 as loaded from this one.
+constexpr int step_count = 9;       // 60 Hz steps; the exchange settles within a few.
+constexpr int foreign_datagram = 4; // The Host's 4th datagram is sent in the other byte order.
+constexpr int operate_step = 3;     // The IG reports Operate from this step on.
+constexpr int loaded_step = 6;      // ... and database 1 as loaded from this one.
 constexpr std::uint32_t frame_ticks = 1667; // 1 / 60 s in 10 us ticks.
 
 // Host 10.0.0.1:8005 and IG 10.0.0.2:8004; set the same addresses in Wireshark's CIGI preferences.
@@ -59,13 +59,18 @@ void make_foreign(std::span<std::byte> msg) {
     }
 }
 
+/// Who sends to whom, as the capture shows it.
+struct Route {
+    cigi::tools::Endpoint from;
+    cigi::tools::Endpoint to;
+};
+
 /// A DatagramTransport that forwards to another one and records every datagram it sends.
 class Recorder final : public cigi::DatagramTransport {
 public:
     Recorder(std::unique_ptr<cigi::DatagramTransport> inner, cigi::tools::PcapWriter& pcap,
-             std::shared_ptr<std::uint32_t> clock, cigi::tools::Endpoint from,
-             cigi::tools::Endpoint to, int foreign_nth = 0)
-        : inner_(std::move(inner)), pcap_(&pcap), clock_(std::move(clock)), from_(from), to_(to),
+             std::shared_ptr<std::uint32_t> clock, Route route, int foreign_nth = 0)
+        : inner_(std::move(inner)), pcap_(&pcap), clock_(std::move(clock)), route_(route),
           foreign_nth_(foreign_nth) {}
 
     cigi::Result<void> send(std::span<const std::byte> datagram) override {
@@ -78,8 +83,8 @@ public:
             out = std::span<const std::byte>{copy}.first(datagram.size());
         }
         const auto us = capture_start + std::chrono::microseconds{std::int64_t{*clock_} * 10};
-        if (!pcap_->write_udp(std::chrono::duration_cast<std::chrono::microseconds>(us), from_,
-                              to_, out)) {
+        if (!pcap_->write_udp(std::chrono::duration_cast<std::chrono::microseconds>(us),
+                              route_.from, route_.to, out)) {
             return std::unexpected(cigi::Error{.code = cigi::ErrorCode::TransportError});
         }
         return inner_->send(out);
@@ -93,8 +98,7 @@ private:
     std::unique_ptr<cigi::DatagramTransport> inner_;
     cigi::tools::PcapWriter* pcap_;
     std::shared_ptr<std::uint32_t> clock_;
-    cigi::tools::Endpoint from_;
-    cigi::tools::Endpoint to_;
+    Route route_;
     int foreign_nth_;
     int sent_ = 0;
 };
@@ -125,10 +129,11 @@ int main(int argc, char** argv) {
     ig_config.session.clock = clock.fn();
     auto host = cigi::Host::over(
         host_config, std::make_unique<Recorder>(std::move(host_wire), pcap, clock.ticks,
-                                                host_endpoint, ig_endpoint, foreign_datagram));
-    auto ig = cigi::Ig::over(ig_config, std::make_unique<Recorder>(std::move(ig_wire), pcap,
-                                                                   clock.ticks, ig_endpoint,
-                                                                   host_endpoint));
+                                                Route{.from = host_endpoint, .to = ig_endpoint},
+                                                foreign_datagram));
+    auto ig = cigi::Ig::over(
+        ig_config, std::make_unique<Recorder>(std::move(ig_wire), pcap, clock.ticks,
+                                              Route{.from = ig_endpoint, .to = host_endpoint}));
     if (!host || !ig) {
         return EXIT_FAILURE;
     }

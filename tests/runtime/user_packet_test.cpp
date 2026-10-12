@@ -145,9 +145,9 @@ TEST(UserPacketFacade, ASwappedPeerIsDecodedInItsOwnByteOrder) {
     host.host.on_user<Wide>([&](const Wide& w) { at_host = w; });
     Bytes sof = sof_message(1, IgMode::Operate);
     swap_frame_fields(sof);
-    const auto wide = foreign_of(
-        bytes_of(202, 16, 0, 0, 0x04, 0x03, 0x02, 0x01, 0x06, 0x05, 0, 0, 0, 0, 0, 0),
-        bytes_of(202, 16, 0, 0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0, 0, 0, 0, 0, 0));
+    const auto wide =
+        foreign_of(bytes_of(202, 16, 0, 0, 0x04, 0x03, 0x02, 0x01, 0x06, 0x05, 0, 0, 0, 0, 0, 0),
+                   bytes_of(202, 16, 0, 0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0, 0, 0, 0, 0, 0));
     append(sof, wide);
     host.peer.send(sof);
     host.tick();

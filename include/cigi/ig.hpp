@@ -13,12 +13,12 @@
 // THREADING: an Ig is NOT thread-safe; every callback runs on the thread calling poll()/run().
 
 #include "cigi/datagram_transport.hpp"
+#include "cigi/detail/user_handlers.hpp"
 #include "cigi/link_state.hpp"
 #include "cigi/packet_set.hpp"
-#include "cigi/detail/user_handlers.hpp"
 #include "cigi/packets.hpp"
-#include "cigi/user_packet.hpp"
 #include "cigi/session/ig_session.hpp"
+#include "cigi/user_packet.hpp"
 
 #include <chrono>
 #include <cstddef>

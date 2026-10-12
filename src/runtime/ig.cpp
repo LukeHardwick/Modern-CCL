@@ -35,8 +35,9 @@ public:
           rx_(receive_buffer_bytes), host_known_(host_known), configured_known_(host_known) {
         last_rx_ = clock_.now();
         session_.handlers().on_error([this](const Error& e) { report(e); });
-        session_.handlers().on_unknown(
-            [this](const UnknownPacket& u) { users_.dispatch(u, [this](const Error& e) { report(e); }); });
+        session_.handlers().on_unknown([this](const UnknownPacket& u) {
+            users_.dispatch(u, [this](const Error& e) { report(e); });
+        });
     }
     IgCore(const IgCore&) = delete;
     IgCore& operator=(const IgCore&) = delete;
@@ -83,7 +84,9 @@ public:
     [[nodiscard]] const IgSession& session() const noexcept { return session_; }
 
     void on_error(std::function<void(const Error&)> f) { error_cb_ = std::move(f); }
-    void on_unknown(std::function<void(const UnknownPacket&)> f) { users_.set_fallback(std::move(f)); }
+    void on_unknown(std::function<void(const UnknownPacket&)> f) {
+        users_.set_fallback(std::move(f));
+    }
     void set_user_handler(std::uint8_t opcode, UserHandlers::Slot slot) {
         users_.set(opcode, std::move(slot));
     }
