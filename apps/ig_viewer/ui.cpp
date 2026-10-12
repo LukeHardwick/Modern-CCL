@@ -640,7 +640,8 @@ void draw_map(AppState& app) {
         }
         if (app.draw.trails && e.trail.size() > 1) {
             std::vector<ImVec2> pts;
-            // ~24 points per entity keeps the map cheap (ImDrawIdx is 32-bit, see Dependencies.cmake).
+            // ~24 points per entity keeps the map cheap (ImDrawIdx is 32-bit, see
+            // Dependencies.cmake).
             const std::size_t first = e.trail.size() > 192 ? e.trail.size() - 192 : 0;
             for (std::size_t i = first; i < e.trail.size(); i += 8) {
                 pts.push_back(to_screen(e.trail.at(i).x, e.trail.at(i).y));

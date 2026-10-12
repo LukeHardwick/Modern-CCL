@@ -621,8 +621,8 @@ void Renderer::draw_overlay(const CameraResult& cam, const SkyState& sky,
             placed.push_back({x, y, w, h});
             const Color c = id_color(l.id, 0.45F, 1.0F);
             if (steps > 0) {
-                DrawLine(static_cast<int>(s.x), static_cast<int>(s.y), static_cast<int>(s.x),
-                         y + h, Fade(c, 0.8F));
+                DrawLine(static_cast<int>(s.x), static_cast<int>(s.y), static_cast<int>(s.x), y + h,
+                         Fade(c, 0.8F));
             }
             DrawRectangle(x, y, w, h, Fade(BLACK, 0.45F));
             DrawText(text.c_str(), x + 3, y + 1, size, c);
