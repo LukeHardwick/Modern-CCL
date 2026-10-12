@@ -29,6 +29,7 @@ Packet", `cigi.host`/`cigi.ig` set). "Match" = the value Wireshark shows equals 
 | Packet Size | 4.1.1, 4.2.1 | 24 | 24 | match |
 | First datagram of a capture, version "From Packet" | 2.5 | valid 3.3 SOF (T02c) or IG Control (T10) | "Unknown (24 bytes)", whichever of the two it is; the next datagram decodes (a SOF teaches the version as well as an IG Control; corrected in T10) | Wireshark limitation; ICD wins |
 | Version forced to "CIGI 3" | 4.1.1, 4.2.1 | 24-byte packets | assumes the 3.0/3.1 16-byte layout; trailing 8 bytes parsed as a bogus packet, "Malformed: Packet offset does not match packet length" | Wireshark limitation (3.2/3.3 size not supported in this mode); ICD wins |
+| `cigi.version` on non-frame packets (T10 checker) | 4.1.1, 4.2.1 | major version 3 in the frame packet only | tshark 4.6.9 shows `cigi.version` only inside the IG Control / SOF tree, so the checker compares it on packet 1 of each datagram | Wireshark presentation; no conflict |
 
 No library discrepancy was found: every field Wireshark decodes agrees with the ICD-derived layout.
 
