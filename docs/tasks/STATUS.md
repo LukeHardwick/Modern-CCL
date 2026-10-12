@@ -81,6 +81,7 @@ scenario files, record/replay (pcap) and config file all in scope; Genesis-match
 numbers via a configurable mapping; macOS + Linux + Windows; small CC0 sample assets in the repo.
 **Libraries approved:** toml++ (hand-edited files) + glaze (JSON, machine files). T20 also
 evaluates glaze's TOML reader. T27 (interactive Host) is optional.
+**T22a progress (2026-10-12, planner spike, inline at the user's request):** Blender 5.2.2 installed (Homebrew); `tools/models/make_models.py` builds `databases/sample/models/jet.glb` (35 KB, nodes + hinge pivots checked) and previews in `docs/guide/img/models/`. Remaining: helicopter, tank, truck, `databases/sample/database.toml` (needs T20's format), CREDITS.md, `scripts/make_models.sh`.
 **Before launching T21/T22:** models come from **T22a** (Blender script; the user installs
 Blender first). The user downloads one SRTM3 tile for T21. Agents must not download; candidate
 online models are listed in the T22a brief (optional, each download needs the user's approval).
