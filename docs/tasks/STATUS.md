@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 14:05 BST** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 (release candidate v0.2.0)** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -18,30 +18,19 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the brief + the "Remaining" list below (better when the old context is long).
 
 ## `main`
-`main` contains T00–T08, T09a, T09b Part 1, T10, T12 and T17 (see README.md). T12 merge: macOS 648/648 (98.3 % lines), Linux GCC debug + ASan 645/645. All checks green at `5a20b87`
-(macOS 416 tests, Linux GCC debug + ASan 413).
+`main` contains T00–T08, T09a, T09b Part 1, T10, T12, T17 and the viewer resize fix (see
+README.md). All checks green on the release candidate: macOS 658/658 (98.3 % lines), Linux GCC
+debug + ASan 655/655.
 
 ## Open task branches
-
-> **14:05: the session "Subagent in Sonnet 5.5" is now the active planner.** It has Sonnet agents
-> running in the T09a, T09b and T12 worktrees (T09a: full check incl. the host_minimal tidy fixes;
-> T09b: Opus-review fixes; T12: Linux libFuzzer verification + gen_corpus/replay_main tidy fixes).
-> Don't start other agents on those worktrees. T17 is merged.
-
-Worktrees live under `.claude/worktrees/` in the main checkout.
-
-| Task | Branch | Worktree | Head | Based on | State |
-|---|---|---|---|---|---|
-
-Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
-(filled in after the run).
+None: every task branch is merged. No agents are running.
 
 ### T09b Part 1 — merged
 Opus review fixes applied (CIGI_BUILD_MOCK_IG guard, Host view aimed at the convoy, SOF echoes
 Operate/Debug, MockIg error-path tests, Inactive-parent extrapolation, label/buffer nits). Checks:
 macOS 547/547 (mock_ig 99.2 % lines), Linux GCC debug + ASan 544/544 (after a -Wsign-conversion
 test fix). `--stress` capped at 1000 (guess; measure the datagram limit in Part 2).
-Part 2 (network mode + fault panel) starts after T09a is merged — see the brief.
+Part 2 (network mode + fault panel) can start now that T09a is merged — see the brief.
 
 ### T09a — merged
 Three Opus review rounds (blocker: close() from callbacks used a null transport; database replay on
@@ -76,12 +65,12 @@ foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Lin
 429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
 are not templated on the packet set; user packets arrive via `on_unknown`).
 
-## Release v0.2.0 (in progress)
-The user asked (2026-10-12) to finish the current work and mark it as a release: once T09a,
-T09b Part 1 and T12 are merged and `main` passes `check.sh --coverage` + Linux check, tag
-`v0.2.0` on `main` (annotated, local only; nothing is pushed; `v0.1.0` = foundation, 2026-10-08)
-with release notes in `docs/releases/v0.2.0.md`. Also in the release: the viewer resize/fullscreen fix (`fix/viewer-resize`). New work after the tag: **T09c** (facade `on_user<P>`, examples on the
-facade), T09b Part 2, T09.
+## Release v0.2.0 (candidate on `main`, tag pending the user's viewer hand test)
+Contents: T00–T08, T09a, T09b Part 1, T10, T12, T17 + the viewer resize/fullscreen fix
+(`fix/viewer-resize`). Release candidate checks: macOS check.sh --coverage 658/658 (98.3 % lines),
+Linux GCC debug + ASan 655/655. Notes: `docs/releases/v0.2.0.md`. `v0.1.0` (2026-10-08, pushed)
+was the foundation. After the user has tried the viewer (green button, F/F11, edge-drag, Esc):
+annotated tag `v0.2.0` on `main`, local only. New work after the tag: **T09c**, T09b Part 2, T09.
 
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
