@@ -543,6 +543,22 @@ TEST(HostSession, HandlersReceiveEveryPacketExceptTheStartOfFrame) {
     EXPECT_EQ(host.stats().unknown_packets, 1U);
 }
 
+TEST(HostSession, UserPacketsReachOnUnknownUnlessIgnored) {
+    for (const bool ignore : {false, true}) {
+        SessionConfig cfg;
+        cfg.ignore_user_packets = ignore;
+        HostSession host{cfg};
+        int unknown = 0;
+        host.handlers().on_unknown(
+            [&](const UnknownPacket& u) { unknown += u.opcode == 210 ? 1 : 0; });
+        Bytes m = sof_message(1);
+        append(m, bytes_of(210, 8, 0, 0, 0, 0, 0, 0)); // a user-defined opcode
+        ASSERT_TRUE(host.receive(m));
+        EXPECT_EQ(unknown, ignore ? 0 : 1);
+        EXPECT_EQ(host.stats().unknown_packets, ignore ? 0U : 1U);
+    }
+}
+
 TEST(HostSession, PacketErrorsAreCountedAndPassedOn) {
     HostSession host;
     std::vector<Error> errors;

@@ -38,6 +38,10 @@ struct SessionConfig {
     /// Run validate() on every packet passed to add() and fail on a bad field value. Off by
     /// default: the ICD's strict ranges (e.g. yaw 0..360) reject conventions common in hosts.
     bool validate_outgoing = false;
+    /// ICD 4.3: skip user-defined packets (opcodes 201-255) on receive. They then reach neither a
+    /// handler nor on_unknown. Off by default, so they arrive as unknown packets (the sessions'
+    /// sets hold no user packets; typed user packets in sessions are deferred to the facade).
+    bool ignore_user_packets = false;
     /// Size of the buffer a message is built in (at least one frame packet, 24 bytes).
     std::size_t max_message_bytes = 16384;
     /// How many numbers behind the newest one count as a reordered (stale) message rather than a

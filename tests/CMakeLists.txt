@@ -27,6 +27,8 @@ cigi_add_test(cigi_entity_packet_test SOURCES
     packets/entity_control_test.cpp
     packets/rate_control_test.cpp)
 
+cigi_add_test(cigi_user_packet_test SOURCES packets/user_packet_test.cpp)
+
 cigi_add_test(cigi_message_test SOURCES
     message/builder_test.cpp
     message/dispatch_test.cpp
@@ -36,6 +38,20 @@ cigi_add_test(cigi_message_test SOURCES
 cigi_add_test(cigi_dispatch_alloc_test SOURCES message/dispatch_alloc_test.cpp)
 # clang-tidy cannot accept a user-provided operator new: libc++ declares its parameter as __sz.
 set_target_properties(cigi_dispatch_alloc_test PROPERTIES CXX_CLANG_TIDY "")
+
+# Mock IG (apps/mock_ig): scene model, HAT/HOT responder, terrain, describe(), scripted host.
+if(CIGI_BUILD_MOCK_IG)
+    cigi_add_test(cigi_mock_ig_test SOURCES
+        mock_ig/describe_test.cpp
+        mock_ig/geo_test.cpp
+        mock_ig/hat_hot_test.cpp
+        mock_ig/mock_ig_test.cpp
+        mock_ig/scene_test.cpp
+        mock_ig/scripted_host_test.cpp
+        mock_ig/sky_test.cpp
+        mock_ig/terrain_test.cpp
+        LINK cigi_mock_ig)
+endif()
 
 if(CIGI_BUILD_TRANSPORT)
     cigi_add_test(cigi_platform_test SOURCES platform/sleep_test.cpp LINK cigi::platform)
@@ -55,6 +71,21 @@ if(CIGI_BUILD_SESSION)
         session/ig_session_test.cpp
         session/exchange_test.cpp
         LINK cigi::session)
+endif()
+
+if(TARGET cigi_runtime)
+    cigi_add_test(cigi_runtime_test SOURCES
+        runtime/host_test.cpp
+        runtime/ig_test.cpp
+        runtime/transport_test.cpp
+        runtime/udp_transport_test.cpp
+        LINK cigi::runtime)
+    # Replaces the global operator new to prove the steady-state frame path is allocation-free.
+    cigi_add_test(cigi_runtime_alloc_test SOURCES runtime/host_alloc_test.cpp LINK cigi::runtime)
+    set_target_properties(cigi_runtime_alloc_test PROPERTIES CXX_CLANG_TIDY "")
+    # Host and Ig over real loopback UDP.
+    cigi_add_test(cigi_runtime_network_test SOURCES runtime/network_test.cpp
+        LINK cigi::runtime cigi::transport LABELS network)
 endif()
 
 find_program(CIGI_TSHARK tshark)

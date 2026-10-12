@@ -33,7 +33,7 @@ template <class... Fs> struct overloaded : Fs... {
 /// What one dispatch pass did.
 struct DispatchStats {
     std::size_t handled = 0; ///< Known packets given to a handler.
-    std::size_t ignored = 0; ///< Known packets with no handler.
+    std::size_t ignored = 0; ///< Known packets with no handler, and user packets switched off.
     std::size_t unknown = 0; ///< Packets with an opcode outside the set (handled or not).
     std::size_t errors = 0;  ///< Header errors (at most one) plus body errors.
 
@@ -68,7 +68,7 @@ template <std::size_t I = 0, class V, class F> constexpr void visit_alternative(
 /// packet was handled.
 template <class Set, class OnPacket, class OnUnknown, class OnError>
 constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnknown& on_unknown,
-                             OnError& on_error) {
+                             OnError& on_error, bool ignore_user = false) {
     DispatchStats stats;
     for (const auto& item : view) {
         if (!item) {
@@ -84,6 +84,12 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
                 .offset = item->offset,
                 .opcode = item->opcode,
             });
+            continue;
+        }
+        // ICD 4.3: with user-defined packets switched off they are skipped undecoded, counted as
+        // ignored, and not delivered even as unknown.
+        if (ignore_user && is_user_opcode(item->opcode)) {
+            ++stats.ignored;
             continue;
         }
         const auto decoded = decode_any<Set>(*item, view.direction());
@@ -113,11 +119,12 @@ constexpr DispatchStats walk(const MessageView& view, OnPacket& on_packet, OnUnk
 /// accepts `const UnknownPacket&` it receives unknown opcodes. `on_error(const Error&)` is
 /// optional. No allocation. A second IG Control / Start of Frame in a message is reported as
 /// DuplicateFramePacket and skipped. WrongDirection arises only if `Set` and the message direction
-/// disagree; an opposite-direction packet in a matching set is an UnknownPacket.
+/// disagree; an opposite-direction packet in a matching set is an UnknownPacket. With
+/// `ignore_user` user-defined packets (201-255) are skipped and counted as ignored (ICD 4.3).
 // NOLINTBEGIN(cppcoreguidelines-missing-std-forward): both are called repeatedly, never moved.
 template <class Set, class Visitor, class OnError = detail::IgnoreErrors>
 constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
-                                 OnError&& on_error = {}) {
+                                 OnError&& on_error = {}, bool ignore_user = false) {
     static_assert(detail::AcceptsAny<Set, Visitor>::value,
                   "dispatch: the visitor accepts no packet of the set and not UnknownPacket");
     auto on_packet = [&]([[maybe_unused]] const auto& p) {
@@ -133,7 +140,7 @@ constexpr DispatchStats dispatch(const MessageView& view, Visitor&& visitor,
             static_cast<void>(visitor(p));
         }
     };
-    return detail::walk<Set>(view, on_packet, on_unknown, on_error);
+    return detail::walk<Set>(view, on_packet, on_unknown, on_error, ignore_user);
 }
 // NOLINTEND(cppcoreguidelines-missing-std-forward)
 
@@ -206,6 +213,11 @@ public:
         return true;
     }
 
+    /// Skip user-defined packets (opcodes 201-255, ICD 4.3) instead of dispatching them: they are
+    /// counted as ignored and reach neither a handler nor on_unknown. Off by default.
+    void ignore_user_packets(bool ignore) noexcept { ignore_user_ = ignore; }
+    [[nodiscard]] bool ignoring_user_packets() const noexcept { return ignore_user_; }
+
     /// Dispatch every packet of `view` to the registered handlers.
     // NOLINTNEXTLINE(modernize-use-nodiscard): the stats are optional.
     DispatchStats dispatch(const MessageView& view) const {
@@ -228,13 +240,14 @@ public:
                 error_(e);
             }
         };
-        return detail::walk<SetType>(view, on_packet, on_unknown, on_error);
+        return detail::walk<SetType>(view, on_packet, on_unknown, on_error, ignore_user_);
     }
 
 private:
     std::tuple<std::function<void(const Ps&)>...> slots_;
     std::function<void(const UnknownPacket&)> unknown_;
     std::function<void(const Error&)> error_;
+    bool ignore_user_ = false;
 };
 
 } // namespace cigi

@@ -9,3 +9,13 @@ cigi_apply_project_options(cigi_frames)
 add_executable(dispatch_example dispatch_example.cpp)
 target_link_libraries(dispatch_example PRIVATE cigi::cigi)
 cigi_apply_project_options(dispatch_example)
+
+add_executable(user_packet user_packet.cpp)
+target_link_libraries(user_packet PRIVATE cigi::cigi)
+cigi_apply_project_options(user_packet)
+
+if(TARGET cigi_runtime)
+    add_executable(host_minimal host_minimal.cpp)
+    target_link_libraries(host_minimal PRIVATE cigi::runtime)
+    cigi_apply_project_options(host_minimal)
+endif()

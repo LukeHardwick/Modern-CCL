@@ -179,6 +179,24 @@ Bytes host_message(std::uint32_t frame, IgMode mode) {
     return m;
 }
 
+TEST(IgSession, UserPacketsReachOnUnknownUnlessIgnored) {
+    for (const bool ignore : {false, true}) {
+        const FakeClock clock;
+        auto cfg = config_with(clock);
+        cfg.ignore_user_packets = ignore;
+        IgSession ig{cfg};
+        ig.set_mode(IgMode::Operate);
+        int unknown = 0;
+        ig.handlers().on_unknown(
+            [&](const UnknownPacket& u) { unknown += u.opcode == 210 ? 1 : 0; });
+        Bytes m = host_message(1, IgMode::Operate);
+        append(m, bytes_of(210, 8, 0, 0, 0, 0, 0, 0)); // a user-defined opcode
+        ASSERT_TRUE(ig.receive(m));
+        EXPECT_EQ(unknown, ignore ? 0 : 1);
+        EXPECT_EQ(ig.stats().unknown_packets, ignore ? 1U : 2U); // host_message holds one more
+    }
+}
+
 TEST(IgSession, StandbyDeliversNothingToHandlers) {
     const FakeClock clock;
     IgSession ig{config_with(clock)};
