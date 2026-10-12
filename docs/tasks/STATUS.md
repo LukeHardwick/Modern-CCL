@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 (release candidate v0.2.0)** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 (tools-track planning merged)** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -73,8 +73,7 @@ was the foundation. Tagged at the user's request before their hand test of the v
 check by hand: green button, live F/F11/Esc, edge-drag (listed as a known limitation). New work: **T09c**, T09b Part 2, T09.
 
 ## Tools track: productionise `ig_viewer` / mock IG (planned 2026-10-12, NOT launched)
-Briefs T20–T27 written on branch `claude/ig-viewer-mock-ig-productionize-96da85`; the user wants to
-review them before any agent runs. User decisions: aimed at both dev/test and demo use; database
+Briefs T20–T28 merged into `main` (`f11ec6a`); the user wants to review them before any agent runs. User decisions: aimed at both dev/test and demo use; database
 = folder + TOML manifest per CIGI Database Number; glTF models with primitive fallback; heightmap
 terrain shared by HAT/HOT and rendering (in `cigi_mock_ig`, so `demo_ig` agrees); network mode,
 scenario files, record/replay (pcap) and config file all in scope; Genesis-matching entity
@@ -100,12 +99,13 @@ the user). Phase B: T13–T16 (independent), T18, T19.
   "Process terminated due to timeout" or "Killed signal", re-run it.
 - Spec (git-ignored): `/Users/luke/Documents/Projects/Assignments/Final_Year_Project/Modern-CCL/third_party/spec/`.
 
-## Check results (`scripts/check.sh --coverage`, macOS, 2026-10-12 ~13:40)
-| Branch @ head | format | debug | asan | tidy | coverage (lines, total) |
-|---|---|---|---|---|---|
-| T17 @ `f70c635` | ✅ | ✅ 429 | ✅ | ✅ | ✅ 97.7 % |
-| T09b P1 @ `a50503f` | ✅ | ✅ 540 | ✅ | ✅ | ✅ 98.3 % (viewer exe excluded) |
-| T09a @ `09e82c1` | ✅ | ✅ 478 | ✅ | ❌ `examples/host_minimal.cpp` only | not reached |
-| T12 @ `8971714` | ✅ (fixed) | ✅ 419 | ✅ | ❌ `fuzz/gen_corpus.cpp`, `fuzz/replay_main.cpp` | not reached |
-Linux checks have not been run on any of the four yet (`CIGI_LINUX_JOBS=6 scripts/linux-check.sh`).
-T09b and T17 are therefore ready for Opus review now.
+## Check results
+Per-branch results from before the v0.2.0 merges have been removed (all those branches are merged); the
+release candidate figures are under `main` above. The tools-track merge (`f11ec6a`) added docs, a
+Python script and assets only, so no C++ checks were run on it.
+
+## Worktrees (pruned 2026-10-12)
+All merged `agent-*` task worktrees and their branches have been removed. Only the T10 worktree
+(`agent-a356b2bd9342d0073`, untracked `__pycache__/` only) is left for the user to force-remove.
+Session worktrees (`hello-df812a`, `subagent-sonnet-5-5-7fd7fe`, `ig-viewer-mock-ig-productionize-96da85`)
+are kept; their branches are all merged.
