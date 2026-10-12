@@ -52,6 +52,15 @@ struct SensorTag {
 };
 static_assert(wire::layout_ok<SensorTag>());
 
+/// Shares SensorTag's opcode (210): a set holding both must be rejected.
+struct Dup210 {
+    static constexpr std::uint8_t opcode = 210;
+    static constexpr Direction direction = Direction::Both;
+    static constexpr std::size_t wire_size = 8;
+    std::uint16_t value = 0;
+    static constexpr auto fields = std::tuple{wire::scalar(&Dup210::value, 2)};
+};
+
 /// Another user packet, to test unknown user opcodes (8 bytes).
 struct OtherUser {
     static constexpr std::uint8_t opcode = 230;
@@ -133,7 +142,7 @@ static_assert(!UserDefinedPacket<BadSize>, "12 bytes is not a multiple of 8");
 static_assert(!UserDefinedPacket<IgControl> && !UserDefinedPacket<StartOfFrame>);
 static_assert(!UserDefinedPacket<int>);
 
-static_assert(!detail::opcodes_unique<SensorTag, SensorTag>(), "duplicate opcode is rejected");
+static_assert(!detail::opcodes_unique<SensorTag, Dup210>(), "duplicate opcode is rejected");
 static_assert(detail::opcodes_unique<SensorTag, OtherUser>());
 
 using Mine = ExtendUser<HostToIgPackets, SensorTag, OtherUser, WordsPacket>;
@@ -155,7 +164,8 @@ constexpr SensorTag sample{
     .value = 1.5F,
     .counter = 0x0A0B0C0DU,
 };
-// Hand-derived from ICD 4.3 (Fig. 135): byte 0 opcode 210 = 0xD2, byte 1 size 16 = 0x10. Tag id
+// Only bytes 0-1 come from the ICD (4.3): opcode 210 = 0xD2, size 16 = 0x10. The rest is this
+// test's own layout: tag id
 // 0x0102 at 2-3, mode Auto = 2 at byte 4, armed = bit 0 of byte 5, 6-7 reserved. 1.5f is
 // 0x3FC00000 at 8-11, counter at 12-15.
 constexpr auto golden_le = bytes_of(0xD2, 0x10, 0x02, 0x01, 0x02, 0x01, 0x00, 0x00, //
@@ -370,3 +380,36 @@ TEST(UserPacketDispatch, MalformedUserPacketIsReportedNotFatal) {
 }
 
 } // namespace cigi
+
+// ---- a user packet outside namespace cigi ---------------------------------------------------
+namespace {
+namespace app_ext {
+
+struct Ping {
+    static constexpr std::uint8_t opcode = 240;
+    static constexpr cigi::Direction direction = cigi::Direction::Both;
+    static constexpr std::size_t wire_size = 8;
+    std::uint16_t seq = 0;
+    static constexpr auto fields = std::tuple{cigi::wire::scalar(&Ping::seq, 2)};
+};
+
+} // namespace app_ext
+
+TEST(UserPacketForeignNamespace, BuilderAndDispatcherWork) {
+    using Set = cigi::ExtendUser<cigi::HostToIgPackets, app_ext::Ping>;
+    static_assert(cigi::UserDefinedPacket<app_ext::Ping>);
+    cigi::Bytes out(64);
+    cigi::MessageBuilder b(cigi::Direction::HostToIg, out);
+    ASSERT_TRUE(b.add(cigi::IgControl{}).has_value());
+    ASSERT_TRUE(b.add(app_ext::Ping{.seq = 77}).has_value());
+    out.resize(b.size());
+    const auto view = cigi::MessageView::parse(out);
+    ASSERT_TRUE(view.has_value());
+    cigi::Dispatcher<Set> d;
+    std::uint16_t seq = 0;
+    d.on<app_ext::Ping>([&](const app_ext::Ping& p) { seq = p.seq; });
+    EXPECT_EQ(d.dispatch(*view).handled, 1U);
+    EXPECT_EQ(seq, 77);
+}
+
+} // namespace

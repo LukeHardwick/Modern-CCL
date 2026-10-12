@@ -182,8 +182,11 @@ when it has one. (Named `UserDefinedPacket` because the shared test helper alrea
   `dispatch<Set>`). A user opcode not in the set always reaches `on_unknown` (ICD 2.10).
 - Example: `examples/user_packet.cpp`; tests: `tests/packets/user_packet_test.cpp`.
 
-Session integration is separate (T09a): a session should hold a `Dispatcher` over its set and expose
-`SessionConfig::ignore_user_packets` by calling `ignore_user_packets` on it.
+**Sessions.** `SessionConfig::ignore_user_packets` (default false) is forwarded to the session's
+`Dispatcher` in both constructors. Sessions are *not* templated on the packet set (the least
+intrusive change to T07's API), so their sets hold no user packets: user opcodes arrive as
+`UnknownPacket` (`on_unknown`, `stats.unknown_packets`) or, with the flag set, are skipped. Typed
+user packets in sessions (set-templated sessions) are deferred to the facade / T09a follow-up.
 
 ## Versions and older peers
 
