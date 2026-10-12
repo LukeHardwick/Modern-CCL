@@ -7,13 +7,15 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/logger.h>
 
+// CLI11 and spdlog may throw (an app may terminate); CLI11_PARSE takes char**.
+// NOLINTNEXTLINE(bugprone-exception-escape,misc-const-correctness)
 int main(int argc, char** argv) {
     cigi::demo::DemoIgOptions options;
     CLI::App app{"Mock CIGI 3.3 Image Generator (headless)", "demo_ig"};
     cigi::demo::add_demo_ig_options(app, options);
     CLI11_PARSE(app, argc, argv);
 
-    auto logger = cigi::demo::make_logger("ig", options.log_level);
+    const auto logger =cigi::demo::make_logger("ig", options.log_level);
     auto ig = cigi::demo::DemoIg::create(options, logger);
     if (!ig) {
         logger->error("{}", ig.error());

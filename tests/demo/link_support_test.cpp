@@ -105,7 +105,7 @@ TEST(UdpLink, ConfiguredPeerIsNeverForgotten) {
 
 TEST(UdpLink, WritesPcapAndCallsTheTap) {
     std::ostringstream pcap_bytes;
-    auto pcap = std::make_shared<tools::PcapWriter>(pcap_bytes);
+    const auto pcap = std::make_shared<tools::PcapWriter>(pcap_bytes);
     int tapped_sent = 0;
     int tapped_received = 0;
 
@@ -144,8 +144,8 @@ TEST(UdpLink, OpenPcapReportsWhyItFailed) {
 TEST(Support, DescribesDatagramsPacketByPacket) {
     const auto lines = describe_datagram(host_message());
     ASSERT_EQ(lines.size(), 2U);
-    EXPECT_NE(lines[0].find("Operate"), std::string::npos);
-    EXPECT_NE(lines[1].find("7"), std::string::npos);
+    EXPECT_NE(lines.at(0).find("Operate"), std::string::npos);
+    EXPECT_NE(lines.at(1).find('7'), std::string::npos);
 
     const auto reply = describe_datagram(ig_message());
     ASSERT_EQ(reply.size(), 1U);
@@ -153,7 +153,7 @@ TEST(Support, DescribesDatagramsPacketByPacket) {
     const std::array<std::byte, 3> junk{};
     const auto bad = describe_datagram(junk);
     ASSERT_EQ(bad.size(), 1U);
-    EXPECT_NE(bad[0].find("not a CIGI message"), std::string::npos);
+    EXPECT_NE(bad.at(0).find("not a CIGI message"), std::string::npos);
 }
 
 TEST(Support, LoggerHonoursItsLevel) {

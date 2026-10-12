@@ -52,7 +52,7 @@ template <class Set> void describe_items(const MessageView& view, std::vector<st
 } // namespace
 
 std::shared_ptr<spdlog::logger> make_logger(const std::string& name, std::string_view level) {
-    auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    const auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     auto logger = std::make_shared<spdlog::logger>(name, sink);
     logger->set_level(to_spdlog(level));
     logger->flush_on(spdlog::level::trace);
@@ -91,7 +91,7 @@ RunControl::~RunControl() {
     watcher_.request_stop();
 }
 
-bool RunControl::interrupted() const noexcept {
+bool RunControl::interrupted() noexcept {
     return g_signalled.load() != 0;
 }
 

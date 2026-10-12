@@ -30,7 +30,7 @@ UdpLink::UdpLink(transport::UdpEndpoint endpoint, UdpLinkConfig config)
     const auto bound = tools::Ipv4Address::parse(config_.local_address);
     if (bound && bound->octets != std::array<std::uint8_t, 4>{}) {
         local_ip_ = *bound;
-    } else if (remote_ && remote_->address.octets[0] == 127) {
+    } else if (remote_ && remote_->address.octets.front() == 127) {
         local_ip_ = tools::Ipv4Address{{127, 0, 0, 1}};
     }
 }

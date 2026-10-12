@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <format>
+#include <numbers>
 #include <spdlog/logger.h>
 #include <utility>
 
@@ -21,7 +22,7 @@ constexpr double origin_lon = -0.12;
 constexpr double circle_radius_m = 1500.0;
 constexpr double speed_mps = 80.0;
 constexpr double altitude_m = 500.0;
-constexpr double pi = 3.14159265358979323846;
+constexpr double pi = std::numbers::pi;
 constexpr double metres_per_degree_lat = 111'320.0;
 constexpr std::uint16_t ownship_id = 0;
 constexpr std::uint16_t ownship_type = 101; // the mock IG's convention: 100-199 are aircraft

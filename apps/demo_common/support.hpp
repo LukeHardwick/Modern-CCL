@@ -36,7 +36,7 @@ public:
     ~RunControl();
 
     [[nodiscard]] std::stop_token token() const { return source_.get_token(); }
-    [[nodiscard]] bool interrupted() const noexcept;
+    [[nodiscard]] static bool interrupted() noexcept;
 
 private:
     std::stop_source source_;

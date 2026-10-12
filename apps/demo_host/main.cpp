@@ -8,13 +8,15 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/logger.h>
 
+// CLI11 and spdlog may throw (an app may terminate); CLI11_PARSE takes char**.
+// NOLINTNEXTLINE(bugprone-exception-escape,misc-const-correctness)
 int main(int argc, char** argv) {
     cigi::demo::DemoHostOptions options;
     CLI::App app{"CIGI 3.3 demo Host", "demo_host"};
     cigi::demo::add_demo_host_options(app, options);
     CLI11_PARSE(app, argc, argv);
 
-    auto logger = cigi::demo::make_logger("host", options.log_level);
+    const auto logger =cigi::demo::make_logger("host", options.log_level);
     auto host = cigi::demo::DemoHost::create(options, logger);
     if (!host) {
         logger->error("{}", host.error());

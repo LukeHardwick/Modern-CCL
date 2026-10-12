@@ -60,8 +60,24 @@ PairResult run_pair(DemoIgOptions ig_options, DemoHostOptions host_options, doub
     return result;
 }
 
+PairResult run_default(double seconds) {
+    const DemoIgOptions ig;
+    const DemoHostOptions host;
+    return run_pair(ig, host, seconds);
+}
+
+PairResult run_with_ig(const DemoIgOptions& ig, double seconds) {
+    const DemoHostOptions host;
+    return run_pair(ig, host, seconds);
+}
+
+PairResult run_with_host(const DemoHostOptions& host, double seconds) {
+    const DemoIgOptions ig;
+    return run_pair(ig, host, seconds);
+}
+
 TEST(DemoPair, HealthyRunExitsZero) {
-    const auto r = run_pair({}, {}, 3.0);
+    const auto r = run_default(3.0);
     EXPECT_EQ(r.host.exit_code(), 0);
     EXPECT_EQ(r.ig.exit_code(), 0);
     EXPECT_TRUE(r.host.reached_operate);
@@ -85,7 +101,7 @@ TEST(DemoPair, HealthyRunExitsZero) {
 TEST(DemoPair, RefusingOperateKeepsTheHostInStandby) {
     DemoIgOptions ig;
     ig.refuse_operate = true;
-    const auto r = run_pair(ig, {}, 1.5);
+    const auto r = run_with_ig(ig, 1.5);
     EXPECT_FALSE(r.host.reached_operate);
     EXPECT_EQ(r.host.responses(), 0U);
     EXPECT_EQ(r.host.exit_code(), 1);
@@ -99,7 +115,7 @@ TEST(DemoPair, RefusingOperateKeepsTheHostInStandby) {
 TEST(DemoPair, LoadFramesDelayOperate) {
     DemoIgOptions ig;
     ig.load_frames = 60; // one second at 60 Hz
-    const auto r = run_pair(ig, {}, 3.0);
+    const auto r = run_with_ig(ig, 3.0);
     EXPECT_EQ(r.host.exit_code(), 0);
     EXPECT_TRUE(contains(r.host.transitions, "WaitingForIg -> Standby"));
     EXPECT_TRUE(contains(r.host.transitions, "Standby -> Operate"));
@@ -127,7 +143,7 @@ TEST(DemoPair, DroppedDatagramsAreCountedAndTheRunStillSucceeds) {
     DemoIgOptions ig;
     ig.drop = 0.2;
     ig.seed = 7;
-    const auto r = run_pair(ig, {}, 3.0);
+    const auto r = run_with_ig(ig, 3.0);
     EXPECT_EQ(r.host.exit_code(), 0);
     ASSERT_TRUE(r.ig.faults_active);
     EXPECT_GT(r.ig.faults.dropped, 10U);
@@ -140,7 +156,7 @@ TEST(DemoPair, DuplicatedAndDelayedDatagramsAreTolerated) {
     ig.duplicate = 0.3;
     ig.latency_ms = 20;
     ig.seed = 3;
-    const auto r = run_pair(ig, {}, 3.0);
+    const auto r = run_with_ig(ig, 3.0);
     EXPECT_EQ(r.host.exit_code(), 0);
     EXPECT_GT(r.ig.faults.duplicated, 10U);
     EXPECT_GT(r.ig.faults.delayed, 10U);
@@ -150,7 +166,7 @@ TEST(DemoPair, DuplicatedAndDelayedDatagramsAreTolerated) {
 TEST(DemoPair, RestartedIgIsDetectedAndOperateResumes) {
     DemoIgOptions ig;
     ig.restart_after_s = 1.5;
-    const auto r = run_pair(ig, {}, 4.0);
+    const auto r = run_with_ig(ig, 4.0);
     EXPECT_EQ(r.ig.ig.restarts, 1U);
     EXPECT_GE(r.host.host.ig_restarts + r.host.host.link_losses, 1U);
     EXPECT_EQ(r.host.final_state, LinkState::Operate);
@@ -164,7 +180,7 @@ TEST(DemoPair, AsynchronousHostWorksToo) {
     DemoHostOptions host;
     host.synchronous = false;
     host.rate_hz = 30;
-    const auto r = run_pair({}, host, 2.0);
+    const auto r = run_with_host(host, 2.0);
     EXPECT_EQ(r.host.exit_code(), 0);
     EXPECT_GT(r.host.responses(), 0U);
 }
@@ -191,8 +207,8 @@ TEST(DemoPair, BothSidesRecordPcapFiles) {
         std::ifstream in(file, std::ios::binary);
         std::string magic(4, '\0');
         in.read(magic.data(), 4);
-        EXPECT_EQ(static_cast<unsigned char>(magic[0]), 0xD4U) << file;
-        EXPECT_EQ(static_cast<unsigned char>(magic[1]), 0xC3U) << file;
+        EXPECT_EQ(static_cast<unsigned char>(magic.at(0)), 0xD4U) << file;
+        EXPECT_EQ(static_cast<unsigned char>(magic.at(1)), 0xC3U) << file;
         EXPECT_GT(std::filesystem::file_size(file), 1000U);
         std::filesystem::remove(file);
     }

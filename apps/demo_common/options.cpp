@@ -1,6 +1,7 @@
 #include "demo_common/options.hpp"
 
 #include <CLI/CLI.hpp>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <format>
@@ -21,12 +22,7 @@ void add_log_level(CLI::App& app, std::string& level) {
 } // namespace
 
 bool is_log_level(std::string_view name) noexcept {
-    for (const auto level : log_levels) {
-        if (level == name) {
-            return true;
-        }
-    }
-    return false;
+    return std::ranges::find(log_levels, name) != log_levels.end();
 }
 
 void add_mock_ig_options(CLI::App& app, MockIgOptions& o) {
@@ -114,7 +110,8 @@ std::string validate(const MockIgOptions& o) {
     if (!o.host_addr.empty() && o.host_port == 0) {
         return "--host-port must not be 0 with --host-addr";
     }
-    if (!(o.drop >= 0.0 && o.drop <= 1.0) || !(o.duplicate >= 0.0 && o.duplicate <= 1.0)) {
+    const auto in_unit = [](double p) { return p >= 0.0 && p <= 1.0; };
+    if (!in_unit(o.drop) || !in_unit(o.duplicate)) {
         return "--drop and --duplicate must be between 0 and 1";
     }
     return {};
