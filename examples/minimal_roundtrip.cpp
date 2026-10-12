@@ -1,3 +1,4 @@
+// Low-level on purpose; a real Host usually uses cigi::Host (see host_minimal.cpp).
 // Build a Host -> IG message, parse it back, and print the decoded IG Control packet.
 #include "cigi/message/builder.hpp"
 #include "cigi/message/view.hpp"

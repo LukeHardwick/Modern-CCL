@@ -79,9 +79,14 @@ consumed by the facade: `session().last_start_of_frame()` returns it. A handler 
 responses typically matches the request by `hat_hot_id`; `host_frame_lsn` identifies the frame
 that carried the request (ICD 2.3, 4.2.2).
 
-User-defined packets (opcodes 201-255) reach `on_unknown` unless you register them; set
-`config.session.ignore_user_packets = true` to drop them before that. Typed `on_user<P>` handlers
-are not part of the facade yet.
+User-defined packets (opcodes 201-255, ICD 4.3) arrive as typed structs through
+`on_user<MyPacket>(handler)`: `MyPacket` must satisfy `UserDefinedPacket` and be sent by the IG
+(`IgToHost` or `Both`; the wrong direction does not compile). The packet is decoded in the IG's byte
+order, a packet that does not decode goes to `on_error`, and receiving does not allocate.
+Registering a second handler for the same opcode replaces the first. User opcodes without a handler
+reach `on_unknown`; set `config.session.ignore_user_packets = true` to deliver none at all. Send
+them like any packet with `HostFrame::add`. `Ig::on_user<P>` is the mirror for Host -> IG packets;
+see `examples/user_packet.cpp`.
 
 ## Driving it
 

@@ -185,8 +185,17 @@ when it has one. (Named `UserDefinedPacket` because the shared test helper alrea
 **Sessions.** `SessionConfig::ignore_user_packets` (default false) is forwarded to the session's
 `Dispatcher` in both constructors. Sessions are *not* templated on the packet set (the least
 intrusive change to T07's API), so their sets hold no user packets: user opcodes arrive as
-`UnknownPacket` (`on_unknown`, `stats.unknown_packets`) or, with the flag set, are skipped. Typed
-user packets in sessions (set-templated sessions) are deferred to the facade / T09a follow-up.
+`UnknownPacket` (`on_unknown`, `stats.unknown_packets`) or, with the flag set, are skipped.
+
+**Facade (T09c).** `Host::on_user<P>(handler)` / `Ig::on_user<P>(handler)` give typed delivery
+on top of that. `P` is constrained to `HostReceivableUserPacket` / `IgReceivableUserPacket` (a
+`UserDefinedPacket` whose direction the side receives, so the wrong direction does not compile).
+A fixed table of 55 slots indexed by `opcode - 201` holds type-erased handlers; the facade installs
+one internal `on_unknown` on its session that decodes `P` from the unknown packet's bytes in the
+peer's byte order and calls the handler, or else falls back to the application's `on_unknown`.
+A decode failure goes to `on_error`; registering twice for one opcode replaces the handler;
+`ignore_user_packets` still wins; receiving does not allocate. (A handler installed directly with
+`session().handlers().on_unknown` replaces the facade's.) Example: `examples/user_packet.cpp`.
 
 ## Versions and older peers
 

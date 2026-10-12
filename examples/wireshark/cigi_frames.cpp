@@ -1,8 +1,14 @@
-// Simulates a CIGI start-up exchange in memory and writes every datagram into a pcap file.
+// Runs a real cigi::Host and cigi::Ig back to back over the in-memory transport and writes every
+// datagram they send into a pcap file, so Wireshark shows the start-up exchange the library really
+// produces (ICD 2.8, 4.1.1, 4.2.1).
 // Usage: cigi_frames <output-dir>   (writes cigi_frames.pcap, via cigi::tools::PcapWriter)
 // See README.md in this directory; open the pcap in Wireshark or tshark.
-#include "cigi/message/builder.hpp"
-#include "cigi/message/view.hpp"
+//
+// A small DatagramTransport decorator (Recorder) sits between each facade and the in-memory wire.
+// Time is a manual clock stepped at 60 Hz, so the capture is identical on every run.
+#include "cigi/datagram_transport.hpp"
+#include "cigi/host.hpp"
+#include "cigi/ig.hpp"
 #include "cigi/tools/pcap_writer.hpp"
 
 #include <algorithm>
@@ -12,39 +18,33 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <print>
 #include <span>
-#include <string_view>
+#include <utility>
 
 namespace {
 
-constexpr int frame_count = 6;             // IG frames 1-3 in Reset/Standby, 4-6 in Operate.
-constexpr int operate_request = 3;         // The Host asks for Operate in its reply to IG frame 3.
-constexpr int foreign_frame = 5;           // This Host reply is sent in the other byte order.
-constexpr std::uint32_t frame_us = 16'667; // 60 Hz.
+constexpr int step_count = 9;              // 60 Hz steps; the exchange settles within a few.
+constexpr int foreign_datagram = 4;        // The Host's 4th datagram is sent in the other byte order.
+constexpr int operate_step = 3;             // The IG reports Operate from this step on.
+constexpr int loaded_step = 6;              // ... and database 1 as loaded from this one.
+constexpr std::uint32_t frame_ticks = 1667; // 1 / 60 s in 10 us ticks.
 
 // Host 10.0.0.1:8005 and IG 10.0.0.2:8004; set the same addresses in Wireshark's CIGI preferences.
 constexpr cigi::tools::Endpoint host_endpoint{.address = {{10, 0, 0, 1}}, .port = 8005};
 constexpr cigi::tools::Endpoint ig_endpoint{.address = {{10, 0, 0, 2}}, .port = 8004};
 constexpr std::chrono::seconds capture_start{1'767'225'600}; // 2026-01-01 00:00:00 UTC.
 
-/// Timestamp in 10 us ticks for a time in microseconds (ICD 4.1.1).
-cigi::Timestamp ticks(std::uint32_t us) { return cigi::Timestamp{us / 10}; }
-
-/// The IG reports its database as unavailable (-128), then loading (-1), then loaded (1).
-std::int8_t database_for(int frame) {
-    constexpr std::array<std::int8_t, 3> by_frame{-128, -1, 1};
-    return by_frame.at(static_cast<std::size_t>(std::min(frame, 3) - 1));
-}
-
-/// Append one datagram to the capture `us` microseconds after the start.
-bool record(cigi::tools::PcapWriter& pcap, std::uint32_t us, const cigi::tools::Endpoint& from,
-            const cigi::tools::Endpoint& to, std::span<const std::byte> bytes) {
-    const auto time = capture_start + std::chrono::microseconds{us};
-    return pcap.write_udp(std::chrono::duration_cast<std::chrono::microseconds>(time), from, to,
-                          bytes)
-        .has_value();
-}
+/// The clock both facades share: a counter of 10 us ticks that main() advances by hand.
+struct ManualClock {
+    std::shared_ptr<std::uint32_t> ticks = std::make_shared<std::uint32_t>(0);
+    [[nodiscard]] cigi::ClockFn fn() const {
+        return [t = ticks] { return cigi::Timestamp{*t}; };
+    }
+};
 
 /// Rewrites a native IG Control as a peer of the opposite endianness would have sent it: every
 /// multi-byte field reversed, the magic number included (ICD 2.5). Bytes 0-5 are single bytes.
@@ -59,32 +59,45 @@ void make_foreign(std::span<std::byte> msg) {
     }
 }
 
-/// Parse the message back with the public API and print one line per packet.
-void summarise(std::string_view label, std::span<const std::byte> bytes) {
-    const auto view = cigi::MessageView::parse(bytes);
-    if (!view) {
-        std::println("{}: parse failed: {}", label, cigi::to_string(view.error().code));
-        return;
-    }
-    const auto* order = view->byte_order() == cigi::wire::ByteOrder::Native ? "native" : "FOREIGN";
-    for (const auto& item : *view) {
-        if (const auto sof = item.and_then([](const cigi::RawPacket& r) {
-                return r.decode_as<cigi::StartOfFrame>();
-            })) {
-            std::println("{}: SOF ig_frame={} last_host={} mode={} db={} ts={}x10us ({} order)", label,
-                         sof->ig_frame_number, sof->last_host_frame_number,
-                         static_cast<int>(sof->ig_mode), sof->database_number,
-                         sof->timestamp.count(), order);
-        } else if (const auto igc = item.and_then([](const cigi::RawPacket& r) {
-                       return r.decode_as<cigi::IgControl>();
-                   })) {
-            std::println("{}: IGC host_frame={} last_ig={} mode={} db={} ts={}x10us ({} order)",
-                         label, igc->host_frame_number, igc->last_ig_frame_number,
-                         static_cast<int>(igc->ig_mode), igc->database_number,
-                         igc->timestamp.count(), order);
+/// A DatagramTransport that forwards to another one and records every datagram it sends.
+class Recorder final : public cigi::DatagramTransport {
+public:
+    Recorder(std::unique_ptr<cigi::DatagramTransport> inner, cigi::tools::PcapWriter& pcap,
+             std::shared_ptr<std::uint32_t> clock, cigi::tools::Endpoint from,
+             cigi::tools::Endpoint to, int foreign_nth = 0)
+        : inner_(std::move(inner)), pcap_(&pcap), clock_(std::move(clock)), from_(from), to_(to),
+          foreign_nth_(foreign_nth) {}
+
+    cigi::Result<void> send(std::span<const std::byte> datagram) override {
+        std::array<std::byte, 64> copy{};
+        const bool swap = ++sent_ == foreign_nth_ && datagram.size() <= copy.size();
+        std::span<const std::byte> out = datagram;
+        if (swap) {
+            std::ranges::copy(datagram, copy.begin());
+            make_foreign(std::span{copy}.first(datagram.size()));
+            out = std::span<const std::byte>{copy}.first(datagram.size());
         }
+        const auto us = capture_start + std::chrono::microseconds{std::int64_t{*clock_} * 10};
+        if (!pcap_->write_udp(std::chrono::duration_cast<std::chrono::microseconds>(us), from_,
+                              to_, out)) {
+            return std::unexpected(cigi::Error{.code = cigi::ErrorCode::TransportError});
+        }
+        return inner_->send(out);
     }
-}
+    cigi::Result<std::size_t> receive(std::span<std::byte> buffer,
+                                      std::chrono::milliseconds timeout) override {
+        return inner_->receive(buffer, timeout);
+    }
+
+private:
+    std::unique_ptr<cigi::DatagramTransport> inner_;
+    cigi::tools::PcapWriter* pcap_;
+    std::shared_ptr<std::uint32_t> clock_;
+    cigi::tools::Endpoint from_;
+    cigi::tools::Endpoint to_;
+    int foreign_nth_;
+    int sent_ = 0;
+};
 
 } // namespace
 
@@ -103,53 +116,53 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    for (int frame = 1; frame <= frame_count; ++frame) {
-        const auto ig_us = static_cast<std::uint32_t>(frame - 1) * frame_us;
-        const auto number = static_cast<std::uint32_t>(frame);
-
-        // IG -> Host: Start of Frame. Acknowledges the previous Host frame (ICD 2.3, Figure 6).
-        cigi::StaticMessageBuilder<32> sof(cigi::Direction::IgToHost);
-        const cigi::StartOfFrame start{
-            .database_number = database_for(frame),
-            .ig_mode = frame > operate_request ? cigi::IgMode::Operate : cigi::IgMode::ResetStandby,
-            .timestamp_valid = true,
-            .ig_frame_number = number,
-            .timestamp = ticks(ig_us),
-            .last_host_frame_number = number - 1,
-        };
-        if (!sof.add(start)) {
-            return EXIT_FAILURE;
-        }
-        if (!record(pcap, ig_us, ig_endpoint, host_endpoint, sof.bytes())) {
-            return EXIT_FAILURE;
-        }
-        summarise("IG   -> Host", sof.bytes());
-
-        // Host -> IG: IG Control 2 ms later. Acknowledges this IG frame (ICD 2.3, Figure 6).
-        const auto host_us = ig_us + 2'000;
-        cigi::StaticMessageBuilder<32> igc(cigi::Direction::HostToIg);
-        const cigi::IgControl control{
-            .database_number = 1,
-            .ig_mode = frame >= operate_request ? cigi::IgMode::Operate : cigi::IgMode::ResetStandby,
-            .timestamp_valid = true,
-            .host_frame_number = number,
-            .timestamp = ticks(host_us),
-            .last_ig_frame_number = number,
-        };
-        if (!igc.add(control)) {
-            return EXIT_FAILURE;
-        }
-        std::array<std::byte, 32> datagram{};
-        std::ranges::copy(igc.bytes(), datagram.begin());
-        const auto bytes = std::span{datagram}.first(igc.size());
-        if (frame == foreign_frame) {
-            make_foreign(bytes);
-        }
-        if (!record(pcap, host_us, host_endpoint, ig_endpoint, bytes)) {
-            return EXIT_FAILURE;
-        }
-        summarise(frame == foreign_frame ? "Host -> IG (foreign)" : "Host -> IG", bytes);
+    const ManualClock clock;
+    auto [host_wire, ig_wire] = cigi::make_memory_transport_pair();
+    cigi::HostConfig host_config;
+    host_config.database = 1; // ask for database 1 once the IG operates
+    host_config.session.clock = clock.fn();
+    cigi::IgConfig ig_config;
+    ig_config.session.clock = clock.fn();
+    auto host = cigi::Host::over(
+        host_config, std::make_unique<Recorder>(std::move(host_wire), pcap, clock.ticks,
+                                                host_endpoint, ig_endpoint, foreign_datagram));
+    auto ig = cigi::Ig::over(ig_config, std::make_unique<Recorder>(std::move(ig_wire), pcap,
+                                                                   clock.ticks, ig_endpoint,
+                                                                   host_endpoint));
+    if (!host || !ig) {
+        return EXIT_FAILURE;
     }
+
+    // The IG takes a few frames to leave Reset/Standby (ICD 2.8): it accepts the Host's request
+    // for Operate at once but reports the new mode only from step `operate_step` on.
+    bool operate_pending = false;
+    ig->on_mode_request([&](cigi::IgMode mode) {
+        operate_pending = mode == cigi::IgMode::Operate;
+        return true;
+    });
+    // The IG answers a database request the way ICD 4.1.1 describes: -n while loading, then n.
+    std::optional<std::int8_t> loading;
+    ig->on_database_request([&](std::int8_t n) {
+        ig->set_database(static_cast<std::int8_t>(-n));
+        loading = n;
+    });
+    host->on_state_change([](cigi::LinkState from, cigi::LinkState to) {
+        std::println("Host link: {} -> {}", cigi::to_string(from), cigi::to_string(to));
+    });
+
+    for (int step = 0; step < step_count; ++step) {
+        *clock.ticks += frame_ticks;
+        if (step == operate_step && operate_pending) {
+            ig->set_mode(cigi::IgMode::Operate);
+        }
+        if (step == loaded_step && loading) {
+            ig->set_database(*loading); // loaded
+        }
+        if (!ig->poll(std::chrono::milliseconds{0}) || !host->poll(std::chrono::milliseconds{0})) {
+            return EXIT_FAILURE;
+        }
+    }
+    host->close(); // sends the closing IG Control (Reset/Standby, ICD 2.8)
     pcap.flush();
     std::println("wrote {} datagrams to {}", pcap.frames(), (dir / "cigi_frames.pcap").string());
     return pcap.ok() ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -1,3 +1,4 @@
+// Low-level on purpose; a real Host usually uses cigi::Host (see host_minimal.cpp).
 // Handle an incoming IG -> Host message two ways: a compile-time visitor and a runtime Dispatcher.
 #include "cigi/dispatch.hpp"
 #include "cigi/message/builder.hpp"
