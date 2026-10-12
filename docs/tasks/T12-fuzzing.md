@@ -27,5 +27,10 @@ infinite loop, no allocation in the hot path.
 - Also add a ctest that replays the seed corpus through each target's entry point in normal builds
   (so regressions are caught by `check.sh` without libFuzzer).
 
+## Phasing (2026-10-12)
+T07 (sessions) is not merged yet. Do targets 1 and 2, presets, Docker, corpora, dictionary and the
+replay ctests first. Do **not** start `fuzz_sessions` until the planner tells you T07 is merged
+(you will be asked to merge `main` into your branch then).
+
 ## Acceptance
 README rules 7–9. Report fuzzing durations, exec counts, corpus sizes, and every finding + fix.

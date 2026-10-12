@@ -82,6 +82,14 @@ rules of its own: all protocol behaviour stays in T07's sessions; the facade onl
   completes, `on<P>` for Host→IG packets, `on_frame(callable(IgFrame&))` to add responses after
   the SOF the facade writes, `poll`/`run`/`close`, `stats()`. Paced by `FramePacer`.
 - Primarily for the mock IG (T09) and tests; keep it minimal.
+- **Fault hooks (for the mock IGs, T09/T09b; added 2026-10-12).** `Ig::set_paused(bool)` stops
+  sending Start of Frame while still receiving; `Ig::restart()` resets the IG frame counter and
+  session to Reset/Standby as if the IG process restarted. Refusing Operate and slow database loads
+  are already expressible via `on_mode_request` / `set_mode`.
+- **`FaultInjectingTransport`** (`include/cigi/fault_transport.hpp`, in `cigi_runtime`): a
+  `DatagramTransport` decorator with runtime-adjustable `drop_probability`, `duplicate_probability`
+  and `added_latency` (delayed datagrams queued and released by the injected clock), seeded RNG for
+  determinism. Usable on either side (`Host::over`/`Ig::over`). Unit-test each fault.
 
 ## Tests
 - State machine with the in-memory transport and fake clock: WaitingForIg → Standby → Operate;
@@ -102,6 +110,7 @@ rules of its own: all protocol behaviour stays in T07's sessions; the facade onl
 
 ## Follow-on changes (planner will apply to other briefs on approval)
 - T09 `demo_host` / `demo_ig` are built on `cigi::Host` / `cigi::Ig` (T09 then depends on T09a).
+- T09b Part 2 (`ig_viewer` network mode) uses `cigi::Ig`, the fault hooks and `FaultInjectingTransport`.
 - T18 `net_perf` uses the low-level session + UDP API directly (to measure the stack without facade
   scheduling), and adds one facade run for comparison.
 

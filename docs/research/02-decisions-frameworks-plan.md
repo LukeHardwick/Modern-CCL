@@ -26,6 +26,7 @@ Builds on [01-cigi33-requirements.md](01-cigi33-requirements.md).
 | Networking | **Boost.Asio** | Fetched from the official Boost CMake release tarball with `BOOST_INCLUDE_LIBRARIES=asio` to limit what is configured. Transport target only. |
 | Logging | **spdlog** | Built with `SPDLOG_NO_EXCEPTIONS` and `SPDLOG_USE_STD_FORMAT`. Used by session, transport and demos. The wire/packet layer stays pure (returns `std::expected`, never logs). |
 | CLI parsing | **CLI11** | Demo apps only. |
+| Mock-IG viewer | **raylib + Dear ImGui + rlImGui** | `ig_viewer` only (T09b), behind `CIGI_BUILD_VIEWER` (default OFF). Approved 2026-10-12. |
 | Fuzzing | **libFuzzer** | Clang only (macOS Homebrew LLVM, Linux Clang). |
 | Sanitizers | ASan + UBSan where available | ASan only on MSVC; UBSan/libFuzzer not on MSVC. |
 | Static analysis | **clang-format**, **clang-tidy** (`modernize-*`, `cppcoreguidelines-*`, `bugprone-*`, `performance-*`, `readability-*` subset) | Run through a CMake target/preset. |

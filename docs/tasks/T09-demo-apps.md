@@ -1,6 +1,6 @@
 # T09 — Demo apps: `demo_host` and mock `demo_ig`
 
-Phase A (MVP) · Depends on T09a (facade), T10 (pcap writer) · Branch `task/t09-demo-apps`
+Phase A (MVP) · Depends on T09a (facade), T09b Part 1 (`cigi_mock_ig`), T10 (pcap writer) · Branch `task/t09-demo-apps`
 Follow the shared rules in [README.md](README.md).
 
 ## Goal
@@ -16,11 +16,15 @@ over UDP on one machine, log everything readably, and can record traffic for Wir
   `--load-frames` (frames spent "loading" in Standby before accepting Operate), `--pcap <file>`,
   `--duration`, `--log-level`.
   Behaviour: sends Start of Frame every frame via `cigi::Ig`; follows the §2.8
-  start-up sequence; keeps an entity table from Entity Control (logs creation/destruction/attach);
-  logs articulated parts, rates, components, views, celestial time; answers HAT/HOT requests with a
-  synthetic, deterministic terrain `h(lat, lon) = 100 + 50·sin(lat)·cos(lon)` metres (extended
-  responses include HAT, HOT, a material code and the terrain normal); honours Update Period for
-  periodic responses; fills Host Frame Number LSN.
+  start-up sequence. All IG-side logic comes from T09b's headless **`cigi_mock_ig`** library (do not
+  re-implement it): `SceneModel` keeps the entity table (log creation/destruction/attach), articulated
+  parts, rates, components, views, celestial time; `HatHotResponder` answers HAT/HOT requests from the
+  shared synthetic terrain (Update Period, Host Frame Number LSN, extended responses); `describe()`
+  formats packets for `--log-level debug`. `demo_ig` and `ig_viewer` must behave identically.
+  **Fault injection flags** (via T09a's hooks / `FaultInjectingTransport`): `--refuse-operate`,
+  `--pause-sof-after <s>` + `--resume-sof-after <s>`, `--restart-after <s>`, `--drop <0..1>`,
+  `--duplicate <0..1>`, `--latency <ms>`, `--seed`. Optional `--table` prints a live entity table
+  each second (plain text, no extra deps).
 - `apps/demo_host`: options `--ig-addr`, `--ig-port`, `--listen-port`, `--sync/--async`,
   `--duration`, `--pcap`, `--log-level`. Behaviour: waits for SOF, requests Operate, then creates an
   ownship entity flying a circle, attaches a view to it, sets Celestial Sphere time, animates an
@@ -35,5 +39,8 @@ over UDP on one machine, log everything readably, and can record traffic for Wir
   in Wireshark (and live capture on `lo0` on macOS, which needs Wireshark's ChmodBPF helper).
 
 ## Acceptance
-README rules 7–9 (unit tests for the terrain function and any non-trivial demo logic; coverage
+README rules 7–9 (unit tests for any non-trivial demo logic and the fault flags; coverage
 target applies to library code only). `scripts/demo.sh` output pasted (trimmed) in the report.
+- Fault-flag integration tests (label `network`): `demo_host` against `demo_ig --refuse-operate`
+  never reaches Operate and reports it; `--pause-sof-after 1 --resume-sof-after 2` → host goes Lost
+  then recovers; `--drop 0.2` still exits 0 with stats showing drops.
