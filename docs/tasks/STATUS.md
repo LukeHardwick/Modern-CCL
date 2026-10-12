@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 14:35 BST** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 13:50 BST** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -21,7 +21,12 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
 `main` contains T00–T08 and T10 (see README.md). All checks green at `5a20b87`
 (macOS 416 tests, Linux GCC debug + ASan 413).
 
-## Open task branches (all work committed; nothing uncommitted in any worktree)
+## Open task branches
+
+> **13:50: a separate Claude Desktop session ("Subagent in Sonnet 5.5") was editing the T09a and T17
+> worktrees after the heads below were recorded** (uncommitted changes there at 13:47). Before
+> continuing either task, run `git -C <worktree> status` / `git diff`, and commit or discard those
+> edits deliberately. The heads in this table are the last planner-verified commits.
 
 Worktrees live under `.claude/worktrees/` in the main checkout.
 
@@ -88,7 +93,7 @@ the user). Phase B: T13–T16 (independent), T18, T19.
   "Process terminated due to timeout" or "Killed signal", re-run it.
 - Spec (git-ignored): `/Users/luke/Documents/Projects/Assignments/Final_Year_Project/Modern-CCL/third_party/spec/`.
 
-## Check results (`scripts/check.sh --coverage`, macOS, 2026-10-12 ~14:30)
+## Check results (`scripts/check.sh --coverage`, macOS, 2026-10-12 ~13:40)
 | Branch @ head | format | debug | asan | tidy | coverage (lines, total) |
 |---|---|---|---|---|---|
 | T17 @ `f70c635` | ✅ | ✅ 429 | ✅ | ✅ | ✅ 97.7 % |
