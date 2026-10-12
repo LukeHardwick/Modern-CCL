@@ -18,7 +18,7 @@ code path.
 The corpus has 34 datagrams: for each of the 12 MVP packets (IG Control, Start of Frame, Entity
 Control, Articulated Part Control, Rate Control, Component Control, Celestial Sphere Control,
 View Control, View Definition, HAT/HOT Request, Response, Extended Response) at least two packets
-with distinctive values (negative numbers, maxima, every enum value, all flag combinations), each
+with distinctive values (negative numbers, maxima, every enum value, representative flag combinations), each
 packet type once in the sender's native byte order and once as a fabricated opposite-endian peer
 (ICD 2.5). Host messages go 10.0.0.1:8005 to 10.0.0.2:8004, IG messages the reverse. The first
 datagram is a priming message (see "Dissector behaviour").

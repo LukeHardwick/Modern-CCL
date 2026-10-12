@@ -22,7 +22,6 @@ import dissector_map  # noqa: E402
 
 HOST = "10.0.0.1"
 IG = "10.0.0.2"
-TOLERANCE = {"f32": 1e-6, "f64": 1e-9}
 
 
 DEFAULT_PREFS = ["-o", "cigi.host:" + HOST, "-o", "cigi.ig:" + IG]
@@ -37,9 +36,10 @@ def run_tshark(tshark, pcap, extra, prefs=None):
     return done.stdout
 
 
-def pairs(obj):
-    """json.loads hook that keeps repeated keys (one 'cigi.entity_control' per packet)."""
-    return obj
+def keep_pairs(pairs_list):
+    """json.loads object_pairs_hook that keeps the (key, value) list as is, so repeated keys
+    (one 'cigi.entity_control' per packet) are not collapsed into a dict."""
+    return pairs_list
 
 
 def flatten(tree):
@@ -64,7 +64,7 @@ def decode_frames(tshark, pcap, prefs=None):
     """frame number -> {'packets': [(tree_name, leaves)], 'info': str, 'text': str}."""
     raw = run_tshark(tshark, pcap, ["-T", "json"], prefs)
     frames = {}
-    for entry in json.loads(raw, object_pairs_hook=pairs):
+    for entry in json.loads(raw, object_pairs_hook=keep_pairs):
         layers = lookup(lookup(entry, "_source"), "layers")
         number = int(lookup(lookup(layers, "frame"), "frame.number"))
         cigi = lookup(layers, "cigi") or []
@@ -78,11 +78,28 @@ def decode_frames(tshark, pcap, prefs=None):
     return frames
 
 
+def f32(value):
+    """`value` rounded to the nearest IEEE single."""
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+def ulps_apart(a, b):
+    """Distance in units in the last place between two finite doubles (as ordered integers)."""
+    def ordered(x):
+        bits = struct.unpack("<q", struct.pack("<d", x))[0]
+        return bits if bits >= 0 else -(bits & 0x7FFFFFFFFFFFFFFF)
+    return abs(ordered(a) - ordered(b))
+
+
 def close(kind, expected, shown):
-    got = float(shown)
+    """f32: tshark's text, rounded to single, equals the encoded single exactly. f64: within 1 ulp
+    (tshark prints doubles with %g-style rounding, so the last digit may differ)."""
     if math.isnan(expected) or math.isinf(expected):
         return False
-    return math.isclose(got, expected, rel_tol=TOLERANCE[kind], abs_tol=TOLERANCE[kind])
+    got = float(shown)
+    if kind == "f32":
+        return f32(got) == expected
+    return ulps_apart(got, expected) <= 1
 
 
 def word_bytes(value, endian):
@@ -95,7 +112,7 @@ def compare(kind, expected, shown, endian):
         return int(shown) == expected
     if kind == "bool":
         return int(shown) == (1 if expected else 0)
-    if kind in TOLERANCE:
+    if kind in ("f32", "f64"):
         return close(kind, expected, shown)
     if kind == "word":
         return shown == word_bytes(expected, endian)
@@ -119,6 +136,14 @@ def check_packet(report, frame, index, ptype, expected, leaves, endian):
     row = report.row(ptype)
     row["packets"] += 1
     where = "frame %d packet %d (%s)" % (frame, index + 1, ptype)
+    mapped = [spec[0] for spec in dissector_map.PACKETS[ptype] if spec[0] is not None]
+    missing = sorted(set(expected) - set(mapped))
+    extra = sorted(set(mapped) - set(expected))
+    if missing or extra:
+        report.fail("%s: field coverage differs: encoded but not in dissector_map.py: %s; "
+                    "in dissector_map.py but not encoded: %s" % (where, missing, extra))
+        row["bad"] += 1
+        return
     for spec in dissector_map.PACKETS[ptype]:
         our, theirs, kind = spec[0], spec[1], spec[2]
         known = spec[3] if len(spec) > 3 else None
@@ -182,6 +207,11 @@ def check(tshark, corpus_dir):
             continue
         for index, (packet, (_, leaves)) in enumerate(zip(message["packets"], frame["packets"])):
             opcode, size = sizes[packet["type"]]
+            # Wireshark prints the CIGI major version only in the first packet of a datagram (the
+            # IG Control or Start of Frame, which is where the ICD puts it), never on the others.
+            if index == 0 and leaves.get("cigi.version") != "3":
+                report.fail("frame %d packet %d: cigi.version %s, expected 3" %
+                            (number, index + 1, leaves.get("cigi.version")))
             if leaves.get("cigi.packet_id") != str(opcode) or \
                     leaves.get("cigi.packet_size") != str(size):
                 report.fail("frame %d packet %d: id/size %s/%s, expected %d/%d" %

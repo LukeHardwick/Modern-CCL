@@ -10,7 +10,8 @@ The larger verification of every MVP packet is in `docs/interop/wireshark.md`.
 Wireshark (or just `tshark`) to read the pcap; writing it needs nothing.
 
 - macOS: `brew install --cask wireshark` (tools land in `/opt/homebrew/bin`) or wireshark.org.
-- Debian/Ubuntu: `sudo apt install wireshark tshark`. Fedora: `sudo dnf install wireshark-cli wireshark`.
+- Debian/Ubuntu: `sudo apt install wireshark tshark`.
+- Fedora: `sudo dnf install wireshark-cli wireshark`.
 
 ## Build and run
 
@@ -20,7 +21,8 @@ examples/wireshark/make_pcap.sh build/clang-debug/examples/cigi_frames build/wir
 ```
 
 This prints a one-line summary per message, writes `cigi_frames.pcap` into the output directory
-(running `cigi_frames <dir>` directly does the same), and prints the `tshark` command to inspect it. The pcap is generated, never committed; rerun the script to regenerate it.
+(running `cigi_frames <dir>` directly does the same), and prints the `tshark` command to inspect
+it. The pcap is generated, never committed; rerun the script to regenerate it.
 `ctest -L wireshark` runs the same pipeline and checks it with tshark.
 
 ## Wireshark settings
@@ -35,7 +37,8 @@ tshark -r cigi_frames.pcap -o cigi.host:10.0.0.1 -o cigi.ig:10.0.0.2 -V
 
 ## What you should see
 
-Twelve datagrams, 16.667 ms apart (60 Hz): IG Start of Frame (SOF), 2 ms later the Host's IG Control.
+Twelve datagrams, 16.667 ms apart (60 Hz): IG Start of Frame (SOF), 2 ms later the Host's
+IG Control.
 
 | Frames | What |
 |---|---|

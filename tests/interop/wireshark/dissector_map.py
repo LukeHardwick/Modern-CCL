@@ -10,8 +10,8 @@ A field is (our_name, dissector_name, kind) or (our_name, dissector_name, kind, 
   ----  ------------------------------------------------------------------------------------
   int   integer or enum value; tshark prints the raw number
   bool  one bit; tshark prints 0 or 1
-  f32   IEEE single, compared with a relative tolerance of 1e-6
-  f64   IEEE double, compared with a relative tolerance of 1e-9
+  f32   IEEE single, tshark's text rounded to single must equal the encoded value
+  f64   IEEE double, tshark's text must be within 1 ulp of the encoded value
   word  a 32-bit user-defined word that the dissector shows as raw bytes, colon separated, in
         wire order; compared against the value written in the message's wire byte order
   magic the Byte Swap Magic Number: "0x0080" for a little-endian sender, "0x8000" for big-endian

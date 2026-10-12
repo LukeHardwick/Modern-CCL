@@ -77,7 +77,11 @@ if(CIGI_TSHARK)
                     --out ${CMAKE_CURRENT_BINARY_DIR}/wireshark_corpus
                     --tshark ${CIGI_TSHARK})
         set_tests_properties(wireshark_corpus PROPERTIES LABELS wireshark)
+    else()
+        message(STATUS "wireshark_corpus test skipped: Python 3 interpreter not found")
     endif()
+else()
+    message(STATUS "Wireshark tests skipped: tshark not found (set CIGI_TSHARK to enable)")
 endif()
 if(TARGET cigi_frames AND CIGI_TSHARK)
     add_test(NAME wireshark_cigi_frames
