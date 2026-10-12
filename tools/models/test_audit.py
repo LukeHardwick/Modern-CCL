@@ -228,6 +228,28 @@ class KnownAnswers(unittest.TestCase):
         self.assertEqual(res["nodes"]["outer"]["hidden_frac"], 0.0)
         self.assertEqual(res["hygiene"]["flipped"], 0)
 
+    def test_3c_enclosure_shortcut_is_exact(self):
+        """The closed-piece shortcut gives the same hidden/flipped answer as casting every
+        ray: a sphere holding one box fully inside and one poking out, plus a flipped box."""
+        v, t, n = uv_sphere(1.0, 24)
+        av, at = box((-0.3, -0.3, -0.3), (0.3, 0.3, 0.3))   # fully inside the sphere
+        bv, bt = box((0.6, -0.2, -0.2), (1.4, 0.2, 0.2))    # half outside
+        cv, ct = box((-0.2, -0.2, 0.5), (0.2, 0.2, 0.7))    # inside, wound inwards
+        m = write("nested", [node("ball", v, t, n), node("inner", av, at),
+                             node("poke", bv, bt), node("flip", cv, ct[:, ::-1])])
+        a, res = audit(m, None, config(nodes=["ball", "inner", "poke", "flip"]))
+        self.assertGreater(a.vis.enclosed, 0)
+        full = am.Visibility(a.model, [a.geo], a.cfg, False)  # no shortcut
+        self.assertTrue(np.array_equal(a.vis.hidden, full.hidden))
+        self.assertTrue(np.array_equal(a.vis.back_only, full.back_only))
+        self.assertLess(a.vis.rays, full.rays)
+        NOTE["3c shortcut: enclosed tests, rays with / without"] = (a.vis.enclosed, a.vis.rays,
+                                                                   full.rays)
+        self.assertEqual(res["nodes"]["inner"]["hidden_frac"], 1.0)
+        self.assertEqual(res["nodes"]["flip"]["hidden_frac"], 1.0)
+        self.assertGreater(res["nodes"]["poke"]["hidden"], 0)
+        self.assertLess(res["nodes"]["poke"]["hidden"], 12)
+
     def test_3b_pose_reveals_hidden(self):
         """A lid that closes a box: the box's top face is hidden at rest and seen once the
         lid swings open in a configured pose (and only then)."""

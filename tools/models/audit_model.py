@@ -322,6 +322,25 @@ class Topology:
         self.comp = tri_components(self.tris, n)
         self.ncomp = int(self.comp.max()) + 1 if len(self.comp) else 0
 
+    def closed_components(self, geo):
+        """Per component: True when every edge is shared by an even number of its triangles
+        (a closed surface, so inside/outside is well defined) and none of it is glass."""
+        t = self.tris
+        ok = (t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 2] != t[:, 0])
+        closed = np.ones(self.ncomp, dtype=bool)
+        if ok.any():
+            tt = t[ok]
+            a = np.concatenate([tt[:, 0], tt[:, 1], tt[:, 2]])
+            b = np.concatenate([tt[:, 1], tt[:, 2], tt[:, 0]])
+            owner = np.tile(np.nonzero(ok)[0], 3)
+            key = np.stack([np.minimum(a, b), np.maximum(a, b)], axis=1)
+            _u, inv = np.unique(key, axis=0, return_inverse=True)
+            inv = inv.reshape(-1)
+            odd = np.bincount(inv)[inv] % 2 == 1
+            closed[np.unique(self.comp[owner[odd]])] = False
+        closed[np.unique(self.comp[geo.glass[self.tri_idx]])] = False
+        return closed
+
     def soft_folds(self, geo, lo=0.5, hi=45.0):
         """Triangles with an edge neighbour whose face normal differs by lo..hi degrees:
         part of a faceted curved surface (a flat-shaded strip or patch following a curve)."""
@@ -676,9 +695,18 @@ class Visibility:
     hemisphere directions leaves the model's bounding sphere without hitting non-glass
     geometry, or (when they exist) an eyepoint sees it. front/back = that side is visible in
     some pose. The back side is tested when the front is not visible, and for the triangles
-    in `want_back` (whose normal disagrees with the reference) in any case."""
+    in `want_back` (whose normal disagrees with the reference) in any case.
 
-    def __init__(self, model, geos, cfg, fast, want_back=None):
+    Shortcut (exact, not an approximation): when a blocked ray hits a closed occluder piece
+    (every edge shared by an even number of its triangles, no glass) and every sample lies
+    inside that piece (odd number of crossings along two fixed rays), then every ray from
+    every sample must cross the piece, so both sides are hidden without casting the rest.
+    Each piece is tried once per triangle."""
+
+    PARITY_DIRS = ((0.53766, 0.29129, 0.79123), (-0.45192, 0.83174, -0.32269))
+
+    def __init__(self, model, geos, cfg, fast, want_back=None, gcomp=None, closed=None):
+        from mathutils import Vector
         vcfg = cfg["visibility"]
         smp = cfg["sampling"]
         self.ndir = cfg["fast"]["directions"] if fast else vcfg["directions"]
@@ -687,11 +715,17 @@ class Visibility:
         T = len(rest.v)
         deg = rest.area < cfg["hygiene"]["degenerate_area"]
         want_back = np.zeros(T, dtype=bool) if want_back is None else want_back
+        gcomp = np.zeros(T, dtype=np.int64) if gcomp is None else gcomp
+        closed = np.zeros(int(gcomp.max()) + 1 if T else 0, dtype=bool) if closed is None \
+            else closed
         self.front = np.zeros(T, dtype=bool)
         self.back = np.zeros(T, dtype=bool)
         self.tested = ~deg
         self.rays = 0
+        self.enclosed = 0
         self.pose_retests = {}
+        self.off = vcfg["ray_offset"]
+        self.pdirs = [Vector(d).normalized() for d in self.PARITY_DIRS]
         eyes = [e for e in cfg["model"]["eyepoints"]]
         # samples (rest pose barycentrics; posed points are recomputed per pose)
         idx = np.nonzero(~deg)[0]
@@ -699,6 +733,7 @@ class Visibility:
                                                  smp["vis_kmax"], smp["vis_inset"])
         self.samples = len(owner)
         hits = {}  # triangle -> set of node ids that blocked a ray (non-visible triangles)
+        centre = np.zeros(3)
         for pi, (pose, geo) in enumerate(zip(cfg["poses"], geos)):
             moved = set()
             if pi > 0:
@@ -715,14 +750,16 @@ class Visibility:
                 moved = {rest.node_index(n) for n in moved_names if rest.node_index(n) is not None}
             # geo for this pose has hidden nodes removed: map rest triangle -> pose triangle
             pose_map = self._pose_map(rest, geo, pose)
+            rest_of = np.nonzero(pose_map >= 0)[0]  # pose triangle -> rest triangle
             occ = np.nonzero(~geo.glass)[0]
             tree = bvh(geo.v[occ]) if len(occ) else None
-            occ_node = geo.node[occ]
+            occ_node = geo.node[occ].tolist()
+            occ_comp = gcomp[rest_of[occ]].tolist()
             lo, hi = geo.v.reshape(-1, 3).min(axis=0), geo.v.reshape(-1, 3).max(axis=0)
             centre = (lo + hi) / 2
             radius = float(norm((hi - lo)[None])[0]) / 2 + 1.0
             reach = 2.0 * radius + 1.0
-            eye_pos = [geo.empties[e] for e in eyes if e in geo.empties]
+            eye_pos = [Vector(geo.empties[e].tolist()) for e in eyes if e in geo.empties]
             if pi == 0:
                 cand = idx
             else:
@@ -740,6 +777,7 @@ class Visibility:
                 if tree is None and pi == 0:
                     self.front[idx] = True
                 continue
+            pieces = _Pieces(geo, rest_of, occ, gcomp, closed, reach, eye_pos, self)
             gi = pose_map[cand]
             nrm = geo.normal[gi]
             t1, t2 = frames(nrm)
@@ -751,13 +789,34 @@ class Visibility:
                 v = geo.v[g]
                 pts = b[:, 0:1] * v[0] + b[:, 1:2] * v[1] + b[:, 2:3] * v[2]
                 n = nrm[ci]
-                dirs = hemi[:, 0:1] * t1[ci] + hemi[:, 1:2] * t2[ci] + hemi[:, 2:3] * n
                 blockers = hits.setdefault(t, set())
-                if not self.front[t] and self._side(tree, occ_node, pts, n, dirs, reach,
-                                                    eye_pos, vcfg, blockers):
-                    self.front[t] = True
+                own = gcomp[t]
+                tried = set()
+
+                def try_enclose(w, pts=pts, own=own, tried=tried, blockers=blockers):
+                    if w in tried or w == own or not closed[w]:
+                        return False
+                    tried.add(w)
+                    if pieces.encloses(w, pts):
+                        blockers.add(pieces.node_of(w))
+                        return True
+                    return False
+                dirs = hemi[:, 0:1] * t1[ci] + hemi[:, 1:2] * t2[ci] + hemi[:, 2:3] * n
+                if not self.front[t]:
+                    r = self._side(tree, occ_node, occ_comp, pts, n, dirs, reach, eye_pos,
+                                   blockers, try_enclose)
+                    if r == "enclosed":
+                        self.enclosed += 1
+                        continue  # every ray from every sample is blocked: both sides
+                    if r:
+                        self.front[t] = True
                 if (not self.front[t] or want_back[t]) and not self.back[t]:
-                    if self._side(tree, occ_node, pts, -n, -dirs, reach, [], vcfg, blockers):
+                    r = self._side(tree, occ_node, occ_comp, pts, -n, -dirs, reach, [],
+                                   blockers, try_enclose)
+                    if r == "enclosed":
+                        self.enclosed += 1
+                        continue
+                    if r:
                         self.back[t] = True
                 if self.front[t] and (self.back[t] or not want_back[t]):
                     hits.pop(t, None)
@@ -775,31 +834,89 @@ class Visibility:
         out[keep] = np.arange(int(keep.sum()))
         return out
 
-    def _side(self, tree, occ_node, pts, n, dirs, reach, eyes, vcfg, blockers):
+    def _side(self, tree, occ_node, occ_comp, pts, n, dirs, reach, eyes, blockers,
+              try_enclose):
+        """True when a ray from some sample escapes (or reaches an eyepoint), "enclosed" when
+        the samples turn out to lie inside a closed piece that a ray hit, else False."""
         from mathutils import Vector
         rc = tree.ray_cast
-        off = vcfg["ray_offset"]
         dl = [Vector(d) for d in dirs.tolist()]
         nv = Vector(n.tolist())
-        for p in pts.tolist():
-            o = Vector(p) + nv * off
-            for d in dl:
-                self.rays += 1
-                hit = rc(o, d, reach)
-                if hit[0] is None:
-                    return True
-                blockers.add(int(occ_node[hit[2]]))
-            for e in eyes:
-                to = Vector(e.tolist()) - o
-                dist = to.length
-                if dist < 1e-9 or to.dot(nv) <= 0:
-                    continue
-                self.rays += 1
-                hit = rc(o, to / dist, dist)
-                if hit[0] is None:
-                    return True
-                blockers.add(int(occ_node[hit[2]]))
-        return False
+        rays = 0
+        try:
+            for p in pts.tolist():
+                o = Vector(p) + nv * self.off
+                for d in dl:
+                    rays += 1
+                    hit = rc(o, d, reach)
+                    if hit[0] is None:
+                        return True
+                    k = hit[2]
+                    blockers.add(occ_node[k])
+                    if try_enclose(occ_comp[k]):
+                        return "enclosed"
+                for e in eyes:
+                    to = e - o
+                    dist = to.length
+                    if dist < 1e-9 or to.dot(nv) <= 0:
+                        continue
+                    rays += 1
+                    hit = rc(o, to / dist, dist)
+                    if hit[0] is None:
+                        return True
+                    blockers.add(occ_node[hit[2]])
+            return False
+        finally:
+            self.rays += rays
+
+
+class _Pieces:
+    """Closed occluder pieces of one pose, for the enclosure shortcut (built lazily)."""
+
+    def __init__(self, geo, rest_of, occ, gcomp, closed, reach, eyes, owner):
+        self.geo, self.reach, self.eyes, self.owner = geo, reach, eyes, owner
+        self.rest_of, self.occ, self.gcomp, self.closed = rest_of, occ, gcomp, closed
+        self.trees = {}
+        self.nodes = {}
+        self.eye_inside = {}
+
+    def _tree(self, w):
+        if w not in self.trees:
+            sel = self.occ[self.gcomp[self.rest_of[self.occ]] == w]
+            self.trees[w] = bvh(self.geo.v[sel])
+            self.nodes[w] = int(self.geo.node[sel[0]])
+            self.eye_inside[w] = any(self._inside(self.trees[w], e) for e in self.eyes)
+        return self.trees[w]
+
+    def node_of(self, w):
+        self._tree(w)
+        return self.nodes[w]
+
+    def _crossings(self, tree, p, d):
+        """Number of surface crossings along the ray, or None when the start point is
+        within 0.1 mm of the surface (inside/outside not decidable there)."""
+        n, o, travelled = 0, p, 0.0
+        for _ in range(10000):
+            self.owner.rays += 1
+            hit = tree.ray_cast(o, d, self.reach)
+            if hit[0] is None:
+                return n
+            if n == 0 and hit[3] < 1e-4:
+                return None
+            n += 1
+            o = hit[0] + d * 2e-5
+        return None
+
+    def _inside(self, tree, p):
+        counts = [self._crossings(tree, p, d) for d in self.owner.pdirs]
+        return all(c is not None and c % 2 == 1 for c in counts)
+
+    def encloses(self, w, pts):
+        from mathutils import Vector
+        tree = self._tree(w)
+        if self.eye_inside[w]:
+            return False
+        return all(self._inside(tree, Vector(p)) for p in pts.tolist())
 
 
 # ---------------------------------------------------------------- hygiene
@@ -1132,7 +1249,16 @@ class Audit:
         # reference by more than 90 degrees, to tell which of the two is flipped)
         t0 = time.perf_counter()
         self.ref_flip = self.has_ref & (self.nerr > 90.0)
-        self.vis = Visibility(model, geos, cfg, self.fast, want_back=self.ref_flip)
+        gcomp = np.zeros(len(geo.v), dtype=np.int64)
+        closed, offset = [], 0
+        for name in sorted(topo):
+            tp = topo[name]
+            gcomp[tp.tri_idx] = tp.comp + offset
+            closed.append(tp.closed_components(geo))
+            offset += tp.ncomp
+        closed = np.concatenate(closed) if closed else np.zeros(0, dtype=bool)
+        self.vis = Visibility(model, geos, cfg, self.fast, want_back=self.ref_flip,
+                              gcomp=gcomp, closed=closed)
         self.tick("visibility", t0)
 
         # D
@@ -1310,6 +1436,7 @@ class Audit:
             "sample_spacing": rm(cfg["fast"]["spacing"] if self.fast
                                  else cfg["sampling"]["spacing"]),
             "directions": vis.ndir, "visibility_samples": vis.samples, "rays": vis.rays,
+            "enclosed_shortcuts": vis.enclosed,
             "poses": [p["name"] for p in cfg["poses"]], "pose_retests": vis.pose_retests,
         }
 
