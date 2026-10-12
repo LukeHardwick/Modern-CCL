@@ -32,7 +32,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T09](T09-demo-apps.md) | `demo_host` + mock `demo_ig` (+ fault flags) | A (MVP) | T09a, T09b P1, T10 | ⏳ |
 | [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ✅ `2781a3a` |
 | [T11](T11-ccl-interop.md) | CCL interoperability & differential tests | A (MVP) | T09 | ⏳ |
-| [T12](T12-fuzzing.md) | libFuzzer + hardening | A (MVP) | T06 | 🚧 [in progress](STATUS.md) |
+| [T12](T12-fuzzing.md) | libFuzzer + hardening | A (MVP) | T06 | ✅ |
 | **M1** | **MVP milestone: user trial + Windows/MSVC build** | | T03–T12 (incl. T09a, T09b) | |
 | [T13](T13-host-packets-environment.md) | Remaining entity/environment packets (3,5,7,10–15) | B | M1 | ⏳ |
 | [T14](T14-host-packets-sensors-requests.md) | Sensors, motion, ERM, trajectory, collision, requests (17–20, 22, 23, 25–28) | B | M1 | ⏳ |

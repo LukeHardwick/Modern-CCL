@@ -18,7 +18,7 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the brief + the "Remaining" list below (better when the old context is long).
 
 ## `main`
-`main` contains T00–T08, T09a, T09b Part 1, T10 and T17 (see README.md). T09a merge: macOS 645/645 (98.2 % lines), Linux GCC debug + ASan 642/642. All checks green at `5a20b87`
+`main` contains T00–T08, T09a, T09b Part 1, T10, T12 and T17 (see README.md). T12 merge: macOS 648/648 (98.3 % lines), Linux GCC debug + ASan 645/645. All checks green at `5a20b87`
 (macOS 416 tests, Linux GCC debug + ASan 413).
 
 ## Open task branches
@@ -32,7 +32,6 @@ Worktrees live under `.claude/worktrees/` in the main checkout.
 
 | Task | Branch | Worktree | Head | Based on | State |
 |---|---|---|---|---|---|
-| T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `8971714` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
 
 Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
 (filled in after the run).
@@ -60,17 +59,14 @@ aligned new/delete in tests/support/counting_new.hpp). Deviation: `HostConfig::p
   "Host connected" on every failed latch attempt (ig.cpp:149-151).
 - `on_user<P>` → T09c.
 
-### T12 — remaining
-1. Verify the Linux libFuzzer path: commit `12134c4` switched the Docker image/preset to libc++
-   (Ubuntu's libstdc++ 13 hides `std::expected` from Clang 18) — untested. Run
-   `scripts/fuzz.sh --linux <target> 60` for each target.
-2. Fuzz results so far (macOS, Homebrew LLVM libFuzzer, ~661 s each, **no crashes**):
-   `fuzz_message_view` 17.3 M runs (26 k exec/s, cov 950), `fuzz_roundtrip` 8.2 M (12 k/s, cov 1304),
-   `fuzz_sessions` 4.9 M (7.4 k/s, cov 1618). Logs in the worktree's `build/logs/` (not committed).
-3. **Fix 38 clang-tidy errors** in `fuzz/gen_corpus.cpp` (30: trailing commas, unchecked `operator[]`,
-   `reinterpret_cast` for writing bytes — use `std::as_bytes`/`std::bit_cast` or `.at()`) and
-   `fuzz/replay_main.cpp` (8). Format is fixed (`8971714`); debug and asan pass with 419/419.
-   Then full `check.sh --coverage`, Linux check, Opus review, merge; record results in the brief.
+### T12 — merged
+Linux libFuzzer path: Ubuntu 26.04 + clang 21 image (libc++ approach failed: Ubuntu's libFuzzer is
+built against libstdc++). Review fixes: full round-trip equality for every packet, tidy back on for
+replay/gen_corpus, session invariants, decorrelated seeds, fuzz.sh via preset. No crashes found.
+Results in the T12 brief. **Open questions for the user:** lengthen Linux fuzz runs (60 s) to
+~10 min? Move the other Linux presets to Ubuntu 26.04 / clang 21? Docker needs
+`DOCKER_HOST=unix:///Users/luke/.colima/default/docker.sock` + an empty `DOCKER_CONFIG` from agent
+shells (`docker-credential-desktop` is not on PATH).
 
 ### T17 — merged `a57c7f4`
 Opus review: merge after fixes. Applied: `SessionConfig::ignore_user_packets` wired into both
