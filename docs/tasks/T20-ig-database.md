@@ -61,6 +61,16 @@ category = "aircraft"         # aircraft | ground_vehicle | sea | lifeform | mun
 Rules: an exact type beats a range; overlapping ranges are an error; an unmapped type uses
 `[default] category` (default `other`). Paths are relative to the manifest.
 
+### Model entries (added 2026-10-12 after the T22a research, user-approved)
+Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-format-and-fidelity.md) (Addendum A wins where it differs).
+- `lods = ["jet.glb", "jet_lod1.glb", ...]` per entity type (LOD0 first; screen-height thresholds
+  default 25 % / 8 % / 2 %, cull below 0.1 %, overridable per entry).
+- `attached_view = "cockpit" | "full" | "hidden"` (what the attached view shows of this entity;
+  sample jet default `cockpit`; `hidden` = physical-cockpit simulators).
+- Default eyepoint node names (`eyepoint_front`, `eyepoint_rear`); the Host's View Control offsets
+  (ICD 4.1.16) still win.
+- Per part: rotation axis convention for spinning parts (wheels, rotors), e.g. `axis = "x"`.
+
 ## Headless API (`cigi_mock_ig`, namespace `cigi::mock`)
 - `Database` value type (number, name, origin, bounds, load_frames, terrain spec, materials, entity
   table) with `lookup(std::uint16_t type) -> const EntityModel*`.

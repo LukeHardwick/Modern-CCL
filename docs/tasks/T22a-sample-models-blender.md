@@ -23,6 +23,18 @@ Follow the shared rules in [README.md](README.md) (rule 6 does not apply).
    ownship/"hero" model (higher quality, with a **cockpit interior** for the attached view; optional,
    since real simulators hide the ownship at the eyepoint) and standard entities (with LODs).
    Evaluate a Blender MCP workflow against the headless script. Research addendum first, then review.
+5. **Approved plan (user, 2026-10-12, after Addendum A):** all planner recommendations accepted.
+   - `.glb` only; no `.blend` committed; no Blender MCP (the script is the single source of truth).
+   - **Hero jet** modelled on the **Hawk 128 / T2** (public dimensions only, no markings, file
+     `jet.glb`, credit "generic jet trainer, not affiliated"): 60–100 k tris, cap 150 k, with a
+     cockpit interior (`cockpit`, `hud_glass`, `eyepoint_front`, `eyepoint_rear`), clean UVs for
+     later textures, committed `.glb` ≤ 6 MB. Default `attached_view = "cockpit"`.
+   - **Standard tier** (helicopter, tank, truck): LOD0 8–20 k tris, ≤ 14 nodes, ≤ 500 KB; LOD1/2/3
+     ≈ 4 k / 1 k / 200 tris as separate files (all LODs ≤ 700 KB); script-generated from a detail
+     parameter, names and pivots preserved; LOD3 may be a single static mesh.
+   - Textures later (T22b); vertex-colour shading and markings now.
+   - Instancing and the cockpit render pass split into **T22b**.
+   - Progress images go to the user at checkpoints.
 **Review gate:** the research goes to the user for review before any modelling starts; models
 are built only after the user approves (or amends) the recommendations.
 Write the findings to `docs/research/03-model-format-and-fidelity.md` (sources cited with

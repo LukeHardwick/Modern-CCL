@@ -47,6 +47,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T21](T21-heightmap-terrain.md) | Heightmap terrain per database (rendering + HAT/HOT) | Tools | T20 | 📝 |
 | [T22a](T22a-sample-models-blender.md) | Sample models (tank, helicopter, jet, truck) from a Blender script + format/fidelity research | Tools | T20 (database.toml only) | ⏳ |
 | [T22](T22-gltf-models.md) | glTF models, articulated part nodes, primitive fallback, Database panel | Tools | T20 | 📝 |
+| [T22b](T22b-viewer-render-upgrades.md) | Viewer render upgrades: cockpit pass, instancing, textures/PBR (later) | Tools | T22 | 📝 |
 | [T23](T23-ig-config-file.md) | `ig.toml` config for `ig_viewer` / `demo_ig` | Tools | T09b P2, T20 | 📝 |
 | [T24](T24-scenario-files.md) | Scenario files replace the hardcoded scripted Host | Tools | T20 | 📝 |
 | [T25](T25-record-replay.md) | Record / replay (pcap + pcapng reader, JSON index, replay panel) | Tools | T09b P2, T10 | 📝 |
