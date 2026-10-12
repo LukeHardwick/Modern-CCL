@@ -17,6 +17,12 @@ Follow the shared rules in [README.md](README.md) (rule 6 does not apply).
    decals/markings, LODs. Recommend a level and justify it.
 3. **Improve the existing jet** where the research says it is worth it, and build the helicopter,
    tank and truck to the same level.
+4. **User decisions after the first research review (2026-10-12):** `.glb` accepted. The jet is
+   modelled on the **BAE Hawk** (public dimensions only; no markings). Fidelity must be justified by
+   performance vs looks, not by the current renderer (which can be upgraded). Two tiers: an
+   ownship/"hero" model (higher quality, with a **cockpit interior** for the attached view; optional,
+   since real simulators hide the ownship at the eyepoint) and standard entities (with LODs).
+   Evaluate a Blender MCP workflow against the headless script. Research addendum first, then review.
 **Review gate:** the research goes to the user for review before any modelling starts; models
 are built only after the user approves (or amends) the recommendations.
 Write the findings to `docs/research/03-model-format-and-fidelity.md` (sources cited with
