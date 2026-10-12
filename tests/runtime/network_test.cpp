@@ -18,7 +18,8 @@ using namespace cigi;
 using namespace std::chrono_literals;
 
 std::uint16_t free_port() {
-    auto endpoint = transport::UdpEndpoint::open({.local_address = "127.0.0.1", .local_port = 0, .remote_address = {}});
+    auto endpoint = transport::UdpEndpoint::open(
+        {.local_address = "127.0.0.1", .local_port = 0, .remote_address = {}});
     EXPECT_TRUE(endpoint.has_value());
     return endpoint ? endpoint->local_port() : std::uint16_t{0};
 }
@@ -93,7 +94,8 @@ struct Exchange {
         {
             std::jthread ig_thread([&](std::stop_token st) { ig_result = ig->run(st, 5ms); });
             std::jthread host_thread([&](std::stop_token st) { host_result = host->run(st, 5ms); });
-            EXPECT_TRUE(wait_for([&] { return operate.load() && entities.load() >= 10 && answered.load(); }));
+            EXPECT_TRUE(wait_for(
+                [&] { return operate.load() && entities.load() >= 10 && answered.load(); }));
         } // joins (jthread requests stop first)
         EXPECT_TRUE(host_result);
         EXPECT_TRUE(ig_result);

@@ -191,9 +191,9 @@ TEST(HostLink, AnIgRestartedAfterThreeFramesRecoversThroughTheStaleFrames) {
     rig.steps(3);
     EXPECT_EQ(rig.host().state(), LinkState::Operate); // nothing it said was current
     EXPECT_GE(rig.host().session().stats().stale_frames, 2U);
-    ASSERT_TRUE(rig.run_until(LinkState::Standby, 20));   // the first fresh SOF says Standby
-    ASSERT_TRUE(rig.run_until(LinkState::Operate, 20));   // and the Host asks for Operate again
-    EXPECT_EQ(rig.host().stats().ig_restarts, 0U);        // not a regression: within the window
+    ASSERT_TRUE(rig.run_until(LinkState::Standby, 20)); // the first fresh SOF says Standby
+    ASSERT_TRUE(rig.run_until(LinkState::Operate, 20)); // and the Host asks for Operate again
+    EXPECT_EQ(rig.host().stats().ig_restarts, 0U);      // not a regression: within the window
     const std::vector<Transition> expected{{LinkState::Operate, LinkState::Standby},
                                            {LinkState::Standby, LinkState::Operate}};
     EXPECT_EQ(changes, expected);
@@ -378,8 +378,8 @@ TEST(HostSend, HostFrameDescribesTheFrameBeingBuilt) {
     };
     std::vector<Seen> seen;
     rig.host().on_frame([&](HostFrame& f) {
-        seen.push_back({f.ig_frame_number(), f.host_frame_number(), f.since_last_frame(),
-                        f.ig_timestamp()});
+        seen.push_back(
+            {f.ig_frame_number(), f.host_frame_number(), f.since_last_frame(), f.ig_timestamp()});
     });
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
     rig.steps(2);
@@ -422,9 +422,9 @@ TEST(HostReceive, BadDatagramsGoToOnErrorAndTheCounters) {
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     std::vector<ErrorCode> codes;
     host.on_error([&](const Error& e) { codes.push_back(e.code); });
-    peer.send(Bytes(3));                          // not a message
+    peer.send(Bytes(3));                            // not a message
     peer.send(control_message(1, IgMode::Operate)); // Host -> IG, sent to a Host
-    peer.send(Bytes(70'000));                     // larger than any datagram the Host accepts
+    peer.send(Bytes(70'000));                       // larger than any datagram the Host accepts
     ASSERT_TRUE(host.poll(0ms));
     ASSERT_EQ(codes.size(), 3U);
     EXPECT_EQ(codes[1], ErrorCode::WrongDirection);

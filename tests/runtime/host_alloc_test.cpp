@@ -129,8 +129,8 @@ TEST(HostAllocations, TheSteadyStateFramePathDoesNotAllocate) {
     Ring to_ig;
     Ring to_host;
     FakeClock clock;
-    auto host =
-        Host::over(host_config_with(clock), std::make_unique<RingTransport>(to_ig, to_host)).value();
+    auto host = Host::over(host_config_with(clock), std::make_unique<RingTransport>(to_ig, to_host))
+                    .value();
     auto ig =
         Ig::over(ig_config_with(clock), std::make_unique<RingTransport>(to_host, to_ig)).value();
 

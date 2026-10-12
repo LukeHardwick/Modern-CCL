@@ -17,8 +17,7 @@ struct IgFixture {
     FakeClock clock;
     Ig ig;
 
-    explicit IgFixture(IgConfig config = {})
-        : ig(make(config, clock, peer)) {}
+    explicit IgFixture(IgConfig config = {}) : ig(make(config, clock, peer)) {}
 
     static Ig make(IgConfig config, const FakeClock& clock, RawPeer& peer) {
         config.session.clock = clock.fn();

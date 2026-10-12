@@ -26,10 +26,11 @@ constexpr bool is_flowing(LinkState s) noexcept {
 }
 
 Result<void> validate(const HostConfig& c) {
-    const bool bad_mode =
-        c.requested_mode == IgMode::OfflineMaintenance || !EnumTraits<IgMode>::is_defined(c.requested_mode);
+    const bool bad_mode = c.requested_mode == IgMode::OfflineMaintenance ||
+                          !EnumTraits<IgMode>::is_defined(c.requested_mode);
     const bool bad_database = c.database && (*c.database < 0 || *c.database > 127);
-    const bool bad_rate = !c.synchronous && !(std::isfinite(c.async_rate_hz) && c.async_rate_hz > 0.0);
+    const bool bad_rate =
+        !c.synchronous && !(std::isfinite(c.async_rate_hz) && c.async_rate_hz > 0.0);
     const bool bad_time = c.peer_timeout.count() <= 0 || c.probe_interval.count() <= 0;
     if (bad_mode || bad_database || bad_rate || bad_time || c.max_message_bytes < frame_size) {
         return std::unexpected(invalid_config());
@@ -294,9 +295,9 @@ Result<void> HostCore::send_message(TimePoint now, bool with_user_content) {
     if (with_user_content && is_flowing(state_) && frame_cb_) {
         ++stats_.frame_callbacks;
         const auto& sof = session_.last_start_of_frame();
-        const auto since = last_sent_ ? std::chrono::duration_cast<std::chrono::microseconds>(
-                                            now - *last_sent_)
-                                      : std::chrono::microseconds{0};
+        const auto since =
+            last_sent_ ? std::chrono::duration_cast<std::chrono::microseconds>(now - *last_sent_)
+                       : std::chrono::microseconds{0};
         HostFrame frame{session_, *this, state_,
                         sof && sof->timestamp_valid ? sof->timestamp : Timestamp{}, since};
         frame_cb_(frame);
@@ -327,7 +328,8 @@ void HostCore::close(bool notify) {
         static_cast<void>(session_.request_mode(IgMode::ResetStandby));
         static_cast<void>(session_.begin_frame());
         if (const auto sent = transport_->send(session_.finish_frame()); !sent) {
-            log_->warn("could not send the Standby request on close: {}", to_string(sent.error().code));
+            log_->warn("could not send the Standby request on close: {}",
+                       to_string(sent.error().code));
         }
     }
     transport_.reset();

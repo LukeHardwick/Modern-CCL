@@ -70,7 +70,9 @@ public:
     template <Packet P> Result<void> add(const P& packet) { return session_->add(packet); }
 
     /// Host Frame Number LSN to put in responses to requests of the last message (ICD 2.3, 4.2.2).
-    [[nodiscard]] std::uint8_t host_frame_lsn() const noexcept { return session_->host_frame_lsn(); }
+    [[nodiscard]] std::uint8_t host_frame_lsn() const noexcept {
+        return session_->host_frame_lsn();
+    }
     [[nodiscard]] std::uint32_t host_frame_number() const noexcept {
         return session_->last_host_frame_number();
     }

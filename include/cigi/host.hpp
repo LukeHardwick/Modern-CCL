@@ -74,15 +74,15 @@ struct HostConfig {
 
 /// Counters of a Host (all since construction).
 struct HostStats {
-    SessionStats session;                   ///< The session's counters.
-    std::uint64_t frames_sent = 0;          ///< Messages sent, start-up messages included.
-    std::uint64_t frame_callbacks = 0;      ///< on_frame calls (Operate/Debug frames).
-    std::uint64_t late_frames = 0;          ///< Asynchronous ticks missed because poll ran late.
-    std::uint64_t oversize_adds = 0;        ///< HostFrame::add calls that did not fit.
-    std::uint64_t datagrams_received = 0;   ///< Datagrams taken from the transport.
-    std::uint64_t receive_errors = 0;       ///< Datagrams that could not be used.
-    std::uint64_t ig_restarts = 0;          ///< IG restarts detected (frame numbers or stale run).
-    std::uint64_t link_losses = 0;          ///< Times the link went Lost.
+    SessionStats session;                 ///< The session's counters.
+    std::uint64_t frames_sent = 0;        ///< Messages sent, start-up messages included.
+    std::uint64_t frame_callbacks = 0;    ///< on_frame calls (Operate/Debug frames).
+    std::uint64_t late_frames = 0;        ///< Asynchronous ticks missed because poll ran late.
+    std::uint64_t oversize_adds = 0;      ///< HostFrame::add calls that did not fit.
+    std::uint64_t datagrams_received = 0; ///< Datagrams taken from the transport.
+    std::uint64_t receive_errors = 0;     ///< Datagrams that could not be used.
+    std::uint64_t ig_restarts = 0;        ///< IG restarts detected (frame numbers or stale run).
+    std::uint64_t link_losses = 0;        ///< Times the link went Lost.
     std::array<std::chrono::microseconds, link_state_count> time_in_state{};
 
     [[nodiscard]] std::chrono::microseconds time_in(LinkState s) const noexcept {

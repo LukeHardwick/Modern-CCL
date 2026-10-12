@@ -50,7 +50,8 @@ public:
             to_host = std::move(h);
             to_ig = std::move(i);
         }
-        host_ = std::make_unique<Host>(Host::over(std::move(host_config), std::move(to_host)).value());
+        host_ =
+            std::make_unique<Host>(Host::over(std::move(host_config), std::move(to_host)).value());
         ig_ = std::make_unique<Ig>(Ig::over(std::move(ig_config), std::move(to_ig)).value());
     }
 

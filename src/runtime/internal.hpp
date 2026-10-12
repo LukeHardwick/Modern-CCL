@@ -81,7 +81,8 @@ private:
 [[nodiscard]] inline std::chrono::milliseconds wait_for(TimePoint now, TimePoint wake,
                                                         std::chrono::milliseconds limit) {
     const auto until = std::chrono::ceil<std::chrono::milliseconds>(wake - now);
-    return std::clamp(until, std::chrono::milliseconds{0}, std::max(limit, std::chrono::milliseconds{0}));
+    return std::clamp(until, std::chrono::milliseconds{0},
+                      std::max(limit, std::chrono::milliseconds{0}));
 }
 
 [[nodiscard]] inline Error invalid_config() noexcept {
