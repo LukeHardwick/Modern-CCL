@@ -1,0 +1,6 @@
+# Same checks as the repository, minus two that fight small math types: Vec3d{x, y, z} and
+# Mat3{{...}, {...}, {...}} are clearer positional than designated.
+InheritParentConfig: true
+Checks: >
+  -modernize-use-designated-initializers,
+  -readability-trailing-comma

@@ -21,6 +21,8 @@ option(CIGI_BUILD_TOOLS "Build the developer tools (pcap writer)" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and platform helpers"
        ${_cigi_top})
+option(CIGI_BUILD_MOCK_IG "Build apps/mock_ig (headless mock-IG core)" ${_cigi_top})
+option(CIGI_BUILD_VIEWER "Build apps/ig_viewer (fetches raylib, Dear ImGui and rlImGui)" OFF)
 option(CIGI_BUILD_SESSION "Build the Host/IG sessions (fetches spdlog)" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
@@ -187,6 +189,18 @@ endif()
 
 if(CIGI_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+# The mock IG (no graphics dependencies) builds everywhere; the viewer only on request.
+if(CIGI_BUILD_VIEWER AND NOT CIGI_BUILD_MOCK_IG)
+    message(STATUS "CIGI_BUILD_VIEWER needs the mock IG: enabling CIGI_BUILD_MOCK_IG")
+    set(CIGI_BUILD_MOCK_IG ON)
+endif()
+if(CIGI_BUILD_MOCK_IG)
+    add_subdirectory(apps/mock_ig)
+endif()
+if(CIGI_BUILD_VIEWER)
+    add_subdirectory(apps/ig_viewer)
 endif()
 
 if(CIGI_BUILD_TESTS)

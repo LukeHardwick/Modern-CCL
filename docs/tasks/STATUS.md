@@ -18,7 +18,7 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
   the brief + the "Remaining" list below (better when the old context is long).
 
 ## `main`
-`main` contains T00–T08, T10 and T17 (`a57c7f4`; see README.md). All checks green at `5a20b87`
+`main` contains T00–T08, T10, T17 and T09b Part 1 (see README.md). macOS check.sh --coverage 563/563, 98.4 % lines. All checks green at `5a20b87`
 (macOS 416 tests, Linux GCC debug + ASan 413).
 
 ## Open task branches
@@ -32,24 +32,17 @@ Worktrees live under `.claude/worktrees/` in the main checkout.
 
 | Task | Branch | Worktree | Head | Based on | State |
 |---|---|---|---|---|---|
-| T09b P1 mock-IG core + `ig_viewer` | `task/t09b-ig-viewer` | `agent-aabbb35402214e1c2` | `a50503f` | `f2dedae` (before T07/T10) | implementation done; debug 437/437 |
 | T09a Host/Ig facade | `task/t09a-host-ig-facade` | `agent-a7ac964648ce5a2d4` | `09e82c1` | `5a20b87` | implementation + docs done; debug 478/478 |
 | T12 fuzzing | `task/t12-fuzzing` | `agent-afd9869e1efc87280` | `8971714` | `5a20b87`-era (rebased onto T07) | 3 targets done; macOS fuzzing done; debug 419/419 |
 
 Full `check.sh --coverage` results for the four heads above: see "Check results" at the end
 (filled in after the run).
 
-### T09b Part 1 — remaining
-1. Merge `main` into the branch (it predates T07/T10; expect small conflicts in `CMakeLists.txt`,
-   `tests/CMakeLists.txt`, `cmake/StaticAnalysis.cmake`, `.gitignore`).
-2. Fix the **ImGui vertex/index overflow** the agent found when stress-testing (likely 16-bit
-   `ImDrawIdx` overflow with many entities/trails in the map window: define `ImDrawIdx` as
-   `unsigned int` for the ImGui build, or split/limit draw lists). Then measure fps with
-   `ig_viewer --stress 200 --bench 600` and record it in the guide.
-3. Overlapping entity ID labels (e.g. entities 3 and 4 render as "34"/"43"): offset or leader lines.
-4. Write `docs/guide/ig-viewer.md` (build/run, controls, panels, colours, limitations; embed the
-   screenshots in `docs/guide/img/`).
-5. Full `check.sh --coverage` (asan, tidy, ≥ 95 % on `cigi_mock_ig`) + Linux check; Opus review; merge.
+### T09b Part 1 — merged
+Opus review fixes applied (CIGI_BUILD_MOCK_IG guard, Host view aimed at the convoy, SOF echoes
+Operate/Debug, MockIg error-path tests, Inactive-parent extrapolation, label/buffer nits). Checks:
+macOS 547/547 (mock_ig 99.2 % lines), Linux GCC debug + ASan 544/544 (after a -Wsign-conversion
+test fix). `--stress` capped at 1000 (guess; measure the datagram limit in Part 2).
 Part 2 (network mode + fault panel) starts after T09a is merged — see the brief.
 
 ### T09a — remaining
@@ -83,6 +76,13 @@ removed (GCC `-Wtype-limits`), `if constexpr` builder size check, distinct-type 
 foreign-namespace user packet test. Checks: macOS 432/432 + coverage 97.8 %, Linux GCC debug + ASan
 429/429. **Deferred to the facade (T09a follow-up / T09):** typed user packets in sessions (sessions
 are not templated on the packet set; user packets arrive via `on_unknown`).
+
+## Release v0.1.0 (in progress)
+The user asked (2026-10-12) to finish the current work and mark it as a release: once T09a,
+T09b Part 1 and T12 are merged and `main` passes `check.sh --coverage` + Linux check, tag
+`v0.1.0` on `main` (annotated, local only; nothing is pushed) with release notes in
+`docs/releases/v0.1.0.md`. New work after the tag: **T09c** (facade `on_user<P>`, examples on the
+facade), T09b Part 2, T09.
 
 ## Next tasks after these
 T09 (demo apps; needs T09a, T09b P1, T10) → T11 (CCL interop) → **M1** (user trial + MSVC build by
