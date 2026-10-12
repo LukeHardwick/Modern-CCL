@@ -193,6 +193,17 @@ TEST(Network, AStrayDatagramDoesNotRedirectAnIgThatLearnsItsHost) {
     std::array<std::byte, 2048> buffer{};
     EXPECT_TRUE(host.receive(buffer, 1s).has_value()); // the Start of Frame came to the Host
     EXPECT_EQ(stray.receive(buffer, 50ms).error().code, ErrorCode::Timeout);
+
+    // After a restart the IG forgets its Host and sends nothing until a message names one again.
+    ig.restart();
+    const auto before = ig.stats().frames_sent;
+    for (int i = 0; i < 5; ++i) {
+        ASSERT_TRUE(ig.poll(20ms));
+    }
+    EXPECT_EQ(ig.stats().frames_sent, before);
+    ASSERT_TRUE(host.send(test::control_message(2, IgMode::Operate)));
+    EXPECT_TRUE(
+        wait_for([&] { return ig.poll(20ms).has_value() && ig.stats().frames_sent > before; }));
 }
 
 TEST(Network, AnAsynchronousHostSendsAtItsOwnRate) {

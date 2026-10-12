@@ -24,12 +24,10 @@ public:
         return endpoint_.send(datagram);
     }
     void latch_peer() override {
-        if (!learn_peer_ || latched_) {
-            return;
-        }
+        // Called by the Ig only while it has no Host.
         if (const auto sender = endpoint_.last_sender();
             sender && endpoint_.set_remote(sender->address, sender->port)) {
-            latched_ = true;
+            latched_ = learn_peer_;
         }
     }
     void forget_peer() override { latched_ = false; }

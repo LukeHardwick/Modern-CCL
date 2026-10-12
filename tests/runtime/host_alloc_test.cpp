@@ -1,86 +1,13 @@
 // The steady-state frame path of Host and Ig must not allocate (user callbacks excluded). This
 // binary replaces the global operator new to count calls, so it is kept apart from the others.
 
+#include "../support/counting_new.hpp"
 #include "support.hpp"
 
 #include <array>
-#include <atomic>
 #include <cstddef>
-#include <cstdlib>
 #include <gtest/gtest.h>
 #include <new>
-
-namespace {
-std::atomic<std::size_t> allocations{
-    0}; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-} // namespace
-
-// NOLINTBEGIN(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory,misc-use-internal-linkage,readability-inconsistent-declaration-parameter-name)
-void* counted_alloc(std::size_t size, std::size_t align) noexcept {
-    allocations.fetch_add(1, std::memory_order_relaxed);
-    void* p = nullptr;
-    if (align <= alignof(std::max_align_t)) {
-        p = std::malloc(size);
-    } else if (posix_memalign(&p, align, size) != 0) {
-        p = nullptr;
-    }
-    return p;
-}
-void* checked(void* p) {
-    if (p == nullptr) {
-        std::abort(); // the library does not use exceptions
-    }
-    return p;
-}
-void* operator new(std::size_t size) {
-    return checked(counted_alloc(size, 1));
-}
-void* operator new[](std::size_t size) {
-    return checked(counted_alloc(size, 1));
-}
-void* operator new(std::size_t size, std::align_val_t al) {
-    return checked(counted_alloc(size, static_cast<std::size_t>(al)));
-}
-void* operator new[](std::size_t size, std::align_val_t al) {
-    return checked(counted_alloc(size, static_cast<std::size_t>(al)));
-}
-void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, 1);
-}
-void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, 1);
-}
-void* operator new(std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, static_cast<std::size_t>(al));
-}
-void* operator new[](std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
-    return counted_alloc(size, static_cast<std::size_t>(al));
-}
-void operator delete(void* p) noexcept {
-    std::free(p);
-}
-void operator delete[](void* p) noexcept {
-    std::free(p);
-}
-void operator delete(void* p, std::size_t) noexcept {
-    std::free(p);
-}
-void operator delete[](void* p, std::size_t) noexcept {
-    std::free(p);
-}
-void operator delete(void* p, std::align_val_t) noexcept {
-    std::free(p);
-}
-void operator delete[](void* p, std::align_val_t) noexcept {
-    std::free(p);
-}
-void operator delete(void* p, std::size_t, std::align_val_t) noexcept {
-    std::free(p);
-}
-void operator delete[](void* p, std::size_t, std::align_val_t) noexcept {
-    std::free(p);
-}
-// NOLINTEND(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory,misc-use-internal-linkage,readability-inconsistent-declaration-parameter-name)
 
 namespace {
 

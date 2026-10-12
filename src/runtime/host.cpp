@@ -135,8 +135,8 @@ private:
     TimePoint last_rx_;
     TimePoint last_probe_;
     std::optional<TimePoint> last_sent_;
-    std::uint32_t stale_run_ = 0;          ///< Consecutive stale or duplicate Start of Frames.
-    std::optional<int> database_;          ///< Last database asked for, replayed after a restart.
+    std::uint32_t stale_run_ = 0; ///< Consecutive stale or duplicate Start of Frames.
+    std::optional<int> database_; ///< Last database asked for, replayed after a restart.
     bool warned_fragmentation_ = false;
     HostStats stats_;
 

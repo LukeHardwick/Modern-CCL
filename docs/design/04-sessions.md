@@ -46,9 +46,13 @@ sequenceDiagram
   restart signal for the facade; duplicates and reordering are not.
   *Limitation:* a peer that restarts within `stale_window` frames of its previous number (e.g. an
   IG restarted after only a few frames) is first seen as stale and is not reported as a restart;
-  the tracker resynchronises once the new numbers pass the old one. The facade's peer timeout and
-  IG mode changes (Reset/Standby in the restarted SOFs are ignored while stale) cover this case
-  only partly — T09a should also treat a stale run longer than `stale_window` as a restart. Peers older than 3.2 have one
+  the tracker resynchronises once the new numbers pass the old one. Such an IG sends the numbers
+  0..N-1 (stale), N (duplicate) and then fresh ones, now in Reset/Standby. The `cigi::Host`
+  facade handles it in two ways: it counts the stale and duplicate frames of a run and treats more
+  than `stale_window` of them as a restart, and it treats a fresh Start of Frame that follows a
+  stale/duplicate run and reports Reset/Standby while the Host is in Operate/Debug as a restart
+  too (`reset_peer()` plus replaying the requested database). Code driving a `HostSession`
+  directly has to do the same. Peers older than 3.2 have one
   "Frame Counter" originated by the IG: the Host copies the IG's counter into IG Control, so an
   `IgSession` does not track the frame numbers of a 3.0/3.1 Host (it only remembers the last
   value); a `HostSession` still tracks a 3.0/3.1 IG's counter.

@@ -25,7 +25,8 @@ inline constexpr std::size_t max_drain_per_poll = 1024;
 
 /// Turns the injected 32-bit, wrapping 10 microsecond Timestamp clock of the sessions into a
 /// monotonic time point that does not wrap (as long as it is read at least every 11.9 hours), so
-/// timeouts, pacing and time accounting all follow the one injected clock.
+/// timeouts, pacing and time accounting all follow the one injected clock. Host::poll and
+/// Ig::poll read it on every call, which keeps that guarantee.
 class TickClock {
 public:
     explicit TickClock(ClockFn source)

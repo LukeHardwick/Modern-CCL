@@ -749,7 +749,7 @@ TEST(HostLink, AnIgRestartReplaysTheDatabaseRequest) {
     std::vector<int> requests;
     rig.ig().on_database_request([&](std::int8_t n) {
         requests.push_back(n);
-        rig.ig().set_database(static_cast<std::int8_t>(n)); // loaded at once
+        rig.ig().set_database(n); // loaded at once
     });
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
     ASSERT_EQ(requests, std::vector<int>{5});

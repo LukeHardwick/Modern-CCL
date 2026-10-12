@@ -58,8 +58,8 @@ message can start).
   dropped, not replayed (`stats().late_frames`).
 
 `HostFrame::add(packet)` appends any Host -> IG packet and returns the session's `Result<void>`.
-It also exposes the IG frame number and timestamp, the time since the last frame and the link
-state. A frame holds `max_message_bytes` (default 16384); an `add` that does not fit returns
+It also exposes the IG frame number and timestamp, the time since the last frame (start-up
+probes count as frames, so the first value after Operate can be short) and the link state. A frame holds `max_message_bytes` (default 16384); an `add` that does not fit returns
 `BufferTooSmall`, goes to `on_error` and `stats().oversize_adds`, and the frame is still sent with
 what fit. A message above 1472 bytes will be IP-fragmented on a standard Ethernet MTU: the facade
 warns once. Keep frames below that unless your network carries larger datagrams.
@@ -71,6 +71,10 @@ other opcodes, `on_error` for undecodable datagrams and packets. The Start of Fr
 consumed by the facade: `session().last_start_of_frame()` returns it. A handler for HAT/HOT
 responses typically matches the request by `hat_hot_id`; `host_frame_lsn` identifies the frame
 that carried the request (ICD 2.3, 4.2.2).
+
+User-defined packets (opcodes 201-255) reach `on_unknown` unless you register them; set
+`config.session.ignore_user_packets = true` to drop them before that. Typed `on_user<P>` handlers
+are not part of the facade yet.
 
 ## Driving it
 
@@ -104,7 +108,7 @@ void on_disposed(InstanceId id) {                     // instance disposal -> on
     std::lock_guard lock(mutex);
     cigi::EntityControl e = latest[id];
     e.entity_state = cigi::EntityState::Destroyed;
-    destroyed.push_back(e);
+    destroyed.push_back(e);                           // sent once, then removed below
     latest.erase(id);
 }
 
@@ -112,8 +116,12 @@ void on_disposed(InstanceId id) {                     // instance disposal -> on
 host->on_frame([&](cigi::HostFrame& f) {
     std::lock_guard lock(mutex);
     for (const auto& [id, e] : latest) f.add(e);
-    for (const auto& e : destroyed) f.add(e);
-    destroyed.clear();
+    std::size_t sent = 0;                             // only the entries that fit are removed;
+    for (const auto& e : destroyed) {                 // the rest are retried next frame
+        if (!f.add(e)) break;
+        ++sent;
+    }
+    destroyed.erase(destroyed.begin(), destroyed.begin() + static_cast<std::ptrdiff_t>(sent));
 });
 ```
 
@@ -126,7 +134,8 @@ finish within the frame period.
   `DatagramTransport`, or use `HostSession` directly (`docs/design/04-sessions.md`).
 - Raw datagrams without sessions (a capture tool, a protocol test): `cigi::transport::UdpEndpoint`
   and the message builder/view (`docs/design/03-packet-and-message-api.md`).
-- Several IGs: one `Host` per IG, each on its own `poll` schedule.
+- Several IGs: one `Host` per IG, each on its own `poll` schedule and with its own distinct
+  `local_port` (the IG's Start of Frame goes to that port).
 
 ## Testing your Host without an IG
 

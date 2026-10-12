@@ -116,7 +116,8 @@ public:
     [[nodiscard]] std::uint32_t host_frame_number() const noexcept {
         return session_->host_frame_number();
     }
-    /// Time since the previous message was sent (zero for the first).
+    /// Time since the previous message was sent (zero for the first). Start-up probes count as
+    /// messages, so the first frame after Operate may follow a probe by less than a frame.
     [[nodiscard]] std::chrono::microseconds since_last_frame() const noexcept {
         return since_last_;
     }
@@ -138,7 +139,7 @@ private:
 };
 
 /// A Host talking to one IG. Move-only; not thread-safe. The destructor closes (without calling
-/// the state-change callback).
+/// the state-change callback). A moved-from Host may only be destroyed or assigned to.
 class Host {
 public:
     /// Open the UDP socket (never blocks; UDP is connectionless). The link is established by the

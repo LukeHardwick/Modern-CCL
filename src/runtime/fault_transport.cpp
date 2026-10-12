@@ -66,7 +66,7 @@ Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) 
     ++stats_.sent;
     if (roll(drop_)) {
         ++stats_.dropped;
-        return {};
+        return released; // a lost datagram is no failure, a failed release is
     }
     int copies = 1;
     if (roll(duplicate_)) {

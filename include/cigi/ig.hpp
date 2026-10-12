@@ -89,7 +89,8 @@ private:
     IgSession* session_;
 };
 
-/// An IG talking to one Host. Move-only; not thread-safe.
+/// An IG talking to one Host. Move-only; not thread-safe. A moved-from Ig may only be destroyed or
+/// assigned to.
 class Ig {
 public:
     /// Open the UDP socket. Errors: InvalidFieldValue (bad configuration or address),

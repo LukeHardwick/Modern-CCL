@@ -230,7 +230,7 @@ TEST(FaultTransport, ReceiveWakesForTheNextReleaseInsteadOfSleepingThrough) {
 TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
     auto broken = std::make_unique<BrokenTransport>();
     BrokenTransport* inner = broken.get();
-    FakeClock clock;
+    const FakeClock clock;
     FaultInjectingTransport faulty{std::move(broken), clock.fn()};
     faulty.set_added_latency(10ms);
     ASSERT_TRUE(faulty.send(numbered(1))); // queued
@@ -249,6 +249,14 @@ TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
     faulty.set_added_latency(0us);
     const auto sent = faulty.send(numbered(3)); // releases 2 (fails) and sends 3 (fails)
     EXPECT_FALSE(sent);
+
+    faulty.set_added_latency(10ms);
+    inner->fail_send = false;
+    ASSERT_TRUE(faulty.send(numbered(4)));
+    inner->fail_send = true;
+    clock.advance(1000);
+    faulty.set_drop_probability(1.0); // the new datagram is dropped: only the release can fail
+    EXPECT_FALSE(faulty.send(numbered(5)));
 }
 
 TEST(FaultTransport, WorksUnderAHostAndAnIg) {
