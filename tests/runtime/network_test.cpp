@@ -11,6 +11,7 @@
 #include <optional>
 #include <stop_token>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -24,7 +25,8 @@ std::uint16_t free_port() {
     return endpoint ? endpoint->local_port() : std::uint16_t{0};
 }
 
-template <class Condition> bool wait_for(Condition&& condition, std::chrono::seconds limit = 10s) {
+template <class Condition>
+bool wait_for(const Condition& condition, std::chrono::seconds limit = 10s) {
     const auto deadline = std::chrono::steady_clock::now() + limit;
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
@@ -46,7 +48,7 @@ struct Exchange {
     void run(HostConfig host_config, IgConfig ig_config) {
         host_config.peer_timeout = 5s;
         auto host = Host::connect(host_config);
-        auto ig = Ig::connect(ig_config);
+        auto ig = Ig::connect(std::move(ig_config));
         ASSERT_TRUE(host.has_value());
         ASSERT_TRUE(ig.has_value());
 
@@ -92,8 +94,10 @@ struct Exchange {
         Result<void> host_result;
         Result<void> ig_result;
         {
-            std::jthread ig_thread([&](std::stop_token st) { ig_result = ig->run(st, 5ms); });
-            std::jthread host_thread([&](std::stop_token st) { host_result = host->run(st, 5ms); });
+            std::jthread const ig_thread(
+                [&](const std::stop_token& st) { ig_result = ig->run(st, 5ms); });
+            std::jthread const host_thread(
+                [&](const std::stop_token& st) { host_result = host->run(st, 5ms); });
             EXPECT_TRUE(wait_for(
                 [&] { return operate.load() && entities.load() >= 10 && answered.load(); }));
         } // joins (jthread requests stop first)

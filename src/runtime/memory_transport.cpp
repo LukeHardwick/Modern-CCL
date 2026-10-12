@@ -58,8 +58,8 @@ private:
 
 std::pair<std::unique_ptr<DatagramTransport>, std::unique_ptr<DatagramTransport>>
 make_memory_transport_pair() {
-    auto a_to_b = std::make_shared<Channel>();
-    auto b_to_a = std::make_shared<Channel>();
+    const auto a_to_b = std::make_shared<Channel>();
+    const auto b_to_a = std::make_shared<Channel>();
     return {std::make_unique<MemoryTransport>(a_to_b, b_to_a),
             std::make_unique<MemoryTransport>(b_to_a, a_to_b)};
 }

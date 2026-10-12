@@ -30,7 +30,7 @@ Result<void> validate(const HostConfig& c) {
                           !EnumTraits<IgMode>::is_defined(c.requested_mode);
     const bool bad_database = c.database && (*c.database < 0 || *c.database > 127);
     const bool bad_rate =
-        !c.synchronous && !(std::isfinite(c.async_rate_hz) && c.async_rate_hz > 0.0);
+        !c.synchronous && (!std::isfinite(c.async_rate_hz) || c.async_rate_hz <= 0.0);
     const bool bad_time = c.peer_timeout.count() <= 0 || c.probe_interval.count() <= 0;
     if (bad_mode || bad_database || bad_rate || bad_time || c.max_message_bytes < frame_size) {
         return std::unexpected(invalid_config());
@@ -54,8 +54,10 @@ public:
         last_rx_ = start;
         last_probe_ = start - config_.probe_interval; // probe at once
         // Validated by Host::over: these cannot fail.
+        // NOLINTNEXTLINE(bugprone-unused-return-value): validated by Host::over.
         static_cast<void>(session_.request_mode(config_.requested_mode));
         if (config_.database) {
+            // NOLINTNEXTLINE(bugprone-unused-return-value): validated by Host::over.
             static_cast<void>(session_.request_database(*config_.database));
         }
         session_.handlers().on_error([this](const Error& e) { report(e); });
@@ -83,6 +85,7 @@ public:
         HostStats s = stats_;
         s.session = session_.stats();
         s.time_in_state = in_state_;
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-*): LinkState values index the array.
         s.time_in_state[static_cast<std::size_t>(state_)] +=
             std::chrono::duration_cast<std::chrono::microseconds>(clock_.now() - state_since_);
         return s;
@@ -118,10 +121,10 @@ private:
     std::vector<std::byte> rx_;
 
     LinkState state_ = LinkState::WaitingForIg;
-    TimePoint state_since_{};
+    TimePoint state_since_;
     std::array<std::chrono::microseconds, link_state_count> in_state_{};
-    TimePoint last_rx_{};
-    TimePoint last_probe_{};
+    TimePoint last_rx_;
+    TimePoint last_probe_;
     std::optional<TimePoint> last_sent_;
     std::uint32_t stale_run_ = 0;
     bool warned_fragmentation_ = false;
@@ -137,6 +140,7 @@ void HostCore::set_state(LinkState to, TimePoint now, bool notify) {
         return;
     }
     const LinkState from = state_;
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-*): LinkState values index the array.
     in_state_[static_cast<std::size_t>(from)] +=
         std::chrono::duration_cast<std::chrono::microseconds>(now - state_since_);
     state_ = to;
@@ -291,7 +295,8 @@ Result<bool> HostCore::maybe_send(TimePoint now) {
 }
 
 Result<void> HostCore::send_message(TimePoint now, bool with_user_content) {
-    static_cast<void>(session_.begin_frame()); // IG Control always fits
+    // NOLINTNEXTLINE(bugprone-unused-return-value): IG Control always fits.
+    static_cast<void>(session_.begin_frame());
     if (with_user_content && is_flowing(state_) && frame_cb_) {
         ++stats_.frame_callbacks;
         const auto& sof = session_.last_start_of_frame();
@@ -325,7 +330,9 @@ void HostCore::close(bool notify) {
     }
     if (config_.standby_on_close && transport_) {
         // ICD 2.8: leave the IG in Reset/Standby. Best effort: the socket is closed anyway.
+        // NOLINTNEXTLINE(bugprone-unused-return-value): ResetStandby is always valid.
         static_cast<void>(session_.request_mode(IgMode::ResetStandby));
+        // NOLINTNEXTLINE(bugprone-unused-return-value): IG Control always fits.
         static_cast<void>(session_.begin_frame());
         if (const auto sent = transport_->send(session_.finish_frame()); !sent) {
             log_->warn("could not send the Standby request on close: {}",
@@ -348,7 +355,7 @@ Host& Host::operator=(Host&&) noexcept = default;
 Host::~Host() = default;
 
 Result<Host> Host::over(HostConfig config, std::unique_ptr<DatagramTransport> transport) {
-    if (auto ok = detail::validate(config); !ok || !transport) {
+    if (const auto ok = detail::validate(config); !ok || !transport) {
         return std::unexpected(detail::invalid_config());
     }
     config.session.synchronous = config.synchronous;
@@ -396,7 +403,7 @@ Result<PollStatus> Host::poll(std::chrono::milliseconds timeout) {
     return core_->poll(timeout);
 }
 
-Result<void> Host::run(std::stop_token stop, std::chrono::milliseconds poll_interval) {
+Result<void> Host::run(const std::stop_token& stop, std::chrono::milliseconds poll_interval) {
     while (!stop.stop_requested() && core_->state() != LinkState::Closed) {
         if (const auto polled = core_->poll(poll_interval); !polled) {
             return std::unexpected(polled.error());

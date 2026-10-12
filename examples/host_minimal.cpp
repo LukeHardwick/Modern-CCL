@@ -6,44 +6,49 @@
 
 #include "cigi/host.hpp"
 
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <csignal>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <cstddef>
+#include <print>
+#include <span>
 #include <stop_token>
-#include <string>
+#include <string_view>
 #include <thread>
 
 namespace {
 
-std::stop_source g_stop; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,bugprone-throwing-static-initialization)
+std::stop_source g_stop;
 
 } // namespace
 
+// NOLINTNEXTLINE(bugprone-exception-escape): std::println may throw; an example may terminate.
 int main(int argc, char** argv) {
     cigi::HostConfig config{.ig_address = "127.0.0.1"};
     int seconds = 30;
-    for (int i = 1; i + 1 < argc; i += 2) {
-        if (std::strcmp(argv[i], "--ig-address") == 0) {
-            config.ig_address = argv[i + 1];
-        } else if (std::strcmp(argv[i], "--seconds") == 0) {
-            seconds = std::atoi(argv[i + 1]);
+    const std::span<const char* const> args(argv, static_cast<std::size_t>(argc));
+    for (auto arg = args.begin() + 1; arg != args.end() && arg + 1 != args.end(); arg += 2) {
+        const std::string_view key = *arg;
+        const std::string_view value = *(arg + 1);
+        if (key == "--ig-address") {
+            config.ig_address = value;
+        } else if (key == "--seconds") {
+            std::from_chars(value.data(), value.data() + value.size(), seconds); // NOLINT
         }
     }
     static_cast<void>(std::signal(SIGINT, [](int) { g_stop.request_stop(); }));
 
     auto ig = cigi::Host::connect(config); // defaults: ports 8004/8005, synchronous
     if (!ig) {
-        std::fprintf(stderr, "cannot connect: %s\n", cigi::to_string(ig.error().code).data());
+        std::println(stderr, "cannot connect: {}", cigi::to_string(ig.error().code));
         return 1;
     }
-    ig->on<cigi::HatHotResponse>([](const cigi::HatHotResponse& r) {
-        std::printf("terrain height %.1f m\n", r.height);
-    });
+    ig->on<cigi::HatHotResponse>(
+        [](const cigi::HatHotResponse& r) { std::println("terrain height {:.1f} m", r.height); });
     ig->on_state_change([](cigi::LinkState from, cigi::LinkState to) {
-        std::printf("%s -> %s\n", cigi::to_string(from).data(), cigi::to_string(to).data());
+        std::println("{} -> {}", cigi::to_string(from), cigi::to_string(to));
     });
     double angle = 0.0;
     ig->on_frame([&](cigi::HostFrame& frame) { // once per frame, only in Operate
@@ -51,11 +56,12 @@ int main(int argc, char** argv) {
         cigi::EntityControl entity;
         entity.entity_id = 1;
         entity.entity_state = cigi::EntityState::Active;
-        entity.latitude_or_x = 51.0 + 0.01 * std::sin(angle); // a circle of about 1 km
-        entity.longitude_or_y = -1.0 + 0.01 * std::cos(angle);
+        entity.latitude_or_x = 51.0 + (0.01 * std::sin(angle)); // a circle of about 1 km
+        entity.longitude_or_y = -1.0 + (0.01 * std::cos(angle));
         entity.altitude_or_z = 300.0;
-        entity.yaw = static_cast<float>(std::fmod(angle * 57.29578 + 90.0, 360.0));
-        frame.add(entity);
+        entity.yaw = static_cast<float>(std::fmod((angle * 57.29578) + 90.0, 360.0));
+        // NOLINTNEXTLINE(bugprone-unused-return-value)
+        static_cast<void>(frame.add(entity)); // a full frame just drops this update
     });
 
     std::jthread timer([&](const std::stop_token& st) { // stops the run after --seconds

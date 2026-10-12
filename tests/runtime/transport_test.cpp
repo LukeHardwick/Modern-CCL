@@ -5,13 +5,16 @@
 #include <gtest/gtest.h>
 #include <thread>
 
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value):
+// tests index vectors after asserting their size and drive poll() for its effects.
+
 namespace {
 
 using namespace cigi;
 using namespace cigi::test;
 
 Bytes numbered(std::uint8_t n) {
-    return Bytes(8, static_cast<std::byte>(n));
+    return {8, static_cast<std::byte>(n)};
 }
 
 /// Drain what `t` has to receive.
@@ -74,6 +77,7 @@ struct FaultPair {
     std::unique_ptr<FaultInjectingTransport> faulty;
     std::unique_ptr<DatagramTransport> far;
 
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
     explicit FaultPair(std::uint64_t seed = 1, std::uint32_t start = 0) : clock(start) {
         auto [a, b] = make_memory_transport_pair();
         faulty = std::make_unique<FaultInjectingTransport>(std::move(a), clock.fn(), seed);
@@ -111,7 +115,7 @@ TEST(FaultTransport, DropsAboutTheRequestedShareAndIsReproducible) {
     const auto run = [](std::uint64_t seed) {
         FaultPair p{seed};
         p.faulty->set_drop_probability(0.25);
-        std::vector<std::uint8_t> survived;
+        std::vector<std::uint8_t> const survived;
         for (int i = 0; i < 2000; ++i) {
             static_cast<void>(p.faulty->send(numbered(static_cast<std::uint8_t>(i))));
         }
@@ -230,3 +234,4 @@ TEST(FaultTransport, DuplicatedAndDelayedFramesAreAbsorbedByTheSessions) {
 }
 
 } // namespace
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

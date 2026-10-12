@@ -10,6 +10,9 @@
 #include <stop_token>
 #include <thread>
 
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value):
+// tests index vectors after asserting their size and drive poll() for its effects.
+
 namespace {
 
 using namespace cigi;
@@ -41,8 +44,10 @@ TEST(HostLink, StartsWaitingForTheIgAndReachesOperateThroughStandby) {
     rig.host().on_frame([&](HostFrame& f) { frame_states.push_back(f.link_state()); });
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
 
-    const std::vector<Transition> expected{{LinkState::WaitingForIg, LinkState::Standby},
-                                           {LinkState::Standby, LinkState::Operate}};
+    const std::vector<Transition> expected{
+        {LinkState::WaitingForIg, LinkState::Standby},
+        {LinkState::Standby, LinkState::Operate},
+    };
     EXPECT_EQ(changes, expected);
     rig.steps(3);
     // on_frame ran only in Operate, and at least once.
@@ -78,13 +83,13 @@ TEST(HostLink, DatabaseLoadGoesThroughLoadingDatabase) {
     Rig rig{config, IgConfig{}};
     std::vector<Transition> changes;
     watch(rig.host(), changes);
-    int requested = 0;
+    std::int8_t requested = 0;
     rig.ig().on_database_request([&](std::int8_t n) {
         requested = n;
         rig.ig().set_database(static_cast<std::int8_t>(-n)); // loading started (ICD 4.1.1)
     });
     ASSERT_TRUE(rig.run_until(LinkState::LoadingDatabase));
-    EXPECT_EQ(requested, 5);
+    EXPECT_EQ(requested, std::int8_t{5});
     int frames_while_loading = 0;
     rig.host().on_frame([&](HostFrame&) {
         frames_while_loading += rig.host().state() == LinkState::LoadingDatabase ? 1 : 0;
@@ -93,16 +98,18 @@ TEST(HostLink, DatabaseLoadGoesThroughLoadingDatabase) {
     EXPECT_EQ(frames_while_loading, 0); // the IG is busy: only IG Control is sent
     rig.ig().set_database(5);           // loaded
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
-    const std::vector<Transition> expected{{LinkState::WaitingForIg, LinkState::Standby},
-                                           {LinkState::Standby, LinkState::LoadingDatabase},
-                                           {LinkState::LoadingDatabase, LinkState::Operate}};
+    const std::vector<Transition> expected{
+        {LinkState::WaitingForIg, LinkState::Standby},
+        {LinkState::Standby, LinkState::LoadingDatabase},
+        {LinkState::LoadingDatabase, LinkState::Operate},
+    };
     EXPECT_EQ(changes, expected);
     EXPECT_EQ(rig.host().session().pending_database(), 0); // the request ended with the -n
 }
 
 TEST(HostLink, DebugModeIsFlowingAndOfflineMaintenanceReadsAsStandby) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     int frames = 0;
     host.on_frame([&](HostFrame& f) {
@@ -135,15 +142,17 @@ TEST(HostLink, PeerTimeoutLosesTheLinkAndRecovers) {
 
     rig.ig().set_paused(false);
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
-    const std::vector<Transition> expected{{LinkState::Operate, LinkState::Lost},
-                                           {LinkState::Lost, LinkState::Operate}};
+    const std::vector<Transition> expected{
+        {LinkState::Operate, LinkState::Lost},
+        {LinkState::Lost, LinkState::Operate},
+    };
     EXPECT_EQ(changes, expected);
     EXPECT_GT(rig.host().stats().time_in(LinkState::Lost), 0us);
 }
 
 TEST(HostLink, AHostThatNeverHearsAnIgStaysWaitingAndKeepsProbing) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     ASSERT_TRUE(host.poll(0ms)); // probes at once
     EXPECT_EQ(peer.received().size(), 1U);
@@ -194,14 +203,16 @@ TEST(HostLink, AnIgRestartedAfterThreeFramesRecoversThroughTheStaleFrames) {
     ASSERT_TRUE(rig.run_until(LinkState::Standby, 20)); // the first fresh SOF says Standby
     ASSERT_TRUE(rig.run_until(LinkState::Operate, 20)); // and the Host asks for Operate again
     EXPECT_EQ(rig.host().stats().ig_restarts, 0U);      // not a regression: within the window
-    const std::vector<Transition> expected{{LinkState::Operate, LinkState::Standby},
-                                           {LinkState::Standby, LinkState::Operate}};
+    const std::vector<Transition> expected{
+        {LinkState::Operate, LinkState::Standby},
+        {LinkState::Standby, LinkState::Operate},
+    };
     EXPECT_EQ(changes, expected);
 }
 
 TEST(HostLink, ALongRunOfStaleFramesCountsAsARestart) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     peer.send(sof_message(100, IgMode::Operate));
     ASSERT_TRUE(host.poll(0ms));
@@ -227,7 +238,7 @@ TEST(HostLink, ALongRunOfStaleFramesCountsAsARestart) {
 
 TEST(HostLink, DuplicateStartOfFrameChangesNothingAndSendsNothing) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     peer.send(sof_message(5, IgMode::Operate));
     ASSERT_TRUE(host.poll(0ms));
@@ -244,7 +255,7 @@ TEST(HostLink, DuplicateStartOfFrameChangesNothingAndSendsNothing) {
 
 TEST(HostSend, SynchronousSendsOneMessagePerStartOfFrame) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     static_cast<void>(host.poll(0ms)); // the start-up probe
     static_cast<void>(peer.received());
@@ -262,7 +273,7 @@ TEST(HostSend, SynchronousSendsOneMessagePerStartOfFrame) {
 
 TEST(HostSend, SynchronousMessageCarriesTheRequestedModeAndAcknowledgesTheIgFrame) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     peer.send(sof_message(41, IgMode::ResetStandby));
     ASSERT_TRUE(host.poll(0ms));
@@ -276,7 +287,7 @@ TEST(HostSend, SynchronousMessageCarriesTheRequestedModeAndAcknowledgesTheIgFram
 
 TEST(HostSend, AsynchronousSendsAtTheConfiguredRateAndCountsMissedTicks) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     HostConfig config = host_config_with(clock);
     config.synchronous = false;
     config.async_rate_hz = 100.0; // 10 ms = 1000 ticks
@@ -301,7 +312,7 @@ TEST(HostSend, AsynchronousSendsAtTheConfiguredRateAndCountsMissedTicks) {
 
 TEST(HostSend, AsynchronousFramesCallOnFrameOnlyOnceTheIgOperates) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     HostConfig config = host_config_with(clock);
     config.synchronous = false;
     config.async_rate_hz = 100.0;
@@ -378,8 +389,12 @@ TEST(HostSend, HostFrameDescribesTheFrameBeingBuilt) {
     };
     std::vector<Seen> seen;
     rig.host().on_frame([&](HostFrame& f) {
-        seen.push_back(
-            {f.ig_frame_number(), f.host_frame_number(), f.since_last_frame(), f.ig_timestamp()});
+        seen.push_back({
+            .ig_frame = f.ig_frame_number(),
+            .host_frame = f.host_frame_number(),
+            .since = f.since_last_frame(),
+            .ig_timestamp = f.ig_timestamp(),
+        });
     });
     ASSERT_TRUE(rig.run_until(LinkState::Operate));
     rig.steps(2);
@@ -394,7 +409,7 @@ TEST(HostSend, HostFrameDescribesTheFrameBeingBuilt) {
 
 TEST(HostReceive, PacketsReachTheirHandlersAndUnknownOnesTheUnknownHandler) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     HatHotResponse response;
     response.hat_hot_id = 7;
@@ -418,7 +433,7 @@ TEST(HostReceive, PacketsReachTheirHandlersAndUnknownOnesTheUnknownHandler) {
 
 TEST(HostReceive, BadDatagramsGoToOnErrorAndTheCounters) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     std::vector<ErrorCode> codes;
     host.on_error([&](const Error& e) { codes.push_back(e.code); });
@@ -436,7 +451,7 @@ TEST(HostReceive, BadDatagramsGoToOnErrorAndTheCounters) {
 
 TEST(HostReceive, DecodeErrorsInsideAMessageReachOnError) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     std::vector<ErrorCode> codes;
     host.on_error([&](const Error& e) { codes.push_back(e.code); });
@@ -453,7 +468,7 @@ TEST(HostReceive, DecodeErrorsInsideAMessageReachOnError) {
 
 TEST(HostControl, ModeAndDatabaseRequestsPassThroughToTheSession) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto host = Host::over(host_config_with(clock), peer.take_other()).value();
     EXPECT_FALSE(host.request_mode(IgMode::OfflineMaintenance));
     EXPECT_FALSE(host.request_database(200));
@@ -491,7 +506,7 @@ TEST(HostControl, CloseRequestsStandbyFirstAndTheStateBecomesClosed) {
 
 TEST(HostControl, CloseWithoutStandbyOnCloseSendsNothing) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     HostConfig config = host_config_with(clock);
     config.standby_on_close = false;
     auto host = Host::over(config, peer.take_other()).value();
@@ -504,7 +519,7 @@ TEST(HostControl, CloseWithoutStandbyOnCloseSendsNothing) {
 
 TEST(HostControl, TheDestructorClosesWithoutCallingBack) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     int callbacks = 0;
     {
         auto host = Host::over(host_config_with(clock), peer.take_other()).value();
@@ -522,7 +537,7 @@ TEST(HostControl, TheDestructorClosesWithoutCallingBack) {
 
 TEST(HostControl, AHostIsMovable) {
     RawPeer peer;
-    FakeClock clock;
+    FakeClock const clock;
     auto first = Host::over(host_config_with(clock), peer.take_other()).value();
     peer.send(sof_message(1, IgMode::Operate));
     ASSERT_TRUE(first.poll(0ms));
@@ -549,7 +564,7 @@ TEST(HostControl, StatsAccountForTimeInEachState) {
 
 TEST(HostControl, RunReturnsOnStopAndOnClose) {
     RawPeer peer;
-    auto host = Host::over(HostConfig{}, peer.take_other()).value(); // real clock
+    auto host = Host::over(HostConfig(), peer.take_other()).value(); // real clock
     std::stop_source stop;
     Result<void> result = std::unexpected(Error{.code = ErrorCode::Timeout});
     std::thread thread([&] { result = host.run(stop.get_token(), 5ms); });
@@ -568,7 +583,7 @@ TEST(HostControl, RunReturnsOnStopAndOnClose) {
 TEST(HostFailure, AFatalTransportErrorEndsPollAndRun) {
     auto receive_broken = std::make_unique<BrokenTransport>();
     receive_broken->fail_receive = true;
-    auto host = Host::over(HostConfig{}, std::move(receive_broken)).value();
+    auto host = Host::over(HostConfig(), std::move(receive_broken)).value();
     const auto polled = host.poll(0ms);
     ASSERT_FALSE(polled);
     EXPECT_EQ(polled.error().code, ErrorCode::TransportError);
@@ -579,7 +594,7 @@ TEST(HostFailure, AFatalTransportErrorEndsPollAndRun) {
 
     auto send_broken = std::make_unique<BrokenTransport>();
     send_broken->fail_send = true;
-    auto sender = Host::over(HostConfig{}, std::move(send_broken)).value();
+    auto sender = Host::over(HostConfig(), std::move(send_broken)).value();
     const auto sent = sender.poll(0ms); // the first probe fails to leave
     ASSERT_FALSE(sent);
     EXPECT_EQ(sent.error().os_error, 5);
@@ -588,7 +603,7 @@ TEST(HostFailure, AFatalTransportErrorEndsPollAndRun) {
 TEST(HostFailure, ABrokenTransportDoesNotMakeTheDestructorThrowOrHang) {
     auto broken = std::make_unique<BrokenTransport>();
     broken->fail_send = true;
-    auto host = Host::over(HostConfig{}, std::move(broken)).value();
+    auto host = Host::over(HostConfig(), std::move(broken)).value();
     host.close(); // the Standby request cannot be sent: logged, then closed anyway
     EXPECT_EQ(host.state(), LinkState::Closed);
 }
@@ -614,7 +629,7 @@ TEST(HostFailure, InvalidConfigurationIsRejected) {
     EXPECT_TRUE(reject([](HostConfig& c) { c.probe_interval = 0ms; }));
     EXPECT_TRUE(reject([](HostConfig& c) { c.max_message_bytes = 16; }));
 
-    EXPECT_FALSE(Host::over(HostConfig{}, nullptr));
+    EXPECT_FALSE(Host::over(HostConfig(), nullptr));
     const auto no_address = Host::connect(HostConfig{});
     ASSERT_FALSE(no_address);
     EXPECT_EQ(no_address.error().code, ErrorCode::InvalidFieldValue);
@@ -641,3 +656,4 @@ TEST(HostFailure, LinkStateHasNamesAndTraits) {
 }
 
 } // namespace
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

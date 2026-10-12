@@ -62,7 +62,10 @@ private:
     };
 
     [[nodiscard]] static double clamp01(double p) noexcept {
-        return p > 0.0 ? (p < 1.0 ? p : 1.0) : 0.0; // also maps NaN to 0
+        if (!(p > 0.0)) {
+            return 0.0; // also maps NaN to 0
+        }
+        return p < 1.0 ? p : 1.0;
     }
     [[nodiscard]] bool roll(double probability);
     void release_due();

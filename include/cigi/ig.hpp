@@ -36,11 +36,11 @@ class IgCore;
 
 struct IgConfig {
     /// Interface to bind; empty means any.
-    std::string listen_address = {};
+    std::string listen_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t listen_port = 8004;
     /// Where Start of Frame goes (numeric address). Empty: reply to the sender of the most recent
     /// datagram, and send nothing until the first one arrives.
-    std::string host_address = {};
+    std::string host_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t host_port = 8005;
     /// Start of Frame rate (ICD 2.4; typically the display frame rate).
     double rate_hz = 60.0;
@@ -130,7 +130,7 @@ public:
     /// Drain the datagrams available within `timeout`, feed the session and send a Start of Frame
     /// if one is due. A zero timeout never waits.
     Result<PollStatus> poll(std::chrono::milliseconds timeout);
-    Result<void> run(std::stop_token stop,
+    Result<void> run(const std::stop_token& stop,
                      std::chrono::milliseconds poll_interval = std::chrono::milliseconds{20});
     /// Close the transport. Idempotent; poll() then does nothing.
     void close();

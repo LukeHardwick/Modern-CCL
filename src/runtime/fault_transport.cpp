@@ -34,8 +34,8 @@ void FaultInjectingTransport::release_due() {
         // Signed difference of the wrapping tick counters: due once now has reached release_at.
         if (static_cast<std::int32_t>(now - item.release_at) >= 0) {
             ++stats_.released;
-            static_cast<void>(
-                inner_->send(item.data)); // a failing inner send is the inner's to report
+            // NOLINTNEXTLINE(bugprone-unused-return-value): a failing inner send is the inner's.
+            static_cast<void>(inner_->send(item.data));
         } else {
             keep.push_back(std::move(item));
         }
@@ -64,7 +64,7 @@ Result<void> FaultInjectingTransport::send(std::span<const std::byte> datagram) 
                 .data = std::vector<std::byte>(datagram.begin(), datagram.end()),
                 .release_at = clock_().count() + ticks,
             });
-        } else if (auto sent = inner_->send(datagram); !sent && result) {
+        } else if (const auto sent = inner_->send(datagram); !sent && result) {
             result = sent;
         }
     }

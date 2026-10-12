@@ -16,7 +16,7 @@ namespace {
 using std::chrono::milliseconds;
 
 Result<void> validate(const IgConfig& c) {
-    if (!(std::isfinite(c.rate_hz) && c.rate_hz > 0.0) || c.peer_timeout.count() <= 0 ||
+    if (!std::isfinite(c.rate_hz) || c.rate_hz <= 0.0 || c.peer_timeout.count() <= 0 ||
         c.max_message_bytes < frame_size) {
         return std::unexpected(invalid_config());
     }
@@ -89,7 +89,7 @@ private:
     bool configured_known_;
     bool connected_ = false;
     bool paused_ = false;
-    TimePoint last_rx_{};
+    TimePoint last_rx_;
     IgStats stats_;
     std::function<void(const Error&)> error_cb_;
     std::function<void(IgFrame&)> frame_cb_;
@@ -151,7 +151,8 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
     if (!host_known_) {
         return status; // nobody to send to yet
     }
-    static_cast<void>(session_.begin_frame()); // Start of Frame always fits
+    // NOLINTNEXTLINE(bugprone-unused-return-value): Start of Frame always fits.
+    static_cast<void>(session_.begin_frame());
     if (detail::is_operational(session_.mode()) && frame_cb_) {
         IgFrame frame{session_};
         frame_cb_(frame);
@@ -175,7 +176,7 @@ Ig& Ig::operator=(Ig&&) noexcept = default;
 Ig::~Ig() = default;
 
 Result<Ig> Ig::over(IgConfig config, std::unique_ptr<DatagramTransport> transport) {
-    if (auto ok = detail::validate(config); !ok || !transport) {
+    if (const auto ok = detail::validate(config); !ok || !transport) {
         return std::unexpected(detail::invalid_config());
     }
     config.session.max_message_bytes = config.max_message_bytes;
@@ -230,7 +231,7 @@ Result<PollStatus> Ig::poll(std::chrono::milliseconds timeout) {
     return core_->poll(timeout);
 }
 
-Result<void> Ig::run(std::stop_token stop, std::chrono::milliseconds poll_interval) {
+Result<void> Ig::run(const std::stop_token& stop, std::chrono::milliseconds poll_interval) {
     while (!stop.stop_requested() && !core_->closed()) {
         if (const auto polled = core_->poll(poll_interval); !polled) {
             return std::unexpected(polled.error());

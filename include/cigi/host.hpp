@@ -42,10 +42,10 @@ class HostCore;
 /// Host::connect.
 struct HostConfig {
     /// Numeric IPv4/IPv6 address of the IG (no DNS lookup, so connecting never blocks).
-    std::string ig_address = {};
+    std::string ig_address = {}; // NOLINT(readability-redundant-member-init)
     std::uint16_t ig_port = 8004;
     /// Interface to bind; empty means any.
-    std::string local_address = {};
+    std::string local_address = {}; // NOLINT(readability-redundant-member-init)
     /// Port the IG's Start of Frame messages are sent to.
     std::uint16_t local_port = 8005;
     /// Synchronous (ICD 2.2.1): one message per received Start of Frame. Asynchronous (ICD
@@ -86,6 +86,7 @@ struct HostStats {
     std::array<std::chrono::microseconds, link_state_count> time_in_state{};
 
     [[nodiscard]] std::chrono::microseconds time_in(LinkState s) const noexcept {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-*): LinkState values index the array.
         return time_in_state[static_cast<std::size_t>(s)];
     }
 };
@@ -182,7 +183,7 @@ public:
     Result<PollStatus> poll(std::chrono::milliseconds timeout);
 
     /// poll() in a loop until `stop` is requested, close() is called or a fatal error occurs.
-    Result<void> run(std::stop_token stop,
+    Result<void> run(const std::stop_token& stop,
                      std::chrono::milliseconds poll_interval = std::chrono::milliseconds{20});
 
     /// Send one IG Control requesting Reset/Standby if `standby_on_close`, then close the

@@ -6,6 +6,10 @@
 #include <gtest/gtest.h>
 #include <stop_token>
 #include <thread>
+#include <utility>
+
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value):
+// tests index vectors after asserting their size and drive poll() for its effects.
 
 namespace {
 
@@ -17,7 +21,7 @@ struct IgFixture {
     FakeClock clock;
     Ig ig;
 
-    explicit IgFixture(IgConfig config = {}) : ig(make(config, clock, peer)) {}
+    explicit IgFixture(IgConfig config = {}) : ig(make(std::move(config), clock, peer)) {}
 
     static Ig make(IgConfig config, const FakeClock& clock, RawPeer& peer) {
         config.session.clock = clock.fn();
@@ -101,7 +105,9 @@ TEST(IgFacade, HandlersSeeHostPacketsOnlyInOperate) {
     f.tick();
     EXPECT_EQ(entities, 1);
     EXPECT_EQ(unknown, 1);
-    EXPECT_EQ(f.ig.session().last_ig_control()->host_frame_number, 2U);
+    const auto control = f.ig.session().last_ig_control();
+    ASSERT_TRUE(control.has_value());
+    EXPECT_EQ(control->host_frame_number, 2U);
 }
 
 TEST(IgFacade, ModeAndDatabaseRequestsReachTheApplication) {
@@ -223,7 +229,7 @@ TEST(IgFacade, CloseEndsPollingAndRun) {
 
 TEST(IgFacade, RunStopsOnRequest) {
     RawPeer peer;
-    auto ig = Ig::over(IgConfig{}, peer.take_other()).value(); // real clock
+    auto ig = Ig::over(IgConfig(), peer.take_other()).value(); // real clock
     std::stop_source stop;
     Result<void> result = std::unexpected(Error{.code = ErrorCode::Timeout});
     std::thread thread([&] { result = ig.run(stop.get_token(), 5ms); });
@@ -237,11 +243,11 @@ TEST(IgFacade, RunStopsOnRequest) {
 TEST(IgFacade, FatalTransportErrorsEndPoll) {
     auto receive_broken = std::make_unique<BrokenTransport>();
     receive_broken->fail_receive = true;
-    auto ig = Ig::over(IgConfig{}, std::move(receive_broken)).value();
+    auto ig = Ig::over(IgConfig(), std::move(receive_broken)).value();
     EXPECT_FALSE(ig.poll(0ms));
     EXPECT_FALSE(ig.run(std::stop_token{}, 1ms));
 
-    FakeClock clock;
+    FakeClock const clock;
     IgConfig config;
     config.session.clock = clock.fn();
     auto send_broken = std::make_unique<BrokenTransport>();
@@ -265,7 +271,7 @@ TEST(IgFacade, InvalidConfigurationIsRejected) {
     EXPECT_TRUE(reject([](IgConfig& c) { c.rate_hz = std::nan(""); }));
     EXPECT_TRUE(reject([](IgConfig& c) { c.peer_timeout = 0ms; }));
     EXPECT_TRUE(reject([](IgConfig& c) { c.max_message_bytes = 8; }));
-    EXPECT_FALSE(Ig::over(IgConfig{}, nullptr));
+    EXPECT_FALSE(Ig::over(IgConfig(), nullptr));
     IgConfig rate;
     rate.rate_hz = -1.0;
     EXPECT_FALSE(Ig::connect(rate));
@@ -290,3 +296,4 @@ TEST(IgFacade, IsMovable) {
 }
 
 } // namespace
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)
