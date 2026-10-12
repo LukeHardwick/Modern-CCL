@@ -23,11 +23,20 @@ README.md). All checks green on the release candidate: macOS 658/658 (98.3 % lin
 debug + ASan 655/655.
 
 ## Open task branches
-Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel):
+Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel). **T09 merged `47775ef`**
+(review fixes applied); merged main (T09 + T09c) check.sh: 705/705 all green. Next: **T09d** (launched),
+then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/demo_common`).
 - **T09** `task/t09-demo-apps`: demo_host + demo_ig, CLI11. Told not to touch the facade/examples
   (report facade gaps instead) or `apps/ig_viewer/`.
-- **T09c** `task/t09c-facade-examples`: `on_user<P>`, examples on the facade, T09a follow-ups
-  (folded into its brief). Told not to touch `apps/` or `cmake/Dependencies.cmake`.
+- **T09c merged `d348d73`** (Opus review fixes applied; macOS 671/671, 98.3 % lines; Linux 668/668).
+  Notes for T09d: IG dispatches before latching the sender (ig.cpp ~147-161); latch-retry test needs a seam.
+- **T22a** `task/t22a-sample-models` @ `cbf595a`: CP1 (Hawk exterior) accepted with fixes.
+  **Handoff:** see the "Handoff — 2026-10-12 evening" section at the end of the T22a brief. Next is
+  CP2 (fold-in fixes + cockpit) then CP3 (jet LODs + wrap-up) with a **fresh Opus 5.5** agent/session,
+  images at each checkpoint. Aircraft only today; other vehicles later. No worktree holds the branch.
+- **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
+  WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
+  Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
 Next: T09b Part 2 after T09 merges (reuses its CLI11/options) → T11 (ask the user before it
 downloads/builds the LGPL CCL) → M1.
 

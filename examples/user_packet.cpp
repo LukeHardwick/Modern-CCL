@@ -1,13 +1,17 @@
-// A user-defined packet (ICD 4.3, opcodes 201-255): declare it like any packet, add it to a packet
-// set with ExtendUser, send it from a Host and handle it on an IG, then switch user packets off.
-#include "cigi/dispatch.hpp"
-#include "cigi/message/builder.hpp"
+// A user-defined packet (ICD 4.3, opcodes 201-255) through the Host/Ig facade: declare it like any
+// packet, send it with HostFrame::add, receive it as a typed struct with Ig::on_user<P>, then
+// switch user packets off. Host and Ig talk over an in-memory transport (no network).
 #include "cigi/user_packet.hpp"
 
+#include "cigi/host.hpp"
+#include "cigi/ig.hpp"
+
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <print>
 #include <tuple>
+#include <utility>
 
 namespace myapp {
 namespace {
@@ -18,12 +22,10 @@ struct Telemetry {
     static constexpr std::uint8_t opcode = 201;
     static constexpr cigi::Direction direction = cigi::Direction::Both;
     static constexpr std::size_t wire_size = 16;
-
     std::uint16_t sensor_id = 0;
     bool alarm = false;
     float temperature = 0.0F;
     std::uint32_t samples = 0;
-
     static constexpr auto fields = std::tuple{
         cigi::wire::scalar(&Telemetry::sensor_id, 2),
         cigi::wire::flag(&Telemetry::alarm, 4, 0),
@@ -37,47 +39,52 @@ static_assert(cigi::UserDefinedPacket<Telemetry>);
 } // namespace
 } // namespace myapp
 
-// Registration: the standard Host -> IG packets plus ours (checked at compile time: the opcode must
-// be in 201-255 and unique).
-using HostPackets = cigi::ExtendUser<cigi::HostToIgPackets, myapp::Telemetry>;
-
 // NOLINTNEXTLINE(bugprone-exception-escape): std::print may throw; an example may terminate.
 int main() {
-    // Host side: a user packet goes into a message like any other.
-    cigi::StaticMessageBuilder<128> builder(cigi::Direction::HostToIg);
-    const bool built =
-        builder.add(cigi::IgControl{}).has_value() &&
-        builder
-            .add(myapp::Telemetry{
-                .sensor_id = 7, .alarm = true, .temperature = 36.6F, .samples = 1200,
-            })
-            .has_value();
-    if (!built) {
-        return EXIT_FAILURE;
-    }
-    const auto view = cigi::MessageView::parse(builder.bytes());
-    if (!view) {
+    using namespace std::chrono_literals;
+    auto [host_wire, ig_wire] = cigi::make_memory_transport_pair();
+    auto host = cigi::Host::over(cigi::HostConfig(), std::move(host_wire));
+    auto ig = cigi::Ig::over({.rate_hz = 200.0}, std::move(ig_wire));
+    if (!host || !ig) {
         return EXIT_FAILURE;
     }
 
-    // IG side: handlers for the extended set.
-    cigi::Dispatcher<HostPackets> ig;
-    ig.on<myapp::Telemetry>([](const myapp::Telemetry& t) {
-        std::println("sensor {} at {} C, alarm {}, {} samples", t.sensor_id, t.temperature,
-                     t.alarm, t.samples);
+    // Host: user packets go into each frame like any other packet (Operate/Debug only).
+    host->on_frame([](cigi::HostFrame& frame) {
+        // NOLINTNEXTLINE(bugprone-unused-return-value): a full frame just drops this update
+        static_cast<void>(frame.add(myapp::Telemetry{
+            .sensor_id = 7,
+            .alarm = true,
+            .temperature = 36.6F,
+            .samples = frame.host_frame_number(),
+        }));
     });
-    ig.on_unknown([](const cigi::UnknownPacket& u) { std::println("unknown opcode {}", u.opcode); });
-    ig.dispatch(*view);
+    // IG: a typed handler for opcode 201 (without one it would reach on_unknown, ICD 2.10).
+    int received = 0;
+    ig->on_user<myapp::Telemetry>([&](const myapp::Telemetry& t) {
+        std::println("sensor {} at {} C, alarm {}, sample {}", t.sensor_id, t.temperature, t.alarm,
+                     t.samples);
+        ++received;
+    });
 
-    // ICD 4.3: a device should be configurable to ignore user-defined packets.
-    ig.ignore_user_packets(true);
-    const auto stats = ig.dispatch(*view);
-    std::println("ignoring user packets: handled {} ignored {}", stats.handled, stats.ignored);
-
-    // A peer that does not know the packet sees it as an unknown opcode and carries on (ICD 2.10).
-    cigi::Dispatcher<cigi::HostToIgPackets> plain_ig;
-    plain_ig.on_unknown(
-        [](const cigi::UnknownPacket& u) { std::println("plain IG: unknown opcode {}", u.opcode); });
-    plain_ig.dispatch(*view);
-    return EXIT_SUCCESS;
+    // Drive both sides until three packets arrived, then switch user packets off (ICD 4.3: a
+    // device should be configurable to ignore them): nothing is delivered after that.
+    const auto pump = [&](int rounds, int until) {
+        for (int i = 0; i < rounds && received < until; ++i) {
+            if (!ig->poll(5ms) || !host->poll(5ms)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!pump(2000, 3)) {
+        return EXIT_FAILURE;
+    }
+    ig->session().handlers().ignore_user_packets(true);
+    const int before = received;
+    if (!pump(20, 1000)) {
+        return EXIT_FAILURE;
+    }
+    std::println("after switching off: {} more packets delivered", received - before);
+    return received >= 3 && received == before ? EXIT_SUCCESS : EXIT_FAILURE;
 }

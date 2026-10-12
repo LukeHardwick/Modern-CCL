@@ -96,4 +96,43 @@ TEST(HostAllocations, TheSteadyStateFramePathDoesNotAllocate) {
     EXPECT_GT(responses, 150);
 }
 
+TEST(HostAllocations, ReceivingTypedUserPacketsDoesNotAllocate) {
+    Ring to_ig;
+    Ring to_host;
+    FakeClock clock;
+    auto host = Host::over(host_config_with(clock), std::make_unique<RingTransport>(to_ig, to_host))
+                    .value();
+    auto ig =
+        Ig::over(ig_config_with(clock), std::make_unique<RingTransport>(to_host, to_ig)).value();
+
+    int at_ig = 0;
+    int at_host = 0;
+    ig.on_user<UserPacket>([&](const UserPacket&) { ++at_ig; });
+    host.on_user<UserPacket>([&](const UserPacket&) { ++at_host; });
+    ig.on_frame([](IgFrame& f) { static_cast<void>(f.add(UserPacket{.value = 2})); });
+    host.on_frame([](HostFrame& f) { static_cast<void>(f.add(UserPacket{.value = 1})); });
+
+    const auto step = [&] {
+        clock.advance(frame_ticks);
+        EXPECT_TRUE(ig.poll(std::chrono::milliseconds{0}));
+        EXPECT_TRUE(host.poll(std::chrono::milliseconds{0}));
+    };
+    for (int i = 0; i < 20; ++i) {
+        step();
+    }
+    ASSERT_EQ(host.state(), LinkState::Operate);
+    const int ig_before = at_ig;
+    const int host_before = at_host;
+
+    const std::size_t before = allocations.load();
+    for (int i = 0; i < 200; ++i) {
+        step();
+    }
+    const std::size_t after = allocations.load();
+
+    EXPECT_EQ(after, before);
+    EXPECT_GE(at_ig - ig_before, 190);
+    EXPECT_GE(at_host - host_before, 190);
+}
+
 } // namespace

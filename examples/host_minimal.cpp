@@ -16,7 +16,7 @@
 #include <thread>
 #include <utility>
 
-namespace { // Set by SIGINT (a plain flag is async-signal-safe); the timer thread polls it.
+namespace { // Set by SIGINT (a lock-free atomic is async-signal-safe); the timer thread polls it.
 std::atomic<int> g_interrupted{0}; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 static_assert(std::atomic<int>::is_always_lock_free);
 } // namespace

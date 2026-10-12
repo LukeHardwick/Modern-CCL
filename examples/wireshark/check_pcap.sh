@@ -15,5 +15,8 @@ malformed=$(tshark -r "$out/cigi_frames.pcap" "${opts[@]}" -Y '_ws.expert.group 
 # (see README); every other datagram must decode as a named packet.
 known=$(tshark -r "$out/cigi_frames.pcap" "${opts[@]}" -Y 'cigi.sof || cigi.ig_control' | wc -l)
 
-echo "datagrams: $total, decoded: $known, malformed: $malformed"
-[ "$total" -eq 12 ] && [ "$known" -eq 11 ] && [ "$malformed" -eq 0 ]
+# The Host's fourth datagram is sent in the other byte order (Byte Swap 0x8000).
+foreign=$(tshark -r "$out/cigi_frames.pcap" "${opts[@]}" -Y 'cigi.byte_swap == 0x8000' | wc -l)
+
+echo "datagrams: $total, decoded: $known, malformed: $malformed, foreign byte order: $foreign"
+[ "$total" -eq 19 ] && [ "$known" -eq 18 ] && [ "$malformed" -eq 0 ] && [ "$foreign" -eq 1 ]

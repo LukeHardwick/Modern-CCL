@@ -1,3 +1,4 @@
+// Low-level on purpose; a real Host usually uses cigi::Host (see host_minimal.cpp).
 // Build a Host -> IG message, parse it back, and print the decoded IG Control packet.
 #include "cigi/message/builder.hpp"
 #include "cigi/message/view.hpp"
@@ -27,9 +28,8 @@ int main() {
         return EXIT_FAILURE;
     }
     for (const auto& item : *view) {
-        const auto decoded = item.and_then([](const cigi::RawPacket& raw) {
-            return raw.decode_as<cigi::IgControl>();
-        });
+        const auto decoded = item.and_then(
+            [](const cigi::RawPacket& raw) { return raw.decode_as<cigi::IgControl>(); });
         if (!decoded) {
             std::println("decode failed: {}", cigi::to_string(decoded.error().code));
             return EXIT_FAILURE;

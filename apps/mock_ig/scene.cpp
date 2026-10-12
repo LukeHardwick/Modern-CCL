@@ -367,18 +367,26 @@ void SceneModel::register_handlers(Handlers& dispatcher, HatHotResponder* respon
             responder->submit(p);
         }
     });
-    dispatcher.on_unknown([this](const UnknownPacket& u) {
-        ++stats_.unknown_packets;
-        // ICD 2.11 rule 3: unknown opcodes are ignored. Log each opcode once.
-        if (seen_unknown_opcodes_.insert(u.opcode).second) {
-            log_line(std::format("ignoring unknown opcode {}", u.opcode));
-        }
-    });
-    dispatcher.on_error([this](const Error& e) {
-        ++stats_.decode_errors;
-        log_line(std::format("decode error: {} (opcode {}, offset {})", to_string(e.code), e.opcode,
-                             e.offset));
-    });
+}
+
+void SceneModel::register_all_handlers(Handlers& dispatcher, HatHotResponder* responder) {
+    register_handlers(dispatcher, responder);
+    dispatcher.on_unknown([this](const UnknownPacket& u) { note_unknown(u); });
+    dispatcher.on_error([this](const Error& e) { note_error(e); });
+}
+
+void SceneModel::note_unknown(const UnknownPacket& u) {
+    ++stats_.unknown_packets;
+    // ICD 2.11 rule 3: unknown opcodes are ignored. Log each opcode once.
+    if (seen_unknown_opcodes_.insert(u.opcode).second) {
+        log_line(std::format("ignoring unknown opcode {}", u.opcode));
+    }
+}
+
+void SceneModel::note_error(const Error& e) {
+    ++stats_.decode_errors;
+    log_line(std::format("decode error: {} (opcode {}, offset {})", to_string(e.code), e.opcode,
+                         e.offset));
 }
 
 // ---- time -------------------------------------------------------------------------------------

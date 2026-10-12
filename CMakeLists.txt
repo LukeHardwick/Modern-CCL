@@ -23,12 +23,26 @@ option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and pl
        ${_cigi_top})
 option(CIGI_BUILD_MOCK_IG "Build apps/mock_ig (headless mock-IG core)" ${_cigi_top})
 option(CIGI_BUILD_VIEWER "Build apps/ig_viewer (fetches raylib, Dear ImGui and rlImGui)" OFF)
+option(CIGI_BUILD_DEMOS "Build apps/demo_ig and apps/demo_host (fetches CLI11; needs the mock IG, \
+session, transport and tools)" ${_cigi_top})
 option(CIGI_BUILD_SESSION "Build the Host/IG sessions (fetches spdlog)" ${_cigi_top})
 option(CIGI_ENABLE_SANITIZERS "Enable ASan (+UBSan on Clang/GCC)" OFF)
 option(CIGI_ENABLE_FUZZING "Build the libFuzzer targets (Clang only; implies ASan + UBSan)" OFF)
 option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
 option(CIGI_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
+
+# The demo apps need the sessions, the UDP transport, the mock IG and the pcap tool.
+set(_cigi_demos OFF)
+if(CIGI_BUILD_DEMOS)
+    if(CIGI_BUILD_SESSION AND CIGI_BUILD_TRANSPORT AND (CIGI_BUILD_MOCK_IG OR CIGI_BUILD_VIEWER)
+       AND (CIGI_BUILD_TOOLS OR CIGI_BUILD_TESTS OR CIGI_BUILD_EXAMPLES))
+        set(_cigi_demos ON)
+    else()
+        message(STATUS "demo apps skipped: they need CIGI_BUILD_SESSION, CIGI_BUILD_TRANSPORT, "
+                       "CIGI_BUILD_MOCK_IG and one of CIGI_BUILD_TOOLS/TESTS/EXAMPLES")
+    endif()
+endif()
 
 # Sanitizers are applied globally (before third-party fetch) so all code is consistently instrumented.
 include(Sanitizers)
@@ -202,6 +216,11 @@ if(CIGI_BUILD_MOCK_IG)
 endif()
 if(CIGI_BUILD_VIEWER)
     add_subdirectory(apps/ig_viewer)
+endif()
+if(_cigi_demos AND TARGET cigi_runtime AND TARGET cigi_mock_ig AND TARGET cigi_tools)
+    add_subdirectory(apps/demo_common)
+    add_subdirectory(apps/demo_ig)
+    add_subdirectory(apps/demo_host)
 endif()
 
 if(CIGI_BUILD_TESTS OR CIGI_ENABLE_FUZZING)
