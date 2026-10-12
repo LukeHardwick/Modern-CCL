@@ -19,7 +19,7 @@ RIGHT = -1.0  # vehicle right is -X
 MATERIALS = [
     # name, roughness, metallic, alpha
     ("paint", 0.55, 0.0, 1.0),
-    ("glass", 0.08, 0.0, 0.32),
+    ("glass", 0.08, 0.0, 0.50),
     ("dark", 0.85, 0.0, 1.0),
     ("metal", 0.35, 0.8, 1.0),
     ("light", 0.4, 0.0, 1.0),
@@ -40,6 +40,22 @@ def grey(v):
 
 def lerp(a, b, t):
     return a + (b - a) * t
+
+
+def hash01(*vals):
+    """Deterministic pseudo-random 0..1 from quantised numbers (FNV-1a)."""
+    h = 2166136261
+    for v in vals:
+        h = ((h ^ (int(round(v * 100)) & 0xFFFFFFFF)) * 16777619) & 0xFFFFFFFF
+    return h / 4294967295.0
+
+
+def tone(c, amount):
+    return (c[0] * amount, c[1] * amount, c[2] * amount, c[3])
+
+
+def mix(a, b, t):
+    return tuple(a[i] + (b[i] - a[i]) * t for i in range(4))
 
 
 def smoothstep(t):
@@ -292,10 +308,54 @@ class Mesh:
         self.recalc(faces)
         return faces
 
+
+    # -- surface decals (panel lines, patches, fasteners): thin raised geometry
+    def oriented(self, verts, hint, mat=None, color=None, smooth=False):
+        f = self.face(verts, mat, color, smooth)
+        if f is not None:
+            f.normal_update()
+            if f.normal.dot(hint) < 0:
+                f.normal_flip()
+        return f
+
+    def ribbon(self, surf, uvs, width, grow=0.004, color=None, mat=None):
+        """A narrow strip following the polyline `uvs` of the surface function `surf(u, v) ->
+        (point, normal)`."""
+        pts = [surf(u, v) for u, v in uvs]
+        n = len(pts)
+        left, right = [], []
+        for i, (p, nr) in enumerate(pts):
+            a = pts[max(i - 1, 0)][0]
+            b = pts[min(i + 1, n - 1)][0]
+            t = (b - a)
+            if t.length < 1e-9:
+                continue
+            side = t.normalized().cross(nr).normalized() * (width / 2.0)
+            q = p + nr * grow
+            left.append((self.vert(q - side), nr))
+            right.append((self.vert(q + side), nr))
+        for i in range(len(left) - 1):
+            self.oriented([left[i][0], right[i][0], right[i + 1][0], left[i + 1][0]],
+                          left[i][1], mat, color)
+
+    def patch(self, surf, u0, u1, v0, v1, nu, nv, grow=0.004, color=None, mat=None):
+        grid = [[surf(lerp(u0, u1, i / nu), lerp(v0, v1, j / nv)) for j in range(nv + 1)]
+                for i in range(nu + 1)]
+        vg = [[self.vert(p + n * grow) for p, n in row] for row in grid]
+        for i in range(nu):
+            for j in range(nv):
+                self.oriented([vg[i][j], vg[i + 1][j], vg[i + 1][j + 1], vg[i][j + 1]],
+                              grid[i][j][1], mat, color)
+
+    def dot(self, surf, u, v, du, dv, grow=0.004, color=None):
+        """A small square fastener head of size (du, dv) in surface parameters."""
+        self.patch(surf, u - du / 2, u + du / 2, v - dv / 2, v + dv / 2, 1, 1, grow, color)
+
     # -- finish
-    def finish(self, mats, parent=None, smooth_angle=40.0):
+    def finish(self, mats, parent=None, smooth_angle=40.0, ao=None):
         bm = self.bm
         bm.normal_update()
+        bm.verts.index_update()
         limit = math.radians(smooth_angle)
         for e in bm.edges:
             if len(e.link_faces) == 2:
@@ -303,10 +363,16 @@ class Mesh:
                 if (f0.smooth and f1.smooth and f0.normal.angle(f1.normal, 0.0) > limit):
                     e.smooth = False
         if self.shade:
+            aocache = {}
             for f in bm.faces:
                 for loop in f.loops:
                     n = loop.vert.normal if f.smooth else f.normal
-                    k = 0.70 + 0.30 * (0.5 + 0.5 * n.z)  # cheap baked "sky occlusion"
+                    k = 0.76 + 0.24 * (0.5 + 0.5 * n.z)  # cheap baked "sky occlusion"
+                    if ao is not None and f.material_index != MAT["glass"]:
+                        key = loop.vert.index
+                        if key not in aocache:
+                            aocache[key] = ao(loop.vert.co + self.origin, loop.vert.normal)
+                        k *= aocache[key]
                     c = loop[self.layer]
                     loop[self.layer] = (c[0] * k, c[1] * k, c[2] * k, c[3])
         mesh = bpy.data.meshes.new(self.name)
@@ -322,6 +388,43 @@ class Mesh:
         if parent is not None:
             obj.parent = parent
         return obj
+
+
+def make_ao(meshes, radius=0.45):
+    """Deterministic baked ambient occlusion over all (non-glass) geometry: 8 fixed rays per
+    vertex against a BVH of the whole model. Returns ao(pos, normal) -> multiplier 0.55..1."""
+    from mathutils.bvhtree import BVHTree
+    verts, polys = [], []
+    for m in meshes:
+        for f in m.bm.faces:
+            if f.material_index == MAT["glass"]:
+                continue
+            idx = []
+            for v in f.verts:
+                verts.append(v.co + m.origin)
+                idx.append(len(verts) - 1)
+            for k in range(1, len(idx) - 1):
+                polys.append((idx[0], idx[k], idx[k + 1]))
+    tree = BVHTree.FromPolygons(verts, polys)
+    dirs = []
+    for theta, phi in ((30, 0), (30, 90), (30, 180), (30, 270),
+                       (60, 45), (60, 135), (60, 225), (60, 315)):
+        t, p = math.radians(theta), math.radians(phi)
+        dirs.append((math.sin(t) * math.cos(p), math.sin(t) * math.sin(p), math.cos(t)))
+
+    def ao(pos, normal):
+        n = Vector(normal).normalized()
+        ref = Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))
+        u = n.cross(ref).normalized()
+        v = n.cross(u)
+        origin = Vector(pos) + n * 0.012
+        occ = 0.0
+        for a, b, c in dirs:
+            hit = tree.ray_cast(origin, u * a + v * b + n * c, radius)
+            if hit[0] is not None:
+                occ += 1.0 - hit[3] / radius
+        return 0.55 + 0.45 * (1.0 - occ / len(dirs))
+    return ao
 
 
 def empty(name, location, parent=None, size=0.1):

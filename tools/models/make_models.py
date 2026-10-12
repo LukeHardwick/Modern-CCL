@@ -13,7 +13,7 @@
 # Articulated Part Control (ICD 4.1.6) rotates it about the right point:
 #   aileron_*, flap_*, elevator, airbrake: hinge along the X axis -> part pitch
 #   rudder: hinge along the Z axis -> part yaw
-#   canopy: hinge along X at the rear sill
+#   canopy: hinge along Y on the right (-X) sill, opens sideways to starboard
 #   gear: shown or hidden as a whole (visibility component)
 
 import argparse
@@ -41,7 +41,7 @@ MODELS = {
 DEFLECT = {
     "aileron_l": (0, 22.0), "aileron_r": (0, -22.0), "flap_l": (0, -28.0),
     "flap_r": (0, -28.0), "elevator": (0, -14.0), "rudder": (2, 22.0),
-    "airbrake": (0, -50.0), "canopy": (0, -50.0), "turret": (2, 40.0), "barrel": (0, 15.0),
+    "airbrake": (0, -50.0), "canopy": (1, -65.0), "turret": (2, 40.0), "barrel": (0, 15.0),
 }
 
 # ---------------------------------------------------------------- export and checks
@@ -98,6 +98,62 @@ def scene_stats():
             dims_hi = Vector(max(a, b) for a, b in zip(dims_hi, w))
     size = dims_hi - dims_lo
     return tris, size.y, size.x, size.z  # tris, length, span, height
+
+
+def check_islands(margin=0.05):
+    """Every connected mesh island must touch (within `margin` m) the main cluster of
+    geometry: catches detached/floating parts. Returns a list of problem strings."""
+    import bmesh
+    boxes = []
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH":
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        seen = set()
+        for v0 in bm.verts:
+            if v0.index in seen:
+                continue
+            stack, seen_here = [v0], {v0.index}
+            lo, hi = Vector((1e9,) * 3), Vector((-1e9,) * 3)
+            while stack:
+                v = stack.pop()
+                w = obj.matrix_world @ v.co
+                lo = Vector(min(a, b) for a, b in zip(lo, w))
+                hi = Vector(max(a, b) for a, b in zip(hi, w))
+                for e in v.link_edges:
+                    o = e.other_vert(v)
+                    if o.index not in seen_here:
+                        seen_here.add(o.index)
+                        stack.append(o)
+            seen |= seen_here
+            boxes.append((lo, hi, obj.name))
+        bm.free()
+    n = len(boxes)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    order = sorted(range(n), key=lambda i: boxes[i][0].x)
+    for ii, i in enumerate(order):
+        for j in order[ii + 1:]:
+            if boxes[j][0].x > boxes[i][1].x + margin:
+                break
+            a, b = boxes[i], boxes[j]
+            if all(a[0][k] <= b[1][k] + margin and b[0][k] <= a[1][k] + margin
+                   for k in range(3)):
+                parent[find(i)] = find(j)
+    sizes = {}
+    for i in range(n):
+        sizes[find(i)] = sizes.get(find(i), 0) + 1
+    main = max(sizes, key=sizes.get)
+    return [f"floating island in {boxes[i][2]} at "
+            f"({(boxes[i][0].x + boxes[i][1].x) / 2:.2f}, {(boxes[i][0].y + boxes[i][1].y) / 2:.2f},"
+            f" {(boxes[i][0].z + boxes[i][1].z) / 2:.2f})" for i in range(n) if find(i) != main]
 
 
 # ---------------------------------------------------------------- preview rendering
@@ -193,6 +249,10 @@ def render_previews(name, outdir, ground_z, c, size):
     }
     for vname, v in views.items():
         render_view((outdir / f"{name}_{vname}.png").resolve(), **v)
+    scene.render.resolution_x, scene.render.resolution_y = 960, 600
+    render_view((outdir / f"{name}_closeup.png").resolve(), loc=(cx + 3.4, cy - 8.6, cz + 1.8),
+                target=(cx + 0.1, cy - 3.0, cz + 0.2), lens=48)
+    scene.render.resolution_x, scene.render.resolution_y = 1100, 700
     pose(True)
     render_view((outdir / f"{name}_deflected.png").resolve(),
                 loc=(cx - 12 * k, cy + 14 * k, cz + 7 * k), target=(cx, cy + 0.5 * k, cz), lens=42)
@@ -219,6 +279,7 @@ def main():
         build, want = MODELS[name]
         _root, expected = build(args.detail)
         tris, length, span, height = scene_stats()
+        floating = check_islands()
         glb = args.out / f"{name}.glb"
         if not args.no_export:
             export_glb(glb)
@@ -231,6 +292,7 @@ def main():
               f"L={length:.2f} W={span:.2f} H={height:.2f} m (want {want})")
         if max(dim_err) > 0.04:
             problems.append(f"dimensions off by {max(dim_err) * 100:.1f} %")
+        problems += floating
         for p in problems:
             print(f"[make_models] {name}: PROBLEM: {p}")
         failed |= bool(problems)
