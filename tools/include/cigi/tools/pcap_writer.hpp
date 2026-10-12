@@ -18,8 +18,11 @@
 #include <expected>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <ostream>
 #include <span>
+#include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace cigi::tools {
@@ -27,6 +30,18 @@ namespace cigi::tools {
 /// An IPv4 address, most significant octet first ("10.0.0.1" is {10, 0, 0, 1}).
 struct Ipv4Address {
     std::array<std::uint8_t, 4> octets{};
+
+    /// Parse dotted-decimal text such as "10.0.0.1": exactly four decimal fields of 0-255 (up to
+    /// three digits each, leading zeros allowed), no spaces or other characters. Empty on error.
+    [[nodiscard]] static std::optional<Ipv4Address> parse(std::string_view text) noexcept;
+
+    /// From a host-order integer: 0x0A000001 is 10.0.0.1.
+    [[nodiscard]] static constexpr Ipv4Address from_uint32(std::uint32_t host_order) noexcept {
+        const auto octet = [host_order](unsigned shift) {
+            return static_cast<std::uint8_t>(host_order >> shift);
+        };
+        return Ipv4Address{{octet(24), octet(16), octet(8), octet(0)}};
+    }
 
     friend constexpr bool operator==(const Ipv4Address&, const Ipv4Address&) noexcept = default;
 };
@@ -61,25 +76,53 @@ inline constexpr std::uint32_t linktype_raw = 101; ///< LINKTYPE_RAW: the packet
 build_ipv4_udp_packet(const Endpoint& source, const Endpoint& destination,
                       std::span<const std::byte> payload, std::uint16_t identification = 0);
 
+/// Options for PcapWriter.
+struct PcapOptions {
+    /// Flush the stream after every record, so a capture of a program that is killed or crashes is
+    /// complete up to the last frame and can be followed live (tail -f style) while it runs.
+    bool auto_flush = false;
+};
+
 /// A classic pcap file (microsecond timestamps, little-endian file header, snap length 65535).
-/// Not copyable or movable: a stream-backed writer refers to the caller's stream.
+///
+/// Threading: not thread-safe. Use one writer from one thread, or serialise every call (including
+/// ok(), frames() and flush()) with your own lock.
+///
+/// Lifetime: not copyable and not movable, because a stream-backed writer refers to the caller's
+/// stream. To store one in a container, a member that is created later, or a return value, hold it
+/// in std::optional (emplace) or std::unique_ptr.
 class PcapWriter {
 public:
-    /// Time since the Unix epoch, microsecond resolution.
+    /// Time since the Unix epoch, microsecond resolution. Pre-1970 times are written as 0. The
+    /// pcap record holds seconds in 32 bits, so times from 2106 on wrap around.
     using Time = std::chrono::microseconds;
 
     /// Write to `out`, which must outlive the writer. Writes the file header immediately.
-    explicit PcapWriter(std::ostream& out);
-    /// Create `path` and write the file header. Check ok() afterwards.
-    explicit PcapWriter(const std::filesystem::path& path);
+    explicit PcapWriter(std::ostream& out, PcapOptions options = {});
+    /// Create `path` and write the file header. Check ok() afterwards; if it is false,
+    /// open_error() says why.
+    explicit PcapWriter(const std::filesystem::path& path, PcapOptions options = {});
     PcapWriter(const PcapWriter&) = delete;
     PcapWriter& operator=(const PcapWriter&) = delete;
     PcapWriter(PcapWriter&&) = delete;
     PcapWriter& operator=(PcapWriter&&) = delete;
     ~PcapWriter() = default;
 
+    /// Convert a wall-clock time to a pcap timestamp (truncated to microseconds):
+    /// pcap.write_udp(PcapWriter::to_time(std::chrono::system_clock::now()), ...). (There is no
+    /// time_point overload of write_udp: it would make write_udp({}, ...) ambiguous.)
+    ///
+    [[nodiscard]] static Time to_time(std::chrono::system_clock::time_point t) noexcept {
+        return std::chrono::duration_cast<Time>(t.time_since_epoch());
+    }
+
     /// False if the file could not be created or a write has failed.
     [[nodiscard]] bool ok() const noexcept;
+
+    /// Why the path constructor could not create the file (for example "No such file or
+    /// directory"); a default-constructed (false) error_code if it was created, or for the stream
+    /// constructor. Print it as "cannot open X: " + open_error().message().
+    [[nodiscard]] const std::error_code& open_error() const noexcept { return open_error_; }
 
     /// Append one frame carrying `payload` as a UDP datagram from `source` to `destination`,
     /// captured at `time`. The IPv4 Identification counts up from 1 per frame.
@@ -98,6 +141,8 @@ private:
 
     std::ofstream file_;
     std::ostream* out_;
+    PcapOptions options_;
+    std::error_code open_error_;
     std::size_t frames_ = 0;
 };
 

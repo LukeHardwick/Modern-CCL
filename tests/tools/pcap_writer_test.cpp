@@ -13,6 +13,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cigi::tools {
@@ -110,6 +111,88 @@ TEST(BuildPacket, PayloadLimit) {
     EXPECT_EQ(r.error(), PcapError::PayloadTooLarge);
 }
 
+TEST(Ipv4Address, ParsesDottedDecimal) {
+    EXPECT_EQ(Ipv4Address::parse("10.0.0.1"), (Ipv4Address{{10, 0, 0, 1}}));
+    EXPECT_EQ(Ipv4Address::parse("255.255.255.255"), (Ipv4Address{{255, 255, 255, 255}}));
+    EXPECT_EQ(Ipv4Address::parse("0.0.0.0"), (Ipv4Address{{0, 0, 0, 0}}));
+    EXPECT_EQ(Ipv4Address::parse("001.02.3.004"), (Ipv4Address{{1, 2, 3, 4}}));
+}
+
+TEST(Ipv4Address, RejectsMalformedText) {
+    constexpr std::array<std::string_view, 17> bad_text{
+        "",          "1.2.3",      "1.2.3.4.5", "1.2.3.",   ".1.2.3",   "1..2.3",
+        "256.0.0.1", "1.2.3.1000", "1.2.3.-4",  "1.2.3.4 ", " 1.2.3.4", "a.b.c.d",
+        "1.2.3.+4",  "0x1.2.3.4",  "1.2.3.4x",  "1,2,3,4",  "....",
+    };
+    for (const std::string_view bad : bad_text) {
+        EXPECT_FALSE(Ipv4Address::parse(bad).has_value()) << bad;
+    }
+}
+
+TEST(Ipv4Address, FromUint32IsHostOrder) {
+    EXPECT_EQ(Ipv4Address::from_uint32(0x0A000001U), (Ipv4Address{{10, 0, 0, 1}}));
+    EXPECT_EQ(Ipv4Address::from_uint32(0xC0A80164U), (Ipv4Address{{192, 168, 1, 100}}));
+    EXPECT_EQ(Ipv4Address::from_uint32(0), (Ipv4Address{{0, 0, 0, 0}}));
+}
+
+TEST(PcapWriter, ToTimeConvertsWallClock) {
+    using namespace std::chrono;
+    const auto tp = system_clock::time_point{duration_cast<system_clock::duration>(
+        microseconds{(1'700'000'000LL * 1'000'000) + 123'456})};
+    std::ostringstream a;
+    std::ostringstream b;
+    PcapWriter by_time{a};
+    PcapWriter by_micros{b};
+    ASSERT_TRUE(by_time.write_udp(PcapWriter::to_time(tp), host, ig, bytes_of(1)));
+    ASSERT_TRUE(by_micros.write_udp(PcapWriter::to_time(tp), host, ig, bytes_of(1)));
+    EXPECT_EQ(a.str(), b.str());
+    EXPECT_EQ(PcapWriter::to_time(tp).count(), (1'700'000'000LL * 1'000'000) + 123'456);
+    // Pre-1970 clamps to 0; seconds beyond 2^32 wrap.
+    std::ostringstream c;
+    PcapWriter early{c};
+    ASSERT_TRUE(early.write_udp(PcapWriter::to_time(system_clock::time_point{} - hours{24}), host,
+                                ig, bytes_of(1)));
+    EXPECT_EQ(at(bytes_from(c.str()), 24), 0);
+    std::ostringstream d;
+    PcapWriter late{d};
+    ASSERT_TRUE(
+        late.write_udp(microseconds{(4'294'967'296LL + 7) * 1'000'000}, host, ig, bytes_of(1)));
+    EXPECT_EQ(at(bytes_from(d.str()), 24), 7);
+}
+
+// Counts flush() calls so auto_flush can be observed.
+class FlushCountingBuf : public std::stringbuf {
+public:
+    int flushes = 0;
+
+protected:
+    int sync() override {
+        ++flushes;
+        return 0;
+    }
+};
+
+TEST(PcapWriter, AutoFlushFlushesEveryRecord) {
+    FlushCountingBuf buf;
+    std::ostream out{&buf};
+    PcapWriter pcap{out, PcapOptions{.auto_flush = true}};
+    EXPECT_EQ(buf.flushes, 0);
+    ASSERT_TRUE(pcap.write_udp({}, host, ig, bytes_of(1)));
+    EXPECT_EQ(buf.flushes, 1);
+    ASSERT_TRUE(pcap.write_udp({}, host, ig, bytes_of(1)));
+    EXPECT_EQ(buf.flushes, 2);
+    pcap.flush();
+    EXPECT_EQ(buf.flushes, 3);
+}
+
+TEST(PcapWriter, NoAutoFlushByDefault) {
+    FlushCountingBuf buf;
+    std::ostream out{&buf};
+    PcapWriter pcap{out};
+    ASSERT_TRUE(pcap.write_udp({}, host, ig, bytes_of(1)));
+    EXPECT_EQ(buf.flushes, 0);
+}
+
 TEST(PcapWriter, ByteExactFile) {
     std::ostringstream out;
     PcapWriter pcap{out};
@@ -203,6 +286,23 @@ TEST_F(PcapFile, UncreatableFileIsNotOk) {
     PcapWriter pcap{dir() / "missing-directory" / "out.pcap"};
     EXPECT_FALSE(pcap.ok());
     EXPECT_FALSE(pcap.write_udp({}, host, ig, bytes_of(1)).has_value());
+    EXPECT_TRUE(pcap.open_error());
+    EXPECT_EQ(pcap.open_error(), std::make_error_code(std::errc::no_such_file_or_directory));
+    EXPECT_FALSE(pcap.open_error().message().empty());
+}
+
+TEST_F(PcapFile, OpenedFileHasNoOpenError) {
+    PcapWriter pcap{dir() / "fine.pcap", PcapOptions{.auto_flush = true}};
+    EXPECT_TRUE(pcap.ok());
+    EXPECT_FALSE(pcap.open_error());
+    ASSERT_TRUE(pcap.write_udp({}, host, ig, bytes_of(1)));
+    // Flushed already: readable before the writer is destroyed.
+    EXPECT_EQ(std::filesystem::file_size(dir() / "fine.pcap"), 24U + 16U + 28U + 1U);
+}
+
+TEST(PcapWriter, StreamConstructorHasNoOpenError) {
+    std::ostringstream out;
+    EXPECT_FALSE(PcapWriter{out}.open_error());
 }
 
 } // namespace

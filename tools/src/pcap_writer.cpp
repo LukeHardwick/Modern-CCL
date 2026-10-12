@@ -1,6 +1,7 @@
 #include "cigi/tools/pcap_writer.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <iterator>
 #include <string>
@@ -70,6 +71,35 @@ template <class T> void put_le(std::string& out, T v) {
 
 } // namespace
 
+std::optional<Ipv4Address> Ipv4Address::parse(std::string_view text) noexcept {
+    Ipv4Address result;
+    bool first = true;
+    for (std::uint8_t& octet : result.octets) {
+        if (!first) {
+            if (text.empty() || text.front() != '.') {
+                return std::nullopt;
+            }
+            text.remove_prefix(1);
+        }
+        first = false;
+        unsigned value = 0;
+        std::size_t digits = 0;
+        while (!text.empty() && text.front() >= '0' && text.front() <= '9' && digits < 4) {
+            value = (value * 10U) + static_cast<unsigned>(text.front() - '0');
+            text.remove_prefix(1);
+            ++digits;
+        }
+        if (digits == 0 || digits > 3 || value > 255) {
+            return std::nullopt;
+        }
+        octet = static_cast<std::uint8_t>(value);
+    }
+    if (!text.empty()) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 std::uint16_t internet_checksum(std::span<const std::byte> data) noexcept {
     std::uint64_t sum = 0;
     bool high_byte = true;
@@ -122,12 +152,15 @@ build_ipv4_udp_packet(const Endpoint& source, const Endpoint& destination,
     return packet;
 }
 
-PcapWriter::PcapWriter(std::ostream& out) : out_(&out) {
+PcapWriter::PcapWriter(std::ostream& out, PcapOptions options) : out_(&out), options_(options) {
     write_file_header();
 }
 
-PcapWriter::PcapWriter(const std::filesystem::path& path)
-    : file_(path, std::ios::binary | std::ios::trunc), out_(&file_) {
+PcapWriter::PcapWriter(const std::filesystem::path& path, PcapOptions options)
+    : file_(path, std::ios::binary | std::ios::trunc), out_(&file_), options_(options) {
+    if (!file_.is_open()) {
+        open_error_ = std::error_code{errno != 0 ? errno : EIO, std::generic_category()};
+    }
     write_file_header();
 }
 
@@ -169,6 +202,9 @@ std::expected<void, PcapError> PcapWriter::write_udp(Time time, const Endpoint& 
     std::ranges::transform(*packet, std::back_inserter(record),
                            [](std::byte b) { return static_cast<char>(std::to_integer<int>(b)); });
     out_->write(record.data(), static_cast<std::streamsize>(record.size()));
+    if (options_.auto_flush) {
+        out_->flush();
+    }
     if (!out_->good()) {
         return std::unexpected(PcapError::WriteFailed);
     }
