@@ -302,19 +302,206 @@ TEST(HostSession, DetectsLostRegressedAndWrappedIgFrames) {
     EXPECT_FALSE(r->frame_regressed);
     r = host.receive(sof_message(14));
     EXPECT_EQ(r->lost_frames, 0U);
-    r = host.receive(sof_message(14)); // duplicate
+    r = host.receive(sof_message(14)); // duplicate: not a regression
+    EXPECT_TRUE(r->duplicate);
+    EXPECT_FALSE(r->frame_regressed);
+    r = host.receive(sof_message(3)); // far behind: the IG restarted
     EXPECT_TRUE(r->frame_regressed);
-    r = host.receive(sof_message(3)); // IG restarted
-    EXPECT_TRUE(r->frame_regressed);
-    EXPECT_EQ(host.stats().frame_regressions, 2U);
+    EXPECT_EQ(host.stats().frame_regressions, 1U);
+    EXPECT_EQ(host.stats().duplicate_frames, 1U);
     EXPECT_EQ(host.stats().lost_frames, 2U);
 
+    ASSERT_TRUE(host.receive(sof_message(0xFFFFFFF0U)));
     ASSERT_TRUE(host.receive(sof_message(0xFFFFFFFFU)));
     r = host.receive(sof_message(0)); // wrap is not a gap
     EXPECT_EQ(r->lost_frames, 0U);
     EXPECT_FALSE(r->frame_regressed);
     r = host.receive(sof_message(3)); // wrap with a gap
     EXPECT_EQ(r->lost_frames, 2U);
+}
+
+TEST(HostSession, DuplicateStartOfFrameIsNotAnotherAnswerNorARegression) {
+    HostSession host;
+    ASSERT_TRUE(host.receive(sof_message(10, IgMode::Operate)));
+    ASSERT_TRUE(host.begin_frame());
+    static_cast<void>(host.finish_frame());
+    EXPECT_FALSE(host.ready_to_send());
+
+    int responses = 0;
+    host.handlers().on<HatHotResponse>([&](const HatHotResponse&) { ++responses; });
+    Bytes again = sof_message(10, IgMode::ResetStandby);
+    append(again, encoded(HatHotResponse{}));
+    const auto r = host.receive(again);
+    ASSERT_TRUE(r);
+    EXPECT_TRUE(r->duplicate);
+    EXPECT_FALSE(r->stale);
+    EXPECT_FALSE(r->frame_regressed);
+    EXPECT_FALSE(r->mode_changed);
+    EXPECT_FALSE(host.ready_to_send());         // a synchronous Host answers once
+    EXPECT_EQ(host.ig_mode(), IgMode::Operate); // the repeat changed nothing
+    EXPECT_EQ(responses, 1);                    // but its other packets are delivered
+    EXPECT_EQ(host.stats().duplicate_frames, 1U);
+    EXPECT_EQ(host.stats().frame_regressions, 0U);
+    EXPECT_EQ(host.stats().messages_received, 2U);
+}
+
+TEST(HostSession, ReorderedStartOfFramesKeepTheNewestState) {
+    HostSession host;
+    ASSERT_TRUE(host.receive(sof_message(10, IgMode::Operate)));
+    ASSERT_TRUE(host.receive(sof_message(12, IgMode::Operate)));
+    ASSERT_TRUE(host.begin_frame());
+    static_cast<void>(host.finish_frame());
+
+    const auto late = host.receive(sof_message(11, IgMode::ResetStandby));
+    ASSERT_TRUE(late);
+    EXPECT_TRUE(late->stale);
+    EXPECT_FALSE(late->duplicate);
+    EXPECT_FALSE(late->frame_regressed);
+    EXPECT_FALSE(late->mode_changed);
+    EXPECT_TRUE(host.operational());
+    EXPECT_EQ(host.last_ig_frame_number(), 12U);
+    EXPECT_FALSE(host.ready_to_send());
+
+    const auto next = host.receive(sof_message(13, IgMode::Operate));
+    EXPECT_EQ(next->lost_frames, 0U);
+    EXPECT_FALSE(next->stale);
+    EXPECT_EQ(host.stats().stale_frames, 1U);
+    EXPECT_EQ(host.stats().lost_frames, 1U); // only 11 was never seen in order
+    EXPECT_EQ(host.stats().frame_regressions, 0U);
+}
+
+TEST(HostSession, TheStaleWindowIsConfigurable) {
+    SessionConfig config;
+    config.stale_window = 2;
+    HostSession host{config};
+    ASSERT_TRUE(host.receive(sof_message(10)));
+    EXPECT_TRUE(host.receive(sof_message(8))->stale);
+    EXPECT_TRUE(host.receive(sof_message(7))->frame_regressed); // three behind: a restart
+
+    SessionConfig none;
+    none.stale_window = 0;
+    HostSession strict{none};
+    ASSERT_TRUE(strict.receive(sof_message(10)));
+    EXPECT_TRUE(strict.receive(sof_message(9))->frame_regressed);
+    EXPECT_FALSE(strict.receive(sof_message(9))->stale);
+}
+
+TEST(HostSession, ALargeForwardJumpIsARestartNotLostFrames) {
+    HostSession host;
+    ASSERT_TRUE(host.receive(sof_message(10)));
+    // Exactly the largest counted gap: 65536 numbers skipped.
+    auto r = host.receive(sof_message(10 + 1 + 65536));
+    EXPECT_EQ(r->lost_frames, 65536U);
+    EXPECT_FALSE(r->frame_regressed);
+    // One further: a restart, and no lost frames are added.
+    const auto lost_before = host.stats().lost_frames;
+    r = host.receive(sof_message(10 + 1 + 65536 + 1 + 65537));
+    EXPECT_TRUE(r->frame_regressed);
+    EXPECT_EQ(r->lost_frames, 0U);
+    EXPECT_EQ(host.stats().lost_frames, lost_before);
+    r = host.receive(sof_message(5000000U));
+    EXPECT_TRUE(r->frame_regressed);
+    EXPECT_EQ(host.stats().frame_regressions, 2U);
+}
+
+TEST(HostSession, AGlobalDatabaseEndsTheRequestOnceAcknowledged) {
+    const FakeClock clock;
+    auto config = config_with(clock);
+    config.initial_frame_number = 100;
+    HostSession host{config};
+    const auto ig_says = [&](std::uint32_t frame, IgMode mode, std::uint32_t last_host) {
+        StartOfFrame sof;
+        sof.ig_frame_number = frame;
+        sof.ig_mode = mode;
+        sof.database_number = 0; // a global database: always 0
+        sof.last_host_frame_number = last_host;
+        EXPECT_TRUE(host.receive(encoded(sof)));
+    };
+    ASSERT_TRUE(host.request_database(5));
+    ig_says(1, IgMode::Operate, 0); // before any message carried the request
+    EXPECT_EQ(host.pending_database(), 5);
+    ASSERT_TRUE(host.begin_frame()); // host frame 100 is the first to carry it
+    EXPECT_EQ(first_as<IgControl>(host.finish_frame()).database_number, 5);
+    ig_says(2, IgMode::Operate, 99); // the IG has not seen it yet
+    EXPECT_EQ(host.pending_database(), 5);
+    ig_says(3, IgMode::ResetStandby, 100); // not operating: it ignores the request
+    EXPECT_EQ(host.pending_database(), 5);
+    ig_says(4, IgMode::Operate, 100);
+    EXPECT_EQ(host.pending_database(), 0);
+    ASSERT_TRUE(host.begin_frame());
+    EXPECT_EQ(first_as<IgControl>(host.finish_frame()).database_number, 0);
+
+    // A new request starts afresh.
+    ASSERT_TRUE(host.request_database(6));
+    ig_says(5, IgMode::Operate, 101);
+    EXPECT_EQ(host.pending_database(), 6);
+    ASSERT_TRUE(host.begin_frame()); // host frame 102
+    static_cast<void>(host.finish_frame());
+    ig_says(6, IgMode::Operate, 102);
+    EXPECT_EQ(host.pending_database(), 0);
+}
+
+TEST(HostSession, AGlobalDatabaseFromALegacyIgEndsTheRequestAfterItWasSent) {
+    const FakeClock clock;
+    HostSession host{config_with(clock)};
+    const auto legacy_sof = [](std::uint32_t counter) {
+        Bytes m = frame_packet(101, 16, 1);
+        m.at(5) = static_cast<std::byte>((1U << 4U) | 1U); // minor 1, Operate
+        wire::store<std::uint32_t>(m, 8, counter);
+        return m;
+    };
+    ASSERT_TRUE(host.request_database(3));
+    ASSERT_TRUE(host.receive(legacy_sof(1)));
+    EXPECT_EQ(host.pending_database(), 3); // nothing carried the request yet
+    ASSERT_TRUE(host.begin_frame());
+    static_cast<void>(host.finish_frame());
+    ASSERT_TRUE(host.receive(legacy_sof(2)));
+    EXPECT_EQ(host.pending_database(), 0);
+}
+
+TEST(HostSession, ResetPeerForgetsTheIgButKeepsTheRequests) {
+    const FakeClock clock;
+    HostSession host{config_with(clock)};
+    int responses = 0;
+    host.handlers().on<HatHotResponse>([&](const HatHotResponse&) { ++responses; });
+    ASSERT_TRUE(host.request_mode(IgMode::Operate));
+    ASSERT_TRUE(host.request_database(4));
+    ASSERT_TRUE(host.receive(sof_message(50, IgMode::Operate, 2)));
+    ASSERT_TRUE(host.begin_frame());
+    ASSERT_TRUE(host.add(EntityControl{}));
+    static_cast<void>(host.finish_frame());
+    ASSERT_TRUE(host.operational());
+    const auto sent = host.stats().messages_sent;
+    const auto host_frame = host.host_frame_number();
+
+    host.reset_peer();
+    EXPECT_FALSE(host.operational());
+    EXPECT_FALSE(host.last_start_of_frame());
+    EXPECT_FALSE(host.peer());
+    EXPECT_FALSE(host.ready_to_send());
+    EXPECT_FALSE(host.frame_open());
+    EXPECT_EQ(host.last_ig_frame_number(), 0U);
+    EXPECT_EQ(host.ig_mode(), IgMode::ResetStandby);
+    EXPECT_EQ(host.requested_mode(), IgMode::Operate);
+    EXPECT_EQ(host.pending_database(), 4);
+    EXPECT_EQ(host.stats().messages_sent, sent);
+    EXPECT_EQ(host.host_frame_number(), host_frame);
+
+    ASSERT_TRUE(host.begin_frame()); // the start-up IG Control still goes out
+    EXPECT_EQ(host.add(EntityControl{}).error().code, ErrorCode::NotOperational);
+    const auto control = first_as<IgControl>(host.finish_frame());
+    EXPECT_EQ(control.ig_mode, IgMode::Operate);
+    EXPECT_EQ(control.database_number, 4);
+
+    // The restarted IG numbers from 1 again: not a regression, as nothing is remembered.
+    Bytes m = sof_message(1, IgMode::Operate);
+    append(m, encoded(HatHotResponse{}));
+    const auto r = host.receive(m);
+    ASSERT_TRUE(r);
+    EXPECT_FALSE(r->frame_regressed);
+    EXPECT_TRUE(host.operational());
+    EXPECT_TRUE(host.ready_to_send());
+    EXPECT_EQ(responses, 1); // handlers survived
 }
 
 TEST(HostSession, DropsWhatItCannotUse) {
@@ -333,15 +520,11 @@ TEST(HostSession, DropsWhatItCannotUse) {
     EXPECT_FALSE(host.ready_to_send());
 }
 
-TEST(HostSession, HandlersReceiveEveryPacketIncludingStartOfFrame) {
+TEST(HostSession, HandlersReceiveEveryPacketExceptTheStartOfFrame) {
     HostSession host;
     std::vector<int> order;
-    std::uint32_t frame = 0;
     std::uint16_t hat_id = 0;
-    host.handlers().on<StartOfFrame>([&](const StartOfFrame& s) {
-        order.push_back(101);
-        frame = s.ig_frame_number;
-    });
+    host.handlers().on<StartOfFrame>([&](const StartOfFrame&) { order.push_back(101); });
     host.handlers().on<HatHotResponse>([&](const HatHotResponse& r) {
         order.push_back(106);
         hat_id = r.hat_hot_id;
@@ -353,8 +536,8 @@ TEST(HostSession, HandlersReceiveEveryPacketIncludingStartOfFrame) {
     append(m, encoded(HatHotResponse{.hat_hot_id = 9}));
     append(m, bytes_of(130, 8, 0, 0, 0, 0, 0, 0)); // an opcode outside the set
     ASSERT_TRUE(host.receive(m));
-    EXPECT_EQ(order, (std::vector<int>{101, 106}));
-    EXPECT_EQ(frame, 77U);
+    EXPECT_EQ(order, (std::vector<int>{106})); // the session consumes the Start of Frame
+    EXPECT_EQ(unwrap(host.last_start_of_frame()).ig_frame_number, 77U);
     EXPECT_EQ(hat_id, 9);
     EXPECT_EQ(unknown, 130);
     EXPECT_EQ(host.stats().unknown_packets, 1U);
@@ -377,10 +560,8 @@ TEST(HostSession, ForeignByteOrderPeer) {
     HostSession host;
     Bytes m = sof_message(0x01020304U, IgMode::Operate);
     swap_frame_fields(m);
-    std::uint32_t frame = 0;
-    host.handlers().on<StartOfFrame>([&](const StartOfFrame& s) { frame = s.ig_frame_number; });
     ASSERT_TRUE(host.receive(m));
-    EXPECT_EQ(frame, 0x01020304U);
+    EXPECT_EQ(unwrap(host.last_start_of_frame()).ig_frame_number, 0x01020304U);
     EXPECT_EQ(unwrap(host.peer()).byte_order, wire::ByteOrder::Swapped);
     EXPECT_TRUE(host.operational());
     EXPECT_EQ(host.last_ig_frame_number(), 0x01020304U);
@@ -405,7 +586,7 @@ TEST(HostSession, LegacyPeerFrameCounterIsEchoedByTheHost) {
     EXPECT_EQ(control.host_frame_number, 4242U); // copied from the IG's counter
     EXPECT_EQ(control.last_ig_frame_number, 0U); // the field does not exist before 3.2
     ASSERT_TRUE(host.receive(legacy));
-    EXPECT_EQ(host.stats().frame_regressions, 1U); // same counter twice
+    EXPECT_EQ(host.stats().duplicate_frames, 1U); // same counter twice
 }
 
 TEST(HostSession, SendingToOlderPeersMasksNewerContent) {

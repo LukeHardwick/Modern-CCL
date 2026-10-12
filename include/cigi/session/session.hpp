@@ -40,6 +40,9 @@ struct SessionConfig {
     bool validate_outgoing = false;
     /// Size of the buffer a message is built in (at least one frame packet, 24 bytes).
     std::size_t max_message_bytes = 16384;
+    /// How many numbers behind the newest one count as a reordered (stale) message rather than a
+    /// restart of the peer. A message 1..stale_window behind is reported as `stale`, not acted on.
+    std::uint32_t stale_window = 8;
     /// Number the first message this session sends carries (then +1 per message, wrapping).
     std::uint32_t initial_frame_number = 0;
     /// Timestamp source; empty means steady_timestamp.
@@ -60,8 +63,10 @@ struct SessionStats {
     std::uint64_t messages_sent = 0;
     std::uint64_t messages_received = 0;
     std::uint64_t lost_frames = 0;       ///< Frame numbers skipped by the peer (messages lost).
-    std::uint64_t frame_regressions = 0; ///< Frame number repeated or went backwards (reordering,
-                                         ///< duplicate, or the peer restarted).
+    std::uint64_t frame_regressions = 0; ///< Frame number jumped far back or far ahead: the peer
+                                         ///< restarted.
+    std::uint64_t duplicate_frames = 0;  ///< Messages repeating the previous frame number.
+    std::uint64_t stale_frames = 0;      ///< Messages a few frame numbers behind (reordered).
     std::uint64_t decode_errors = 0;     ///< Datagrams or packets that failed to decode.
     std::uint64_t ignored_packets = 0;   ///< Packets dropped by the mode rules of ICD 2.8.
     std::uint64_t unknown_packets = 0;   ///< Packets with an opcode outside the session's set.
@@ -74,7 +79,11 @@ struct SessionStats {
 /// What one receive() learned beyond the dispatched packets.
 struct ReceiveReport {
     std::uint32_t lost_frames = 0; ///< Messages missed since the previous one.
-    bool frame_regressed = false;  ///< Frame number repeated or went backwards.
+    bool frame_regressed = false;  ///< Frame number went far back or jumped far ahead: the peer
+                                   ///< restarted.
+    bool duplicate = false;        ///< Same frame number as the previous message. Its frame packet
+                                   ///< changed nothing; its other packets were still delivered.
+    bool stale = false;            ///< Frame number a few behind the newest (reordered). As above.
     bool mode_changed = false;     ///< Host: the IG's reported mode changed. IG: the Host
                                    ///< requested a different mode than before.
     bool database_changed = false; ///< Host: the IG's reported database number changed. IG: the

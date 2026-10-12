@@ -179,7 +179,7 @@ Bytes host_message(std::uint32_t frame, IgMode mode) {
     return m;
 }
 
-TEST(IgSession, StandbyDeliversOnlyIgControl) {
+TEST(IgSession, StandbyDeliversNothingToHandlers) {
     const FakeClock clock;
     IgSession ig{config_with(clock)};
     ig.on_mode_request([](IgMode) { return false; });
@@ -188,7 +188,8 @@ TEST(IgSession, StandbyDeliversOnlyIgControl) {
     ig.handlers().on<EntityControl>([&](const EntityControl&) { seen.push_back(2); });
     ig.handlers().on_unknown([&](const UnknownPacket&) { seen.push_back(130); });
     ASSERT_TRUE(ig.receive(host_message(1, IgMode::Operate)));
-    EXPECT_EQ(seen, (std::vector<int>{1}));
+    EXPECT_TRUE(seen.empty()); // the IG Control is the session's own, via last_ig_control()
+    EXPECT_EQ(unwrap(ig.last_ig_control()).host_frame_number, 1U);
     EXPECT_EQ(ig.stats().ignored_packets, 3U);
     EXPECT_EQ(ig.stats().unknown_packets, 0U);
 }
@@ -206,7 +207,7 @@ TEST(IgSession, OperateDeliversEverything) {
     ig.handlers().on<ViewControl>([&](const ViewControl&) { seen.push_back(16); });
     ig.handlers().on_unknown([&](const UnknownPacket& u) { seen.push_back(u.opcode); });
     ASSERT_TRUE(ig.receive(host_message(1, IgMode::Operate)));
-    EXPECT_EQ(seen, (std::vector<int>{1, 2, 16, 130}));
+    EXPECT_EQ(seen, (std::vector<int>{2, 16, 130}));
     EXPECT_EQ(entity, 3);
     EXPECT_EQ(ig.stats().ignored_packets, 0U);
     EXPECT_EQ(ig.stats().unknown_packets, 1U);
@@ -214,7 +215,7 @@ TEST(IgSession, OperateDeliversEverything) {
     ig.set_mode(IgMode::Debug);
     seen.clear();
     ASSERT_TRUE(ig.receive(host_message(2, IgMode::Debug)));
-    EXPECT_EQ(seen.size(), 4U);
+    EXPECT_EQ(seen.size(), 3U);
 }
 
 TEST(IgSession, ARequestedModeTakesEffectForTheSameMessage) {
@@ -303,13 +304,15 @@ TEST(IgSession, ReceiveRecordsTheHostAndTracksFrames) {
     auto r = ig.receive(control_message(24));
     EXPECT_EQ(r->lost_frames, 3U);
     r = ig.receive(control_message(24));
-    EXPECT_TRUE(r->frame_regressed);
+    EXPECT_TRUE(r->duplicate);
+    EXPECT_FALSE(r->frame_regressed);
     r = ig.receive(control_message(0xFFFFFFFFU));
     EXPECT_TRUE(r->frame_regressed); // far behind
     r = ig.receive(control_message(0));
     EXPECT_EQ(r->lost_frames, 0U);
     EXPECT_EQ(ig.stats().lost_frames, 3U);
-    EXPECT_EQ(ig.stats().frame_regressions, 2U);
+    EXPECT_EQ(ig.stats().frame_regressions, 1U);
+    EXPECT_EQ(ig.stats().duplicate_frames, 1U);
     EXPECT_EQ(ig.host_frame_lsn(), 0);
 }
 
@@ -393,6 +396,201 @@ TEST(IgSession, MovedSessionKeepsWorking) {
     ASSERT_TRUE(c.begin_frame());
     EXPECT_EQ(c.finish_frame().size(), 24U);
     EXPECT_EQ(c.config().max_message_bytes, 16384U);
+}
+
+// ---- frame tracking: duplicates, reordering, restarts -----------------------------------------
+
+TEST(IgSession, DuplicateIgControlChangesNothingButItsPacketsAreDelivered) {
+    const FakeClock clock;
+    IgSession ig{config_with(clock)};
+    int mode_requests = 0;
+    ig.on_mode_request([&](IgMode) {
+        ++mode_requests;
+        return true;
+    });
+    int databases = 0;
+    ig.on_database_request([&](std::int8_t) { ++databases; });
+    int entities = 0;
+    ig.handlers().on<EntityControl>([&](const EntityControl&) { ++entities; });
+    ASSERT_TRUE(ig.receive(control_message(10, IgMode::Operate)));
+    ig.set_mode(IgMode::Operate);
+    ASSERT_EQ(mode_requests, 1);
+
+    Bytes again = control_message(10, IgMode::ResetStandby, 7);
+    append(again, encoded(EntityControl{}));
+    const auto r = ig.receive(again);
+    ASSERT_TRUE(r);
+    EXPECT_TRUE(r->duplicate);
+    EXPECT_FALSE(r->frame_regressed);
+    EXPECT_FALSE(r->mode_changed);
+    EXPECT_FALSE(r->database_changed);
+    EXPECT_EQ(mode_requests, 1);
+    EXPECT_EQ(databases, 0);
+    EXPECT_EQ(entities, 1);
+    EXPECT_EQ(unwrap(ig.last_ig_control()).ig_mode, IgMode::Operate);
+    EXPECT_EQ(ig.stats().duplicate_frames, 1U);
+    EXPECT_EQ(ig.stats().frame_regressions, 0U);
+}
+
+TEST(IgSession, ReorderedIgControlsKeepTheNewest) {
+    const FakeClock clock;
+    IgSession ig = ig_in(IgMode::Operate, clock);
+    ASSERT_TRUE(ig.receive(control_message(10, IgMode::Operate)));
+    ASSERT_TRUE(ig.receive(control_message(12, IgMode::Operate)));
+    const auto late = ig.receive(control_message(11, IgMode::ResetStandby));
+    ASSERT_TRUE(late);
+    EXPECT_TRUE(late->stale);
+    EXPECT_FALSE(late->mode_changed);
+    EXPECT_EQ(ig.mode(), IgMode::Operate);
+    EXPECT_EQ(ig.last_host_frame_number(), 12U);
+    EXPECT_EQ(unwrap(ig.last_ig_control()).host_frame_number, 12U);
+    const auto next = ig.receive(control_message(13, IgMode::Operate));
+    EXPECT_EQ(next->lost_frames, 0U);
+    EXPECT_EQ(ig.stats().stale_frames, 1U);
+    EXPECT_EQ(ig.stats().frame_regressions, 0U);
+}
+
+TEST(IgSession, ALargeForwardHostJumpIsARestart) {
+    const FakeClock clock;
+    IgSession ig = ig_in(IgMode::Operate, clock);
+    ASSERT_TRUE(ig.receive(control_message(10, IgMode::Operate)));
+    const auto r = ig.receive(control_message(10 + 1 + 65537, IgMode::Operate));
+    EXPECT_TRUE(r->frame_regressed);
+    EXPECT_EQ(r->lost_frames, 0U);
+    EXPECT_EQ(ig.stats().lost_frames, 0U);
+    EXPECT_EQ(ig.stats().frame_regressions, 1U);
+}
+
+TEST(IgSession, ALegacyHostsFrameCounterIsNotTrackedForGaps) {
+    const FakeClock clock;
+    IgSession ig = ig_in(IgMode::Operate, clock);
+    for (const std::uint32_t counter : {7U, 7U, 3U, 100000U}) {
+        Bytes legacy = frame_packet(1, 16, 1);
+        legacy.at(4) = static_cast<std::byte>((1U << 4U) | 1U);
+        wire::store<std::uint32_t>(legacy, 8, counter);
+        const auto r = ig.receive(legacy);
+        ASSERT_TRUE(r);
+        EXPECT_EQ(*r, ReceiveReport{});
+    }
+    EXPECT_EQ(ig.last_host_frame_number(), 100000U);
+    EXPECT_EQ(ig.stats().lost_frames, 0U);
+    EXPECT_EQ(ig.stats().frame_regressions, 0U);
+    EXPECT_EQ(ig.stats().duplicate_frames, 0U);
+    EXPECT_EQ(ig.stats().stale_frames, 0U);
+}
+
+// ---- masking on send, database validity, errors in Reset/Standby ------------------------------
+
+TEST(IgSession, SendingToOlderHostsMasksTheHostFrameLsn) {
+    const FakeClock clock;
+    HatHotResponse response;
+    response.host_frame_lsn = 5;
+    HatHotExtendedResponse extended;
+    extended.host_frame_lsn = 6;
+
+    const auto send = [&](std::uint8_t minor) {
+        IgSession ig = ig_in(IgMode::Operate, clock);
+        Bytes control = frame_packet(1, minor < 2 ? 16 : 24, minor);
+        control.at(4) = static_cast<std::byte>((static_cast<unsigned>(minor) << 4U) | 1U);
+        EXPECT_TRUE(ig.receive(control));
+        EXPECT_TRUE(ig.begin_frame());
+        EXPECT_TRUE(ig.add(response));
+        EXPECT_TRUE(ig.add(extended));
+        return to_vec(ig.finish_frame());
+    };
+    const auto m33 = send(3);
+    EXPECT_EQ(unwrap(find_packet<HatHotResponse>(m33)).host_frame_lsn, 5);
+    EXPECT_EQ(unwrap(find_packet<HatHotExtendedResponse>(m33)).host_frame_lsn, 6);
+    const auto m32 = send(2);
+    EXPECT_EQ(unwrap(find_packet<HatHotResponse>(m32)).host_frame_lsn, 5);
+    const auto m31 = send(1);
+    EXPECT_EQ(unwrap(find_packet<HatHotResponse>(m31)).host_frame_lsn, 0);
+    EXPECT_EQ(unwrap(find_packet<HatHotExtendedResponse>(m31)).host_frame_lsn, 0);
+}
+
+TEST(IgSession, NegativeDatabaseRequestsAreIgnoredAndCounted) {
+    const FakeClock clock;
+    IgSession ig = ig_in(IgMode::Operate, clock);
+    std::vector<int> requested;
+    ig.on_database_request([&](std::int8_t n) { requested.push_back(n); });
+    auto r = ig.receive(control_message(1, IgMode::Operate, -5));
+    ASSERT_TRUE(r);
+    EXPECT_FALSE(r->database_changed);
+    EXPECT_TRUE(requested.empty());
+    EXPECT_EQ(ig.stats().rejected_packets, 1U);
+    ASSERT_TRUE(ig.receive(control_message(2, IgMode::Operate, -5))); // same request: counted once
+    EXPECT_EQ(ig.stats().rejected_packets, 1U);
+    r = ig.receive(control_message(3, IgMode::Operate, 5));
+    EXPECT_TRUE(r->database_changed);
+    EXPECT_EQ(requested, (std::vector<int>{5}));
+}
+
+TEST(IgSession, StructuralErrorsInTheBodyAreReportedInStandbyToo) {
+    const FakeClock clock;
+    IgSession ig{config_with(clock)};
+    ig.on_mode_request([](IgMode) { return false; }); // stay in Standby
+    std::vector<Error> errors;
+    ig.handlers().on_error([&](const Error& e) { errors.push_back(e); });
+    Bytes m = control_message(1, IgMode::Operate);
+    append(m, encoded(EntityControl{}));
+    append(m, bytes_of(2, 0, 0, 0)); // a packet that claims size 0
+    const auto r = ig.receive(m);
+    ASSERT_TRUE(r);
+    EXPECT_EQ(ig.mode(), IgMode::ResetStandby);
+    EXPECT_EQ(errors.size(), 1U);
+    EXPECT_EQ(ig.stats().decode_errors, 1U);
+    EXPECT_EQ(ig.stats().ignored_packets, 1U);
+}
+
+// ---- reset ----------------------------------------------------------------------------------
+
+TEST(IgSession, ResetReturnsToTheStartupState) {
+    const FakeClock clock;
+    auto config = config_with(clock);
+    config.initial_frame_number = 40;
+    IgSession ig{config};
+    int mode_requests = 0;
+    ig.on_mode_request([&](IgMode) {
+        ++mode_requests;
+        return true;
+    });
+    int entities = 0;
+    ig.handlers().on<EntityControl>([&](const EntityControl&) { ++entities; });
+    ig.set_status(5);
+    ig.set_database(-3);
+    ig.set_mode(IgMode::Operate);
+    ASSERT_TRUE(ig.receive(control_message(90, IgMode::Operate)));
+    ASSERT_TRUE(ig.begin_frame());
+    static_cast<void>(ig.finish_frame());
+    ASSERT_TRUE(ig.begin_frame()); // left open
+    const auto sent = ig.stats().messages_sent;
+
+    ig.reset();
+    EXPECT_EQ(ig.mode(), IgMode::ResetStandby);
+    EXPECT_EQ(ig.database(), 0);
+    EXPECT_EQ(ig.ig_frame_number(), 39U);
+    EXPECT_FALSE(ig.frame_open());
+    EXPECT_FALSE(ig.peer());
+    EXPECT_FALSE(ig.last_ig_control());
+    EXPECT_EQ(ig.last_host_frame_number(), 0U);
+    EXPECT_EQ(ig.stats().messages_sent, sent);
+
+    ASSERT_TRUE(ig.begin_frame());
+    const auto sof = first_as<StartOfFrame>(ig.finish_frame());
+    EXPECT_EQ(sof.ig_frame_number, 40U);
+    EXPECT_EQ(sof.ig_mode, IgMode::ResetStandby);
+    EXPECT_EQ(sof.ig_status, 5); // application state is kept
+
+    // The restarted Host numbers from a low value again; callbacks and handlers still work.
+    const auto r = ig.receive(control_message(2, IgMode::Operate));
+    ASSERT_TRUE(r);
+    EXPECT_FALSE(r->frame_regressed);
+    EXPECT_EQ(mode_requests, 1); // judged afresh: the IG is back in Standby
+    ig.set_mode(IgMode::Operate);
+    Bytes m = control_message(3, IgMode::Operate);
+    append(m, encoded(EntityControl{}));
+    ASSERT_TRUE(ig.receive(m));
+    EXPECT_EQ(entities, 1);
 }
 
 } // namespace

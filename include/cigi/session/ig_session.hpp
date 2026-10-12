@@ -43,17 +43,23 @@ public:
 
     /// Process one datagram from the Host: parse it, require Host -> IG, record the peer's version
     /// and byte order, track the Host frame number (counting lost messages), apply mode and
-    /// database requests, and hand packets to `handlers()`:
-    ///  - Reset/Standby: only the IG Control packet; the rest are ignored and counted (ICD 2.8,
-    ///    4.2.1).
-    ///  - Offline Maintenance: nothing is delivered, IG Control included (ICD 4.2.1), and no mode
-    ///    request is honoured.
-    ///  - Operate / Debug: the whole message.
+    /// database requests, and hand packets to `handlers()`. The IG Control itself is never
+    /// delivered: read it with last_ig_control().
+    ///  - Reset/Standby: nothing is delivered; the packets after IG Control are ignored and
+    ///    counted (ICD 2.8, 4.2.1). Structural errors in the message are counted in
+    ///    `decode_errors` and passed to the error handler.
+    ///  - Offline Maintenance: nothing is delivered (ICD 4.2.1), and no mode request is honoured.
+    ///  - Operate / Debug: every packet after IG Control.
+    /// An IG Control repeating the previous Host frame number (`duplicate`) or a few numbers
+    /// behind it (`stale`) changes no state and triggers no mode or database request, but the
+    /// message's other packets are still delivered (per the mode rules above). A 3.0/3.1 Host
+    /// echoes the IG's own counter in its frame number, so its numbers are not tracked.
     /// Errors (nothing is delivered): the parse errors of MessageView::parse, WrongDirection, and
     /// the IG Control decode errors.
     Result<ReceiveReport> receive(std::span<const std::byte> datagram);
 
-    /// Handlers for the Host -> IG packets. Version masking is applied before a handler runs.
+    /// Handlers for the Host -> IG packets. Version masking is applied before a handler runs. A
+    /// `UnknownPacket` (its data points into the receive buffer) is valid during the call only.
     [[nodiscard]] Dispatcher<HostToIgPackets>& handlers() noexcept { return handlers_; }
 
     /// Called when a Host asks for a mode different from the IG's current one and different from
@@ -72,6 +78,12 @@ public:
         database_request_ = std::move(callback);
     }
 
+    /// Back to the start-up state, as for a new Host: frame counter at `initial_frame_number`,
+    /// mode Reset/Standby, database 0, the last IG Control, the peer's version and byte order and
+    /// the Host frame tracking forgotten, any open message discarded. Config, handlers, callbacks,
+    /// statistics, status and Earth Reference Model are kept.
+    void reset() noexcept;
+
     // ---- sending ----------------------------------------------------------------------------
 
     /// Start a Start of Frame message (IG Frame Number, Last Host Frame Number, mode, status,
@@ -81,7 +93,8 @@ public:
 
     /// Append an IG -> Host packet. Errors: NotOperational (the IG sends only Start of Frame in
     /// Reset/Standby and Offline Maintenance, ICD 2.8, 4.2.1; when enforced),
-    /// UnexpectedFirstPacket (no message open), a validate() error (when `validate_outgoing`) and
+    /// UnexpectedFirstPacket (no message open), UnsupportedVersion (content the peer's version
+    /// cannot carry), a validate() error (when `validate_outgoing`) and
     /// the builder's errors. A failed add() leaves the message unchanged.
     template <Packet P> Result<void> add(const P& packet) {
         if (!frame_open_) {
@@ -97,12 +110,16 @@ public:
                 });
             }
         }
+        const auto adapted = detail::adapt_outgoing(packet, peer_version());
+        if (!adapted) {
+            return reject(adapted.error());
+        }
         if (config_.validate_outgoing) {
-            if (auto ok = validate(packet); !ok) {
+            if (auto ok = validate(*adapted); !ok) {
                 return reject(ok.error());
             }
         }
-        if (auto ok = builder_.add(packet); !ok) {
+        if (auto ok = builder_.add(*adapted); !ok) {
             return reject(ok.error());
         }
         return {};
@@ -155,7 +172,8 @@ private:
         return peer_ ? peer_->version : protocol_version;
     }
     Result<void> reject(const Error& error);
-    void track_control(const IgControl& control, ReceiveReport& report);
+    bool track_control(const IgControl& control, ReceiveReport& report);
+    void apply_requests(const IgControl& control, ReceiveReport& report);
 
     SessionConfig config_;
     ClockFn clock_;

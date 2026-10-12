@@ -41,14 +41,26 @@ public:
 
     /// Process one datagram from the IG: parse it, require IG -> Host, record the peer's version,
     /// byte order, mode and database, track the IG frame number (counting lost messages), run the
-    /// database handshake, and then give every packet (Start of Frame included) to `handlers()`.
+    /// database handshake, and then give the other packets to `handlers()`. The Start of Frame
+    /// itself is not delivered: read it with last_start_of_frame().
+    /// A Start of Frame repeating the previous IG frame number (`duplicate`) or a few numbers
+    /// behind it (`stale`, see SessionConfig::stale_window) changes no state and does not make a
+    /// synchronous Host ready to send, but the message's other packets are still delivered.
     /// Errors (nothing is delivered): the parse errors of MessageView::parse, WrongDirection,
     /// and the Start of Frame decode errors.
     Result<ReceiveReport> receive(std::span<const std::byte> datagram);
 
     /// Handlers for the IG -> Host packets (replaces per-packet event processors). Version
-    /// masking is applied before a handler runs. A `UnknownPacket` is valid during the call only.
+    /// masking is applied before a handler runs. A `UnknownPacket` (its data points into the
+    /// receive buffer) is valid during the call only.
     [[nodiscard]] Dispatcher<IgToHostPackets>& handlers() noexcept { return handlers_; }
+
+    /// Forget the IG, as after a link loss or an IG restart: the last Start of Frame, the peer's
+    /// version and byte order, the IG frame tracking and the synchronous ready state are cleared
+    /// (operational() is false, add() fails with NotOperational until a new operational Start of
+    /// Frame). Config, handlers, statistics, the Host's own frame numbering and the requested mode
+    /// and database are kept, so the start-up can be replayed. An open message is discarded.
+    void reset_peer() noexcept;
 
     // ---- sending ----------------------------------------------------------------------------
 
@@ -111,8 +123,10 @@ public:
 
     /// Ask the IG to load database `n` (1..127; 0 cancels). The number is sent in IG Control until
     /// the IG answers with -n (loading) - the acknowledgement of ICD 4.1.1 - or -128 (cannot be
-    /// loaded); the session then sends 0 again. The IG ignores the request in Reset/Standby, so it
-    /// is kept until the IG is operating.
+    /// loaded); the session then sends 0 again. An IG with a global database reports 0 instead
+    /// (ICD 4.1.1): an operating IG reporting 0 in a Start of Frame that acknowledges the message
+    /// which first carried the request also ends it. The IG ignores the request in Reset/Standby,
+    /// so it is kept until the IG is operating.
     Result<void> request_database(int n);
     /// The database number the session is currently requesting (0: none).
     [[nodiscard]] std::int8_t pending_database() const noexcept { return database_request_; }
@@ -160,6 +174,7 @@ private:
     }
     Result<void> reject(const Error& error);
     void track_start_of_frame(const StartOfFrame& sof, ReceiveReport& report);
+    void run_database_handshake(const StartOfFrame& sof);
 
     SessionConfig config_;
     ClockFn clock_;
@@ -171,6 +186,8 @@ private:
     std::uint32_t next_frame_;
     IgMode requested_mode_ = IgMode::ResetStandby;
     std::int8_t database_request_ = 0;
+    /// Host frame number of the first message that carried database_request_ (none yet: unset).
+    std::optional<std::uint32_t> request_frame_;
     bool extrapolation_ = false;
     std::optional<StartOfFrame> last_sof_;
     std::optional<PeerInfo> peer_;
