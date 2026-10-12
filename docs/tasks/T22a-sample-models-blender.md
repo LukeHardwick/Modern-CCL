@@ -137,3 +137,53 @@ Run: `blender --background --python tools/models/make_models.py -- --out databas
 **Rules that still apply.** No downloads/installs; no Blender MCP; no `.blend` committed; no
 `database.toml` (needs T20); no C++ changes; deterministic output; PNG previews ≤ 300 KB; read every
 preview yourself before reporting; commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+
+## Plan update — 2026-10-12 late (planner, after user review; wins over the handoff above where they differ)
+
+**State.** The CP2 attempt that stopped at 20:14 left 37 uncommitted lines (ogive nose keys,
+`Mesh.orient`, `smart_uv`, `hud` material); committed as `ee579f6` (WIP) and its worktree removed.
+
+**Approach: one session, MCP + script hybrid** (research A5). The user approved Blender MCP for
+this, reversing "no Blender MCP" in item 5 above.
+- The script stays the single source of truth. The MCP is the live loop: run the branch's modules
+  in the user's open Blender (`execute_blender_code`), inspect objects, take viewport screenshots
+  from any angle, try ideas; the user can watch.
+- Every accepted change is written back into `tools/models/*.py`. Committed `.glb` and PNG files
+  come only from the headless `make_models.py` run. No `.blend` is committed and nothing is
+  exported from the live session.
+- Setup (done 2026-10-12): the official Blender Lab MCP server is registered with Claude Code at
+  user scope (`claude mcp get blender`). Blender's MCP add-on is enabled and starts itself on
+  `localhost:9876` when Blender opens; if the tools fail, ask the user to open Blender. The socket
+  runs any Python without authentication: localhost only, and the user closes Blender when done.
+- A fresh **Opus 5.5** session started from a task chip does the modelling.
+
+**Order.** [T22c](T22c-model-audit.md) (deterministic audit tool, separate Opus agent) → the
+planner explains the method and the CP1 baseline to the user → the user approves the gates and the
+triangle budget → only then does the modelling session start (user: "explain it before making the
+full model").
+
+**Audit rules for the generator.**
+- `--detail k` scales every tessellation count (rings, segments, profile points, bevel segments)
+  and never changes the shape, so `--detail 4` is a valid reference.
+- At every checkpoint the full audit (`scripts/audit_models.sh`) passes with the approved gates in
+  `tools/models/audit/jet.toml`; attach `jet_audit.md` and the heat maps to the checkpoint report.
+- raylib 6.0 has 16-bit indices: at most 65 536 vertices per (node, material) primitive. CP1's
+  `fuselage` paint primitive already has 38 108. Split large static geometry into extra child nodes
+  (the node budget is 24) rather than relying on a loader change.
+
+**Checkpoints** (images at each; STOP for review):
+- **CP2a — exterior.** The five CP1 fixes; curvature-adaptive tessellation; triangles moved to
+  what shows (D-intakes with lips and ducts, wing and tail leading edges and tips, canopy, nozzle,
+  gear and wheels); hidden faces removed; analytic normals and small bevels on hard edges;
+  per-vertex colour so vertices are shared. Images: the standard views, revised side and close-up,
+  audit heat maps; audit report.
+- **CP2b — cockpit interior** (handoff list above): views from `eyepoint_front` and
+  `eyepoint_rear`, canopy-open or cutaway, close-up through the canopy; audit report with the
+  cockpit gates and eyepoint visibility.
+- **CP3** as in the handoff, plus each LOD audited against LOD0 at its switch distance. Then the
+  independent Opus review and merge.
+
+**Budget (user decision pending before the modelling session starts).** Either keep the approved
+total cap of 150 k (target 90–110 k), or raise it to about 250 k (exterior ≤ 100 k + cockpit
+≤ 150 k; 150 k is MSFS 2024's interior guide for a single- or two-seat aircraft). Either way the
+cap is a ceiling, not a target: the audit decides whether triangles are earned.

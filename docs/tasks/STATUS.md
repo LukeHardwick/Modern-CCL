@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 (tools-track planning merged)** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-12 late (T22a plan update, T22c launched)** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -30,10 +30,17 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   (report facade gaps instead) or `apps/ig_viewer/`.
 - **T09c merged `d348d73`** (Opus review fixes applied; macOS 671/671, 98.3 % lines; Linux 668/668).
   Notes for T09d: IG dispatches before latching the sender (ig.cpp ~147-161); latch-retry test needs a seam.
-- **T22a** `task/t22a-sample-models` @ `cbf595a`: CP1 (Hawk exterior) accepted with fixes.
-  **Handoff:** see the "Handoff — 2026-10-12 evening" section at the end of the T22a brief. Next is
-  CP2 (fold-in fixes + cockpit) then CP3 (jet LODs + wrap-up) with a **fresh Opus 5.5** agent/session,
-  images at each checkpoint. Aircraft only today; other vehicles later. No worktree holds the branch.
+- **T22a** `task/t22a-sample-models` (CP1 accepted; the stopped CP2 attempt's WIP committed as
+  `ee579f6`, its worktree removed, then `main` merged in). **Read the "Plan update — 2026-10-12
+  late" section at the end of the T22a brief.** One fresh Opus 5.5 session (task chip), MCP + script
+  hybrid; it starts only after the user has had the T22c audit method explained and has approved
+  the gates and the triangle budget (150 k cap or about 250 k: user deciding). No worktree holds
+  the branch. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
+- **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
+  `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
+  16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
+  (user's choice), based on the T22a branch. Stops after the CP1 baseline report; the planner
+  explains it to the user, then Opus review, then merge into the T22a branch.
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
