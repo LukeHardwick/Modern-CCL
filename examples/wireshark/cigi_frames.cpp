@@ -1,17 +1,17 @@
-// Simulates a CIGI start-up exchange in memory and writes each datagram as a text2pcap hex dump.
-// Usage: cigi_frames <output-dir>   (writes host_to_ig.txt and ig_to_host.txt)
-// See README.md in this directory; make_pcap.sh turns the dumps into cigi_frames.pcap.
+// Simulates a CIGI start-up exchange in memory and writes every datagram into a pcap file.
+// Usage: cigi_frames <output-dir>   (writes cigi_frames.pcap, via cigi::tools::PcapWriter)
+// See README.md in this directory; open the pcap in Wireshark or tshark.
 #include "cigi/message/builder.hpp"
 #include "cigi/message/view.hpp"
+#include "cigi/tools/pcap_writer.hpp"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <ostream>
 #include <print>
 #include <span>
 #include <string_view>
@@ -23,6 +23,11 @@ constexpr int operate_request = 3;         // The Host asks for Operate in its r
 constexpr int foreign_frame = 5;           // This Host reply is sent in the other byte order.
 constexpr std::uint32_t frame_us = 16'667; // 60 Hz.
 
+// Host 10.0.0.1:8005 and IG 10.0.0.2:8004; set the same addresses in Wireshark's CIGI preferences.
+constexpr cigi::tools::Endpoint host_endpoint{.address = {{10, 0, 0, 1}}, .port = 8005};
+constexpr cigi::tools::Endpoint ig_endpoint{.address = {{10, 0, 0, 2}}, .port = 8004};
+constexpr std::chrono::seconds capture_start{1'767'225'600}; // 2026-01-01 00:00:00 UTC.
+
 /// Timestamp in 10 us ticks for a time in microseconds (ICD 4.1.1).
 cigi::Timestamp ticks(std::uint32_t us) { return cigi::Timestamp{us / 10}; }
 
@@ -32,13 +37,13 @@ std::int8_t database_for(int frame) {
     return by_frame.at(static_cast<std::size_t>(std::min(frame, 3) - 1));
 }
 
-/// One text2pcap record: "<date> <time> 000000 xx xx ..." followed by a blank line.
-void dump(std::ostream& out, std::uint32_t us, std::span<const std::byte> bytes) {
-    std::print(out, "2026-01-01 00:00:00.{:06} 000000", us);
-    for (const std::byte b : bytes) {
-        std::print(out, " {:02x}", std::to_integer<unsigned>(b));
-    }
-    std::print(out, "\n\n");
+/// Append one datagram to the capture `us` microseconds after the start.
+bool record(cigi::tools::PcapWriter& pcap, std::uint32_t us, const cigi::tools::Endpoint& from,
+            const cigi::tools::Endpoint& to, std::span<const std::byte> bytes) {
+    const auto time = capture_start + std::chrono::microseconds{us};
+    return pcap.write_udp(std::chrono::duration_cast<std::chrono::microseconds>(time), from, to,
+                          bytes)
+        .has_value();
 }
 
 /// Rewrites a native IG Control as a peer of the opposite endianness would have sent it: every
@@ -91,9 +96,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     const std::filesystem::path dir{args.back()};
-    std::ofstream to_ig(dir / "host_to_ig.txt");
-    std::ofstream to_host(dir / "ig_to_host.txt");
-    if (!to_ig || !to_host) {
+    std::filesystem::create_directories(dir);
+    cigi::tools::PcapWriter pcap{dir / "cigi_frames.pcap"};
+    if (!pcap.ok()) {
         std::println(stderr, "cannot write into {}", dir.string());
         return EXIT_FAILURE;
     }
@@ -115,7 +120,9 @@ int main(int argc, char** argv) {
         if (!sof.add(start)) {
             return EXIT_FAILURE;
         }
-        dump(to_host, ig_us, sof.bytes());
+        if (!record(pcap, ig_us, ig_endpoint, host_endpoint, sof.bytes())) {
+            return EXIT_FAILURE;
+        }
         summarise("IG   -> Host", sof.bytes());
 
         // Host -> IG: IG Control 2 ms later. Acknowledges this IG frame (ICD 2.3, Figure 6).
@@ -138,8 +145,12 @@ int main(int argc, char** argv) {
         if (frame == foreign_frame) {
             make_foreign(bytes);
         }
-        dump(to_ig, host_us, bytes);
+        if (!record(pcap, host_us, host_endpoint, ig_endpoint, bytes)) {
+            return EXIT_FAILURE;
+        }
         summarise(frame == foreign_frame ? "Host -> IG (foreign)" : "Host -> IG", bytes);
     }
-    return EXIT_SUCCESS;
+    pcap.flush();
+    std::println("wrote {} datagrams to {}", pcap.frames(), (dir / "cigi_frames.pcap").string());
+    return pcap.ok() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

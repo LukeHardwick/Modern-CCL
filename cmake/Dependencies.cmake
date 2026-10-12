@@ -140,3 +140,26 @@ if(CIGI_BUILD_VIEWER)
         target_compile_options(cigi_imgui PRIVATE -w)
     endif()
 endif()
+
+if(CIGI_BUILD_SESSION)
+    # spdlog 1.17.0 (released 2026-01-04; tag verified with `git ls-remote`, object 79524dd...),
+    # built against std::format and without exceptions. Only cigi_session links it; the core
+    # `cigi` library stays dependency-free.
+    FetchContent_Declare(spdlog
+        URL https://github.com/gabime/spdlog/archive/refs/tags/v1.17.0.tar.gz
+        URL_HASH SHA256=d8862955c6d74e5846b3f580b1605d2428b11d97a410d86e2fb13e857cd3a744
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    # Normal variables inside block() so a parent project's settings are never overridden.
+    block()
+        set(SPDLOG_USE_STD_FORMAT ON)
+        set(SPDLOG_NO_EXCEPTIONS ON)
+        set(SPDLOG_BUILD_PIC ON)
+        set(SPDLOG_BUILD_EXAMPLE OFF)
+        set(SPDLOG_BUILD_TESTS OFF)
+        set(SPDLOG_BUILD_BENCH OFF)
+        set(SPDLOG_INSTALL OFF)
+        FetchContent_MakeAvailable(spdlog)
+    endblock()
+endif()

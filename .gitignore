@@ -10,3 +10,4 @@ third_party/spec/*
 .claude/settings.local.json
 .claude/worktrees/
 *.pcap
+__pycache__/

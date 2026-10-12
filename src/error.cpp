@@ -30,6 +30,8 @@ std::string_view to_string(ErrorCode code) noexcept {
         return "TransportError";
     case ErrorCode::Timeout:
         return "Timeout";
+    case ErrorCode::NotOperational:
+        return "NotOperational";
     }
     return "Unknown";
 }
