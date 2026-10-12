@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-12 late (T22a plan update, T22c launched)** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-13 (T22a budget: 250 k cap; T22c running)** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -34,8 +34,8 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   `ee579f6`, its worktree removed, then `main` merged in). **Read the "Plan update — 2026-10-12
   late" section at the end of the T22a brief.** One fresh Opus 5.5 session (task chip), MCP + script
   hybrid; it starts only after the user has had the T22c audit method explained and has approved
-  the gates and the triangle budget (150 k cap or about 250 k: user deciding). No worktree holds
-  the branch. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
+  the gates. Budget decided 2026-10-13: **cap 250 k triangles** (exterior ≤ 100 k, cockpit
+  ≤ 150 k), `.glb` ≤ 10 MB. No worktree holds the branch. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
 - **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
   `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
   16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
