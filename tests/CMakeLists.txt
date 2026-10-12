@@ -57,6 +57,20 @@ if(CIGI_BUILD_SESSION)
         LINK cigi::session)
 endif()
 
+if(TARGET cigi_runtime)
+    cigi_add_test(cigi_runtime_test SOURCES
+        runtime/host_test.cpp
+        runtime/ig_test.cpp
+        runtime/transport_test.cpp
+        LINK cigi::runtime)
+    # Replaces the global operator new to prove the steady-state frame path is allocation-free.
+    cigi_add_test(cigi_runtime_alloc_test SOURCES runtime/host_alloc_test.cpp LINK cigi::runtime)
+    set_target_properties(cigi_runtime_alloc_test PROPERTIES CXX_CLANG_TIDY "")
+    # Host and Ig over real loopback UDP.
+    cigi_add_test(cigi_runtime_network_test SOURCES runtime/network_test.cpp
+        LINK cigi::runtime cigi::transport LABELS network)
+endif()
+
 find_program(CIGI_TSHARK tshark)
 
 cigi_add_test(cigi_tools_test SOURCES tools/pcap_writer_test.cpp LINK cigi::tools)

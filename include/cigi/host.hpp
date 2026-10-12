@@ -42,10 +42,10 @@ class HostCore;
 /// Host::connect.
 struct HostConfig {
     /// Numeric IPv4/IPv6 address of the IG (no DNS lookup, so connecting never blocks).
-    std::string ig_address;
+    std::string ig_address = {};
     std::uint16_t ig_port = 8004;
     /// Interface to bind; empty means any.
-    std::string local_address;
+    std::string local_address = {};
     /// Port the IG's Start of Frame messages are sent to.
     std::uint16_t local_port = 8005;
     /// Synchronous (ICD 2.2.1): one message per received Start of Frame. Asynchronous (ICD
@@ -55,7 +55,7 @@ struct HostConfig {
     /// IG mode requested in IG Control (Reset/Standby, Operate or Debug).
     IgMode requested_mode = IgMode::Operate;
     /// Database to load once the IG operates (1..127); nullopt: leave it to the IG.
-    std::optional<int> database;
+    std::optional<int> database = std::nullopt;
     /// No message from the IG for this long, after it was heard, means the link is Lost.
     std::chrono::milliseconds peer_timeout{1000};
     /// While no IG is heard (WaitingForIg, Lost) a synchronous Host sends one IG Control this
@@ -67,9 +67,9 @@ struct HostConfig {
     /// close() sends one IG Control requesting Reset/Standby first (ICD 2.8).
     bool standby_on_close = true;
     /// Further session settings (clock, stale window, validation, ...).
-    SessionConfig session;
+    SessionConfig session = {};
     /// Where the facade and its session log; null (the default) logs nothing.
-    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<spdlog::logger> logger = nullptr;
 };
 
 /// Counters of a Host (all since construction).

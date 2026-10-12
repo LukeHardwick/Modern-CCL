@@ -36,11 +36,11 @@ class IgCore;
 
 struct IgConfig {
     /// Interface to bind; empty means any.
-    std::string listen_address;
+    std::string listen_address = {};
     std::uint16_t listen_port = 8004;
     /// Where Start of Frame goes (numeric address). Empty: reply to the sender of the most recent
     /// datagram, and send nothing until the first one arrives.
-    std::string host_address;
+    std::string host_address = {};
     std::uint16_t host_port = 8005;
     /// Start of Frame rate (ICD 2.4; typically the display frame rate).
     double rate_hz = 60.0;
@@ -48,9 +48,9 @@ struct IgConfig {
     std::chrono::milliseconds peer_timeout{1000};
     /// Size of the buffer a message is built in. Overrides `session.max_message_bytes`.
     std::size_t max_message_bytes = 16384;
-    SessionConfig session;
+    SessionConfig session = {};
     /// Where the facade and its session log; null (the default) logs nothing.
-    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<spdlog::logger> logger = nullptr;
 };
 
 struct IgStats {
