@@ -19,6 +19,7 @@ double solar_declination_deg(int day_of_year) noexcept {
     return 23.44 * std::sin(2.0 * std::numbers::pi * (284.0 + day_of_year) / 365.0);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 SunPosition sun_position(std::chrono::year_month_day date, double utc_hours, double lat_deg,
                          double lon_deg) noexcept {
     const double decl = solar_declination_deg(day_of_year(date)) * deg_to_rad;

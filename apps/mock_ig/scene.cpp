@@ -23,6 +23,32 @@ Attitude attitude_of(float yaw, float pitch, float roll) noexcept {
     return {static_cast<double>(yaw), static_cast<double>(pitch), static_cast<double>(roll)};
 }
 
+void integrate(Entity& e, double dt_s) {
+    if (e.rates.active()) {
+        // Linear rates (ICD 4.1.8). Top-level, World/Parent: along the surface, x north, y east,
+        // z down (the NED reference axes of 3.4.1.2). Child, World/Parent: the parent's body
+        // axes. Local: the entity's own body axes, turned into the frame above by its attitude.
+        Vec3d v = e.rates.linear;
+        if (e.rates.frame == RateCoordinateSystem::Local) {
+            v = euler_zyx(e.attitude) * v;
+        }
+        if (e.attached) {
+            e.offset = e.offset + (v * dt_s);
+        } else {
+            const double lat = e.commanded.lat_deg;
+            e.commanded.lat_deg += v.x * dt_s / meters_per_degree_lat(lat);
+            e.commanded.lon_deg += v.y * dt_s / std::max(meters_per_degree_lon(lat), min_lon_scale);
+            e.commanded.alt_m -= v.z * dt_s; // z is down
+        }
+        // The ICD defines the angular rates as rates of the yaw, pitch and roll angles.
+        step_attitude(e.attitude, e.rates.angular, dt_s);
+    }
+    for (auto& [part_id, part] : e.parts) {
+        part.offset = part.offset + (part.linear_rate * dt_s);
+        step_attitude(part.attitude, part.angular_rate, dt_s);
+    }
+}
+
 } // namespace
 
 ShapeClass classify_entity_type(std::uint16_t entity_type) noexcept {
@@ -59,6 +85,7 @@ void SceneModel::apply(const IgControl& p) {
 
 // ---- Entity Control (ICD 4.1.2) ---------------------------------------------------------------
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool SceneModel::would_cycle(std::uint16_t entity_id, std::uint16_t parent_id) const {
     // Walk up from the proposed parent; the chain is at most as long as the entity table.
     std::uint16_t cursor = parent_id;
@@ -75,6 +102,7 @@ bool SceneModel::would_cycle(std::uint16_t entity_id, std::uint16_t parent_id) c
     return true; // longer than the table: an existing loop
 }
 
+// NOLINTNEXTLINE(misc-no-recursion): depth is bounded by the entity hierarchy.
 void SceneModel::destroy_tree(std::uint16_t id) {
     // "Any children are also destroyed" (ICD 4.1.2, Entity State). Rates die with the entity.
     for (const std::uint16_t child : children_of(id)) {
@@ -137,7 +165,7 @@ void SceneModel::apply(const EntityControl& p) {
 
 void SceneModel::apply(const ArticulatedPartControl& p) {
     ++stats_.packets;
-    auto it = entities_.find(p.entity_id);
+    const auto it = entities_.find(p.entity_id);
     if (it == entities_.end()) {
         ++stats_.unknown_entity;
         log_line(std::format("articulated part {} for unknown entity {}", p.articulated_part_id,
@@ -172,7 +200,7 @@ void SceneModel::apply(const ArticulatedPartControl& p) {
 
 void SceneModel::apply(const RateControl& p) {
     ++stats_.packets;
-    auto it = entities_.find(p.entity_id);
+    const auto it = entities_.find(p.entity_id);
     if (it == entities_.end()) {
         ++stats_.unknown_entity;
         log_line(std::format("rate control for unknown entity {}", p.entity_id));
@@ -355,32 +383,6 @@ void SceneModel::register_handlers(Handlers& dispatcher, HatHotResponder* respon
 
 // ---- time -------------------------------------------------------------------------------------
 
-void SceneModel::integrate(Entity& e, double dt_s) const {
-    if (e.rates.active()) {
-        // Linear rates (ICD 4.1.8). Top-level, World/Parent: along the surface, x north, y east,
-        // z down (the NED reference axes of 3.4.1.2). Child, World/Parent: the parent's body
-        // axes. Local: the entity's own body axes, turned into the frame above by its attitude.
-        Vec3d v = e.rates.linear;
-        if (e.rates.frame == RateCoordinateSystem::Local) {
-            v = euler_zyx(e.attitude) * v;
-        }
-        if (e.attached) {
-            e.offset = e.offset + (v * dt_s);
-        } else {
-            const double lat = e.commanded.lat_deg;
-            e.commanded.lat_deg += v.x * dt_s / meters_per_degree_lat(lat);
-            e.commanded.lon_deg += v.y * dt_s / std::max(meters_per_degree_lon(lat), min_lon_scale);
-            e.commanded.alt_m -= v.z * dt_s; // z is down
-        }
-        // The ICD defines the angular rates as rates of the yaw, pitch and roll angles.
-        step_attitude(e.attitude, e.rates.angular, dt_s);
-    }
-    for (auto& [part_id, part] : e.parts) {
-        part.offset = part.offset + (part.linear_rate * dt_s);
-        step_attitude(part.attitude, part.angular_rate, dt_s);
-    }
-}
-
 void SceneModel::advance(double dt_s) {
     if (dt_s > 0.0) {
         for (auto& [id, e] : entities_) {
@@ -397,6 +399,7 @@ void SceneModel::advance(double dt_s) {
     record_trails();
 }
 
+// NOLINTNEXTLINE(misc-no-recursion): parents first; depth is bounded by the hierarchy.
 void SceneModel::resolve_entity(Entity& e) {
     if (e.resolve_stamp == resolve_epoch_) {
         return;

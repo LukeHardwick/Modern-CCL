@@ -169,10 +169,10 @@ TEST(ScriptedHost, SixHundredFramesProduceTheExpectedWorld) {
     for (int k = 1; k <= 3; ++k) {
         const Entity& v = *scene.find(static_cast<std::uint16_t>(k));
         expect_vec(v.enu - Vec3d{0, 0, v.enu.z}, veh[k - 1], 1e-5);
-        expect_vec(run.host.vehicle_enu(k, t), veh[k - 1], 1e-5);
+        expect_vec(ScriptedHost::vehicle_enu(k, t), veh[k - 1], 1e-5);
         EXPECT_NEAR(v.world_attitude.yaw_deg, heading[k - 1], 1.0); // conformal: slope nudges it
         EXPECT_NEAR(v.agl_m, 0.0, 1e-6);                            // on the ground
-        EXPECT_NEAR(run.host.vehicle_heading_deg(k, t), heading[k - 1], 1e-6);
+        EXPECT_NEAR(ScriptedHost::vehicle_heading_deg(k, t), heading[k - 1], 1e-6);
     }
 
     // The trailer rides 8 m behind vehicle 3; the cargo is still on vehicle 2.
@@ -241,7 +241,7 @@ TEST(ScriptedHost, CargoDetachesAndIsCarriedByItsRate) {
     EXPECT_EQ(cargo.ground_clamp, GroundClamp::NonConformal);
     EXPECT_NEAR(cargo.agl_m, 30.0, 1e-6);
     // It starts where vehicle 2 was at t = 5 s (ground position) ...
-    const Vec3d expected_start = run.host.vehicle_enu(2, 5.0);
+    const Vec3d expected_start = ScriptedHost::vehicle_enu(2, 5.0);
     // ... and has already been extrapolated by one frame (8 m/s north, 4 m/s east).
     expect_vec(cargo.enu - Vec3d{0, 0, cargo.enu.z},
                expected_start + Vec3d{4.0 * dt, 8.0 * dt, 0.0}, 1e-3);

@@ -69,8 +69,8 @@ public:
     /// Ownship heading (degrees clockwise from north) at time `t_s`.
     [[nodiscard]] double ownship_heading_deg(double t_s) const noexcept;
     /// Position / heading of ground vehicle `index` (1..3) at `t_s` (ENU, z = 0).
-    [[nodiscard]] Vec3d vehicle_enu(int index, double t_s) const noexcept;
-    [[nodiscard]] double vehicle_heading_deg(int index, double t_s) const noexcept;
+    [[nodiscard]] static Vec3d vehicle_enu(int index, double t_s) noexcept;
+    [[nodiscard]] static double vehicle_heading_deg(int index, double t_s) noexcept;
     /// Entities the scenario keeps alive (ownship, 5 convoy entities, extras).
     [[nodiscard]] std::size_t entity_count() const noexcept {
         return 6 + static_cast<std::size_t>(config_.extra_entities);

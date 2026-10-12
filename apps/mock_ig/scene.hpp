@@ -267,7 +267,6 @@ private:
     void destroy_tree(std::uint16_t id);
     [[nodiscard]] bool would_cycle(std::uint16_t entity_id, std::uint16_t parent_id) const;
     void resolve_entity(Entity& e);
-    void integrate(Entity& e, double dt_s) const;
     void record_trails();
     ViewState& view_for(std::uint16_t id);
 

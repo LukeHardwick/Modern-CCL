@@ -822,7 +822,7 @@ TEST(SceneDispatch, EveryHostPacketReachesTheScene) {
     EXPECT_EQ(scene.stats().packets, 9U);
     EXPECT_EQ(scene.host_frame_number(), 5U);
     EXPECT_NE(scene.find(1), nullptr);
-    EXPECT_EQ(scene.find(1)->parts.count(2), 1U);
+    EXPECT_TRUE(scene.find(1)->parts.contains(2));
     EXPECT_EQ(scene.components().size(), 1U);
     EXPECT_EQ(scene.celestial().hour, 9);
     EXPECT_FLOAT_EQ(scene.find_view(0)->near_plane, 2.0F);
@@ -868,7 +868,7 @@ TEST(SceneDispatch, UnknownOpcodesAndBadPacketsAreCountedNotFatal) {
     // The unknown opcode is logged once, the error each time.
     std::size_t unknown_lines = 0;
     for (const auto& line : scene.log()) {
-        unknown_lines += line.find("unknown opcode 201") != std::string::npos ? 1 : 0;
+        unknown_lines += line.contains("unknown opcode 201") ? 1 : 0;
     }
     EXPECT_EQ(unknown_lines, 1U);
     EXPECT_NE(scene.log().back().find("decode error"), std::string::npos);

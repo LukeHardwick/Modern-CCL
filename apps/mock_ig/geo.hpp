@@ -160,7 +160,7 @@ private:
 /// that surface frame.
 [[nodiscard]] Mat3 conformal_body_to_enu(const Attitude& a, const Vec3d& up_normal_enu) noexcept;
 
-[[nodiscard]] Quat to_quat(const Mat3& rotation) noexcept;
+[[nodiscard]] Quat to_quat(const Mat3& m) noexcept;
 [[nodiscard]] Mat3 to_mat3(const Quat& q) noexcept;
 [[nodiscard]] Vec3d rotate(const Quat& q, const Vec3d& v) noexcept;
 

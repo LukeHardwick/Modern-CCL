@@ -98,11 +98,11 @@ double ScriptedHost::ownship_heading_deg(double t_s) const noexcept {
     return circle_heading_deg(config_.ownship_speed_mps / config_.circle_radius_m * t_s);
 }
 
-Vec3d ScriptedHost::vehicle_enu(int index, double t_s) const noexcept {
+Vec3d ScriptedHost::vehicle_enu(int index, double t_s) noexcept {
     return on_circle(convoy_centre, convoy_radius_m, vehicle_phase(index, t_s));
 }
 
-double ScriptedHost::vehicle_heading_deg(int index, double t_s) const noexcept {
+double ScriptedHost::vehicle_heading_deg(int index, double t_s) noexcept {
     return circle_heading_deg(vehicle_phase(index, t_s));
 }
 
@@ -205,9 +205,9 @@ Result<void> ScriptedHost::build_frame(MessageBuilder& builder) {
     }
     // Turret (part 1) and barrel (part 2) of vehicle 1, absolute angles every frame.
     {
-        const float turret_yaw =
+        const auto turret_yaw =
             static_cast<float>(wrap_360(static_cast<double>(turret_yaw_rate_dps) * t));
-        const float barrel_pitch = static_cast<float>(15.0 + (15.0 * std::sin(tau * t / 5.0)));
+        const auto barrel_pitch = static_cast<float>(15.0 + (15.0 * std::sin(tau * t / 5.0)));
         add(ArticulatedPartControl{
             .entity_id = 1,
             .articulated_part_id = 1,

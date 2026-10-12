@@ -161,7 +161,7 @@ TEST(HatHot, ResendingAPeriodicRequestReplacesAndRestartsIt) {
     responder.submit(geodetic(24, HatHotRequestType::Hat, 5));
     EXPECT_EQ(responder.collect(scene, 0).size(), 1U);
     EXPECT_TRUE(responder.collect(scene, 1).empty());
-    auto again = geodetic(24, HatHotRequestType::Hot, 2); // new type and period, same ID
+    const auto again = geodetic(24, HatHotRequestType::Hot, 2); // new type and period, same ID
     responder.submit(again);
     EXPECT_EQ(responder.periodic_count(), 1U);
     const auto replies = responder.collect(scene, 2);
