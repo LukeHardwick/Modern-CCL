@@ -131,3 +131,11 @@ if(TARGET cigi_frames AND CIGI_TSHARK)
         LABELS wireshark
         ENVIRONMENT "PATH=${_cigi_wireshark_bin}:$ENV{PATH}")
 endif()
+
+# Demo apps: option parsing, the pcap-recording UDP link, and demo_ig against demo_host.
+if(TARGET cigi_demo_common)
+    cigi_add_test(cigi_demo_test SOURCES demo/options_test.cpp demo/link_support_test.cpp
+        LINK cigi::demo_common LABELS network)
+    cigi_add_test(cigi_demo_network_test SOURCES demo/pair_test.cpp
+        LINK cigi::demo_common LABELS network)
+endif()
