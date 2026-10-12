@@ -154,6 +154,17 @@ TEST(Network, AnIgThatLearnsItsHostFromTheFirstIgControlAnswersIt) {
     EXPECT_TRUE(exchange.answered);
 }
 
+TEST(Network, AnIgWithoutAHostStaysSilentUntilItHearsFromOne) {
+    IgConfig config;
+    config.listen_address = "127.0.0.1";
+    config.listen_port = free_port();
+    auto ig = Ig::connect(config).value();
+    for (int i = 0; i < 6; ++i) { // ~100 ms: several Start of Frame periods
+        ASSERT_TRUE(ig.poll(20ms));
+    }
+    EXPECT_EQ(ig.stats().frames_sent, 0U);
+}
+
 TEST(Network, AnAsynchronousHostSendsAtItsOwnRate) {
     const std::uint16_t ig_port = free_port();
     const std::uint16_t host_port = free_port();

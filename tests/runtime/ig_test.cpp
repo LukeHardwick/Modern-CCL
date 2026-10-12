@@ -4,6 +4,9 @@
 
 #include <cmath>
 #include <gtest/gtest.h>
+#include <spdlog/logger.h>
+#include <spdlog/sinks/ostream_sink.h>
+#include <sstream>
 #include <stop_token>
 #include <thread>
 #include <utility>
@@ -282,6 +285,42 @@ TEST(IgFacade, InvalidConfigurationIsRejected) {
     IgConfig address;
     address.listen_address = "not-an-address";
     EXPECT_FALSE(Ig::connect(address));
+}
+
+TEST(IgFacade, AHandlerThatClosesTheIgEndsThePollWithoutSendingMore) {
+    IgFixture f;
+    f.ig.on<EntityControl>([&](const EntityControl&) { f.ig.close(); });
+    Bytes m = control_message(1, IgMode::Operate);
+    const Bytes entity = encoded(EntityControl{});
+    m.insert(m.end(), entity.begin(), entity.end());
+    f.peer.send(m);
+    f.clock.advance(frame_ticks);
+    EXPECT_TRUE(f.ig.poll(0ms));
+    EXPECT_TRUE(f.peer.received().empty());
+}
+
+TEST(IgFacade, AFrameCallbackThatClosesTheIgSendsNothing) {
+    IgFixture f;
+    f.ig.on_frame([&](IgFrame&) { f.ig.close(); });
+    f.peer.send(control_message(1, IgMode::Operate));
+    f.clock.advance(frame_ticks);
+    EXPECT_TRUE(f.ig.poll(0ms));
+    EXPECT_TRUE(f.peer.received().empty());
+}
+
+TEST(IgFacade, ALoggerFromTheConfigurationIsUsedAndAnIgIsMoveAssignable) {
+    std::ostringstream out;
+    const auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(out);
+    IgConfig config;
+    config.logger = std::make_shared<spdlog::logger>("ig-test", sink);
+    IgFixture f{config};
+    f.peer.send(control_message(1, IgMode::Operate));
+    f.tick();
+    RawPeer second;
+    Ig other = Ig::over(IgConfig(), second.take_other()).value();
+    other = std::move(f.ig);
+    EXPECT_EQ(other.mode(), IgMode::Operate);
+    EXPECT_NE(out.str().find("Host connected"), std::string::npos) << out.str();
 }
 
 TEST(IgFacade, IsMovable) {
