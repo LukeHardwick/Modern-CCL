@@ -3,12 +3,15 @@
 #   scripts/demo.sh [seconds] [extra demo_ig flags...]      (default 5 seconds)
 # Environment: PRESET (default clang-debug), IG_PORT (8004), HOST_PORT (8005),
 #              PCAP_DIR (write ig.pcap and host.pcap there; open them in Wireshark).
-# Example: scripts/demo.sh 10 --drop 0.1 --latency 20
+# (seconds must be a whole number.) Example: scripts/demo.sh 10 --drop 0.1 --latency 20
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 seconds="${1:-5}"
 [ $# -gt 0 ] && shift
+case "$seconds" in
+  ''|*[!0-9]*) echo "usage: $0 [whole seconds] [demo_ig flags...]" >&2; exit 2 ;;
+esac
 preset="${PRESET:-clang-debug}"
 ig_port="${IG_PORT:-8004}"
 host_port="${HOST_PORT:-8005}"

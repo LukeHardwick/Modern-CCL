@@ -169,7 +169,7 @@ if(CIGI_BUILD_SESSION)
     endblock()
 endif()
 
-if(CIGI_BUILD_DEMOS)
+if(_cigi_demos)
     # CLI11 2.7.2 (released 2026-08-02; tag verified with `git ls-remote`, tag object
     # 919ce47..., commit cbd58a3...): command-line parsing for the demo apps only (header-only,
     # exceptions on; the library never links it).

@@ -60,7 +60,12 @@ std::string format_summary(const IgSummary& s) {
                            s.faults.sent, s.faults.dropped, s.faults.duplicated, s.faults.delayed);
     }
     if (s.datagrams_unrouted > 0) {
-        out += std::format("  {} datagrams not sent: no Host known yet\n", s.datagrams_unrouted);
+        out += std::format("  {} Start of Frame not sent: no Host known (before the first one, or "
+                           "after it timed out)\n",
+                           s.datagrams_unrouted);
+    }
+    if (s.datagrams_foreign > 0) {
+        out += std::format("  {} datagrams ignored: not from the Host\n", s.datagrams_foreign);
     }
     if (s.pcap_frames > 0 || !s.pcap_ok) {
         out += std::format("  pcap: {} frames written{}\n", s.pcap_frames,
@@ -139,6 +144,14 @@ DemoIg::DemoIg(DemoIgOptions options, std::shared_ptr<spdlog::logger> logger,
     wire_scene();
     ig_.on_mode_request([this](IgMode mode) { return on_mode_request(mode); });
     ig_.on_frame([this](IgFrame& frame) { on_frame(frame); });
+    // Unknown opcodes and errors go through the facade, so the scene counts them and the
+    // facade's own error reporting stays intact. (The scene is replaced on a restart; these
+    // hooks always use the current one.)
+    ig_.on_unknown([this](const UnknownPacket& p) { scene_->note_unknown(p); });
+    ig_.on_error([this](const Error& e) {
+        scene_->note_error(e);
+        logger_->warn("bad datagram or packet: {}", to_string(e.code));
+    });
 }
 
 DemoIg::~DemoIg() = default;
@@ -146,8 +159,6 @@ DemoIg::~DemoIg() = default;
 void DemoIg::wire_scene() {
     scene_ = std::make_unique<mock::SceneModel>();
     responder_ = mock::HatHotResponder{};
-    // The scene's dispatcher hooks replace the session's error hook: decode errors are counted
-    // in the scene's stats instead.
     scene_->register_handlers(ig_.session().handlers(), &responder_);
     scene_->set_log_sink([this](std::string_view line) { logger_->info("scene: {}", line); });
 }
@@ -158,7 +169,9 @@ bool DemoIg::on_mode_request(IgMode mode) {
         logger_->warn("refusing the request for {} (--refuse-operate)", mock::enum_name(mode));
         return false;
     }
-    const std::uint64_t loading = operational(mode) ? options_.load_frames : 0;
+    // Loading is for leaving Standby; a Debug <-> Operate switch needs none.
+    const std::uint64_t loading =
+        operational(mode) && !operational(ig_.mode()) ? options_.load_frames : 0;
     pending_mode_ = PendingMode{mode, loading};
     if (loading > 0) {
         logger_->info("loading for {} frames before {}", loading, mock::enum_name(mode));
@@ -167,9 +180,12 @@ bool DemoIg::on_mode_request(IgMode mode) {
 }
 
 void DemoIg::on_frame(IgFrame& frame) {
-    if (const auto& control = ig_.session().last_ig_control()) {
-        scene_->apply(
-            *control); // the session consumes IG Control; the scene wants its frame number
+    // The session consumes IG Control; the scene wants its frame number (HAT/HOT LSN). Hand it
+    // over once per accepted Host message.
+    const auto received = ig_.session().stats().messages_received;
+    if (const auto& control = ig_.session().last_ig_control(); control && received != applied_) {
+        applied_ = received;
+        scene_->apply(*control);
     }
     scene_->advance(dt_s_);
     ++operate_frames_;
@@ -222,6 +238,11 @@ void DemoIg::after_poll() {
             pending_mode_.reset();
         }
     }
+    // A Host is learnt once the session accepted a message from the candidate sender.
+    if (!link_->has_peer() && ig_.session().stats().messages_received != accepted_seen_) {
+        link_->latch_candidate();
+    }
+    accepted_seen_ = ig_.session().stats().messages_received;
     // A learnt Host that went quiet is forgotten, so a restarted Host (new port) can reconnect.
     const bool connected = ig_.host_connected();
     if (connected) {
@@ -256,6 +277,7 @@ IgSummary DemoIg::summarise(double elapsed_s) const {
     s.operate_refused = operate_refused_;
     s.datagrams_sent = link_->datagrams_sent();
     s.datagrams_unrouted = link_->datagrams_unrouted();
+    s.datagrams_foreign = link_->datagrams_foreign();
     s.faults_active = faults_ != nullptr;
     if (faults_ != nullptr) {
         s.faults = faults_->stats();

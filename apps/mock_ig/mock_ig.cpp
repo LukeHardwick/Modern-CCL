@@ -5,7 +5,7 @@
 namespace cigi::mock {
 
 MockIg::MockIg(const SceneConfig& config) : scene_(config) {
-    scene_.register_handlers(dispatcher_, &hat_hot_);
+    scene_.register_all_handlers(dispatcher_, &hat_hot_);
 }
 
 Result<DispatchStats> MockIg::ingest(std::span<const std::byte> datagram) {

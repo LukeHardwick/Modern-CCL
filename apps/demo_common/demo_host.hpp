@@ -43,9 +43,11 @@ struct HostSummary {
     [[nodiscard]] std::uint64_t responses() const noexcept {
         return hat_responses + extended_responses;
     }
-    /// 0 only if Operate was reached, responses arrived and no protocol error occurred.
+    /// 0 only if Operate was reached, responses arrived, no protocol error occurred and the pcap
+    /// (if any) was written without error.
     [[nodiscard]] int exit_code() const noexcept {
-        return !fatal && reached_operate && responses() > 0 && protocol_errors == 0 ? 0 : 1;
+        return !fatal && pcap_ok && reached_operate && responses() > 0 && protocol_errors == 0 ? 0
+                                                                                               : 1;
     }
 };
 

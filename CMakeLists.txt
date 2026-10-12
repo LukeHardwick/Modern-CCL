@@ -32,6 +32,18 @@ option(CIGI_ENABLE_COVERAGE "Enable Clang source-based coverage" OFF)
 option(CIGI_ENABLE_CLANG_TIDY "Run clang-tidy on cigi targets" OFF)
 option(CIGI_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
 
+# The demo apps need the sessions, the UDP transport, the mock IG and the pcap tool.
+set(_cigi_demos OFF)
+if(CIGI_BUILD_DEMOS)
+    if(CIGI_BUILD_SESSION AND CIGI_BUILD_TRANSPORT AND (CIGI_BUILD_MOCK_IG OR CIGI_BUILD_VIEWER)
+       AND (CIGI_BUILD_TOOLS OR CIGI_BUILD_TESTS OR CIGI_BUILD_EXAMPLES))
+        set(_cigi_demos ON)
+    else()
+        message(STATUS "demo apps skipped: they need CIGI_BUILD_SESSION, CIGI_BUILD_TRANSPORT, "
+                       "CIGI_BUILD_MOCK_IG and one of CIGI_BUILD_TOOLS/TESTS/EXAMPLES")
+    endif()
+endif()
+
 # Sanitizers are applied globally (before third-party fetch) so all code is consistently instrumented.
 include(Sanitizers)
 include(CompilerWarnings)
@@ -205,7 +217,7 @@ endif()
 if(CIGI_BUILD_VIEWER)
     add_subdirectory(apps/ig_viewer)
 endif()
-if(CIGI_BUILD_DEMOS AND TARGET cigi_runtime AND TARGET cigi_mock_ig AND TARGET cigi_tools)
+if(_cigi_demos AND TARGET cigi_runtime AND TARGET cigi_mock_ig AND TARGET cigi_tools)
     add_subdirectory(apps/demo_common)
     add_subdirectory(apps/demo_ig)
     add_subdirectory(apps/demo_host)

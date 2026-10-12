@@ -25,13 +25,9 @@ UdpLink::UdpLink(transport::UdpEndpoint endpoint, UdpLinkConfig config)
     if (!learn_) {
         remote_ = to_endpoint({config_.remote_address, config_.remote_port});
     }
-    // The pcap needs a source address for datagrams we send: the bound interface, else loopback
-    // when talking to a loopback peer, else 0.0.0.0 (unknown without asking the OS).
     const auto bound = tools::Ipv4Address::parse(config_.local_address);
     if (bound && bound->octets != std::array<std::uint8_t, 4>{}) {
         local_ip_ = *bound;
-    } else if (remote_ && remote_->address.octets.front() == 127) {
-        local_ip_ = tools::Ipv4Address{{127, 0, 0, 1}};
     }
 }
 
@@ -56,11 +52,42 @@ void UdpLink::record(bool sent, const std::optional<tools::Endpoint>& remote,
     if (!config_.pcap || !remote) {
         return;
     }
-    const tools::Endpoint local{local_ip_, endpoint_.local_port()};
+    // Bound to any interface: the OS does not say which one a datagram used. For a loopback peer
+    // that is 127.0.0.1; otherwise the capture shows 0.0.0.0 as our address.
+    tools::Ipv4Address ip = local_ip_;
+    if (ip.octets == std::array<std::uint8_t, 4>{} && remote->address.octets.front() == 127) {
+        ip = tools::Ipv4Address{{127, 0, 0, 1}};
+    }
+    const tools::Endpoint local{ip, endpoint_.local_port()};
     const auto time = tools::PcapWriter::to_time(std::chrono::system_clock::now());
     // A failed pcap write must not disturb the link; the app reports pcap->ok() at exit.
     static_cast<void>(sent ? config_.pcap->write_udp(time, local, *remote, bytes)
                            : config_.pcap->write_udp(time, *remote, local, bytes));
+}
+
+bool UdpLink::same_peer(const transport::UdpPeer& sender) const {
+    const transport::UdpPeer expected =
+        learn_ ? latched_peer_ : transport::UdpPeer{config_.remote_address, config_.remote_port};
+    if (sender.port != expected.port) {
+        return false;
+    }
+    const auto a = tools::Ipv4Address::parse(sender.address);
+    const auto b = tools::Ipv4Address::parse(expected.address);
+    return a && b ? *a == *b : sender.address == expected.address;
+}
+
+bool UdpLink::latch_candidate() {
+    if (!learn_ || latched_) {
+        return has_peer();
+    }
+    if (!candidate_ || !endpoint_.set_remote(candidate_->address, candidate_->port)) {
+        return false;
+    }
+    latched_ = true;
+    remote_ = to_endpoint(*candidate_);
+    latched_peer_ = *candidate_;
+    candidate_.reset();
+    return true;
 }
 
 Result<void> UdpLink::send(std::span<const std::byte> datagram) {
@@ -78,29 +105,35 @@ Result<void> UdpLink::send(std::span<const std::byte> datagram) {
 
 Result<std::size_t> UdpLink::receive(std::span<std::byte> buffer,
                                      std::chrono::milliseconds timeout) {
-    auto received = endpoint_.receive(buffer, timeout);
-    if (!received) {
-        return received;
-    }
-    ++received_;
-    const auto datagram = std::span<const std::byte>{buffer}.first(*received);
-    std::optional<tools::Endpoint> from = remote_;
-    if (learn_ || config_.pcap) {
-        if (const auto sender = endpoint_.last_sender()) {
-            from = to_endpoint(*sender);
-            if (learn_ && !latched_) {
-                // Only a Host -> IG message makes its sender the peer.
-                const auto view = MessageView::parse(datagram);
-                if (view && view->direction() == Direction::HostToIg &&
-                    endpoint_.set_remote(sender->address, sender->port)) {
-                    latched_ = true;
-                    remote_ = from;
-                }
-            }
+    for (;;) {
+        auto received = endpoint_.receive(buffer, timeout);
+        if (!received) {
+            return received;
         }
+        ++received_;
+        const auto datagram = std::span<const std::byte>{buffer}.first(*received);
+        const auto sender = endpoint_.last_sender();
+        const std::optional<tools::Endpoint> from =
+            sender ? to_endpoint(*sender) : std::optional<tools::Endpoint>{};
+        record(false, from ? from : remote_, datagram);
+        if (!sender) {
+            return received;
+        }
+        if (learn_ && !latched_) {
+            // Unknown peer: the first datagram that parses as a Host -> IG message nominates one.
+            const auto view = MessageView::parse(datagram);
+            if (view && view->direction() == Direction::HostToIg) {
+                candidate_ = *sender;
+            }
+            return received;
+        }
+        if (same_peer(*sender)) {
+            return received;
+        }
+        ++foreign_;
+        --received_;
+        timeout = std::chrono::milliseconds{0}; // look for the next datagram without waiting again
     }
-    record(false, from, datagram);
-    return received;
 }
 
 std::shared_ptr<tools::PcapWriter> open_pcap(const std::string& path, std::string& error) {

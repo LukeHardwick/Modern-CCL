@@ -5,13 +5,16 @@
 #include "demo_common/demo_host.hpp"
 #include "demo_common/demo_ig.hpp"
 #include "demo_common/support.hpp"
+#include "demo_common/udp_link.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <iterator>
+#include <random>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/null_sink.h>
 #include <string>
@@ -76,6 +79,17 @@ PairResult run_with_host(const DemoHostOptions& host, double seconds) {
     return run_pair(ig, host, seconds);
 }
 
+std::filesystem::path unique_temp_dir() {
+    std::random_device random;
+    for (;;) {
+        const auto dir = std::filesystem::temp_directory_path() /
+                         std::format("cigi_demo_pair_{:08x}{:08x}", random(), random());
+        if (std::filesystem::create_directory(dir)) {
+            return dir;
+        }
+    }
+}
+
 TEST(DemoPair, HealthyRunExitsZero) {
     const auto r = run_default(3.0);
     EXPECT_EQ(r.host.exit_code(), 0);
@@ -91,7 +105,9 @@ TEST(DemoPair, HealthyRunExitsZero) {
     // The scene the IG built from the Host's packets.
     EXPECT_EQ(r.ig.scene.entities_created, 1U);
     EXPECT_EQ(r.ig.entities, 1U);
-    EXPECT_EQ(r.ig.hat_hot_answers, r.host.responses());
+    // The IG may send one more periodic answer after the Host's last poll.
+    EXPECT_GE(r.ig.hat_hot_answers, r.host.responses());
+    EXPECT_LE(r.ig.hat_hot_answers - r.host.responses(), 1U);
     EXPECT_GT(r.ig.operate_frames, 100U);
     EXPECT_EQ(r.ig.ig.restarts, 0U);
     EXPECT_EQ(r.ig.operate_refused, 0U);
@@ -186,9 +202,10 @@ TEST(DemoPair, AsynchronousHostWorksToo) {
 }
 
 TEST(DemoPair, BothSidesRecordPcapFiles) {
-    const auto dir = std::filesystem::temp_directory_path();
-    const auto ig_file = dir / "cigi_demo_pair_ig.pcap";
-    const auto host_file = dir / "cigi_demo_pair_host.pcap";
+    // A directory of our own: concurrent test runs (debug, asan, ...) must not share files.
+    const auto dir = unique_temp_dir();
+    const auto ig_file = dir / "ig.pcap";
+    const auto host_file = dir / "host.pcap";
     DemoIgOptions ig;
     ig.pcap = ig_file.string();
     DemoHostOptions host;
@@ -212,6 +229,57 @@ TEST(DemoPair, BothSidesRecordPcapFiles) {
         EXPECT_GT(std::filesystem::file_size(file), 1000U);
         std::filesystem::remove(file);
     }
+    std::filesystem::remove(dir);
+}
+
+TEST(DemoPair, AStraySenderCannotDriveTheScene) {
+    DemoIgOptions ig_options;
+    ig_options.listen_port = 0;
+    ig_options.listen_addr = "127.0.0.1";
+    auto ig = DemoIg::create(ig_options, make_logger("ig", "off"));
+    ASSERT_TRUE(ig.has_value());
+    DemoHostOptions host_options;
+    host_options.ig_port = (*ig)->bound_port();
+    host_options.listen_port = 0;
+    host_options.duration_s = 2.0;
+    auto host = DemoHost::create(host_options, make_logger("host", "off"));
+    ASSERT_TRUE(host.has_value());
+
+    // A stranger sends Host messages (creating entity 7) to the IG once the real Host is known.
+    UdpLinkConfig stray_config;
+    stray_config.local_address = "127.0.0.1";
+    stray_config.remote_address = "127.0.0.1";
+    stray_config.remote_port = (*ig)->bound_port();
+    auto stray = UdpLink::open(std::move(stray_config));
+    ASSERT_TRUE(stray.has_value());
+    std::vector<std::byte> storage(256);
+    MessageBuilder builder(Direction::HostToIg, storage);
+    IgControl control;
+    control.ig_mode = IgMode::Operate;
+    ASSERT_TRUE(builder.add(control));
+    EntityControl entity;
+    entity.entity_id = 7;
+    entity.entity_state = EntityState::Active;
+    ASSERT_TRUE(builder.add(entity));
+
+    std::stop_source stop;
+    IgSummary ig_summary;
+    std::thread ig_thread([&] { ig_summary = (*ig)->run(stop.get_token()); });
+    std::thread stray_thread([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds{500});
+        for (int i = 0; i < 30; ++i) {
+            static_cast<void>((*stray)->send(builder.bytes()));
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+        }
+    });
+    const auto host_summary = (*host)->run(std::stop_token{});
+    stray_thread.join();
+    stop.request_stop();
+    ig_thread.join();
+
+    EXPECT_EQ(host_summary.exit_code(), 0);
+    EXPECT_GE(ig_summary.datagrams_foreign, 25U);
+    EXPECT_EQ(ig_summary.scene.entities_created, 1U); // the Host's ownship only, never entity 7
 }
 
 TEST(DemoPair, CreateReportsProblemsAsMessages) {

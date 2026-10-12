@@ -209,10 +209,17 @@ public:
     void apply(const ViewDefinition& p);
     void apply(const HatHotRequest& p);
 
-    /// Wire every Host -> IG packet, unknown opcodes and decode errors into this model. If
-    /// `responder` is given, HAT/HOT requests are also handed to it. The scene (and responder)
-    /// must outlive the dispatcher.
+    /// Wire every Host -> IG packet type into this model. If `responder` is given, HAT/HOT
+    /// requests are also handed to it. The scene (and responder) must outlive the dispatcher.
+    /// The dispatcher's unknown-opcode and error hooks are left alone (they may belong to a
+    /// facade): forward them to note_unknown() / note_error(), or use register_all_handlers().
     void register_handlers(Handlers& dispatcher, HatHotResponder* responder = nullptr);
+    /// register_handlers() plus the unknown-opcode and error hooks, for a raw Dispatcher.
+    void register_all_handlers(Handlers& dispatcher, HatHotResponder* responder = nullptr);
+
+    /// Count (and log) a packet with an unknown opcode / a decode error.
+    void note_unknown(const UnknownPacket& packet);
+    void note_error(const Error& error);
 
     // ---- time ----
     /// Integrate Rate Control over `dt` seconds (entities and parts that are Active), resolve

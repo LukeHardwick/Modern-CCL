@@ -38,6 +38,7 @@ struct IgSummary {
     std::uint64_t operate_refused = 0; ///< Mode requests refused by --refuse-operate.
     std::uint64_t datagrams_sent = 0;  ///< Datagrams that reached the socket.
     std::uint64_t datagrams_unrouted = 0;
+    std::uint64_t datagrams_foreign = 0; ///< Datagrams from a sender other than the Host.
     bool faults_active = false;
     FaultInjectingTransport::Stats faults;
     std::size_t pcap_frames = 0;
@@ -45,7 +46,8 @@ struct IgSummary {
     bool fatal = false; ///< run() ended on a transport error.
     std::string error;
 
-    [[nodiscard]] int exit_code() const noexcept { return fatal ? 1 : 0; }
+    /// 0 unless the socket failed or the pcap could not be written.
+    [[nodiscard]] int exit_code() const noexcept { return fatal || !pcap_ok ? 1 : 0; }
 };
 
 /// Multi-line text of a summary (what the apps print at exit).
@@ -112,6 +114,8 @@ private:
     bool resumed_done_ = false;
     bool restarted_done_ = false;
     std::uint64_t last_report_frames_ = 0;
+    std::uint64_t applied_ = 0;       ///< messages_received when IG Control was last applied.
+    std::uint64_t accepted_seen_ = 0; ///< messages_received at the previous after_poll().
 };
 
 } // namespace cigi::demo

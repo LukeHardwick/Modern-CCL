@@ -67,16 +67,23 @@ Options: `--listen-addr`, `--listen-port`, `--host-addr`, `--host-port`, `--rate
 | `--latency MS` | every Start of Frame is delayed by MS milliseconds | slower responses |
 | `--seed N` | seed of the dice above (runs repeat) | |
 
-Faults act on what the IG *sends*. The Host's `--peer-timeout` (default 1000 ms) decides how long a
+Faults act on what the IG *sends*. The IG learns its Host from the first valid Host message and
+then ignores datagrams from any other sender (counted as "ignored" in its summary); the Host
+likewise only accepts datagrams from `--ig-addr`:`--ig-port`. If the Host goes quiet for a second
+the IG forgets it, so a Host restarted on another port is picked up again. The Host's `--peer-timeout` (default 1000 ms) decides how long a
 silent IG takes to count as Lost, so with `--pause-sof-after 1 --resume-sof-after 2` use
 `--peer-timeout 400` on the Host to see the Lost state.
 
 ## Reading the logs
 
-    11:12:03.131 [host] info link WaitingForIg -> Operate
-    11:12:03.165 [host] info HAT id=1 valid=true height=900.0 m (LSN 0)
-    11:12:04.131 [host] info t=1s link=Operate sent=62 (+62) ig_frame=95 lost=0 responses=4 (+4) errors=0
-    11:12:03.131 [ig] info t=1s mode=Operate host=yes sof=60 (+60) rx=26 entities=1 hat/hot=2
+    18:59:01.870 [ig] info IG listening on UDP port 8004 (60 Hz), Host learnt from its first message
+    18:59:02.459 [ig] info Host requests mode Operate
+    18:59:02.470 [host] info link WaitingForIg -> Operate
+    18:59:02.470 [ig] info scene: entity 0 created (type 101)
+    18:59:02.504 [host] info HAT id=1 valid=true height=900.0 m (LSN 0)
+    18:59:02.520 [host] info HAT/HOT extended id=3 valid=true hat=435.5 m hot=64.5 m material=0 (LSN 3)
+    18:59:02.882 [ig] info t=1s mode=Operate host=yes sof=60 (+60) rx=26 entities=1 hat/hot=2
+    18:59:03.474 [host] info t=1s link=Operate sent=62 (+62) ig_frame=95 lost=0 responses=4 (+4) errors=0
 
 - Host status line: `sent` messages to the IG (`+n` this second), `ig_frame` the last IG frame
   number received, `lost` Start of Frame messages missing from the sequence, `responses` HAT/HOT
@@ -94,7 +101,9 @@ silent IG takes to count as Lost, so with `--pause-sof-after 1 --resume-sof-afte
     demo_host --pcap host.pcap
 
 Each file holds every datagram that program sent or received (raw-IPv4 frames, link type 101, with
-valid IP and UDP headers), so it needs no capture privileges. Open it in Wireshark; if the CIGI
+valid IP and UDP headers), so it needs no capture privileges. On loopback the addresses are
+127.0.0.1; for a peer elsewhere, a program bound to all interfaces shows its own address as
+0.0.0.0 (use `--listen-addr` on the IG to get the real one). Open it in Wireshark; if the CIGI
 dissector does not pick the traffic up automatically, use *Analyze > Decode As...* and map UDP port
 8004 and 8005 to CIGI. See [docs/interop/wireshark.md](../interop/wireshark.md) for the dissector's
 known quirks (for example the first datagram of a capture is shown as `Unknown`).

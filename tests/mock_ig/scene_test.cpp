@@ -858,10 +858,40 @@ TEST(SceneDispatch, WithoutAResponderRequestsAreOnlyRecorded) {
     EXPECT_EQ(scene.recent_requests().size(), 1U);
 }
 
+TEST(SceneDispatch, RegisterHandlersLeavesTheUnknownAndErrorHooksAlone) {
+    SceneModel scene(config());
+    SceneModel::Handlers dispatcher;
+    int own_errors = 0;
+    int own_unknowns = 0;
+    dispatcher.on_error([&](const Error&) { ++own_errors; });
+    dispatcher.on_unknown([&](const UnknownPacket&) { ++own_unknowns; });
+    scene.register_handlers(dispatcher);
+
+    StaticMessageBuilder<256> msg(Direction::HostToIg);
+    ASSERT_TRUE(msg.add(IgControl{}));
+    ASSERT_TRUE(msg.add(test::UserPacket{1}));
+    test::Bytes bytes = test::to_vec(msg.bytes());
+    for (const std::uint8_t b : std::array<std::uint8_t, 8>{2, 8, 0, 0, 0, 0, 0, 0}) {
+        bytes.push_back(static_cast<std::byte>(b));
+    }
+    const auto view = MessageView::parse(bytes);
+    ASSERT_TRUE(view);
+    static_cast<void>(dispatcher.dispatch(*view));
+    EXPECT_EQ(own_unknowns, 1);
+    EXPECT_EQ(own_errors, 1);
+    EXPECT_EQ(scene.stats().unknown_packets, 0U);
+    EXPECT_EQ(scene.stats().decode_errors, 0U);
+    // The scene counts them when told to.
+    scene.note_unknown(UnknownPacket{});
+    scene.note_error(Error{.code = ErrorCode::Truncated});
+    EXPECT_EQ(scene.stats().unknown_packets, 1U);
+    EXPECT_EQ(scene.stats().decode_errors, 1U);
+}
+
 TEST(SceneDispatch, UnknownOpcodesAndBadPacketsAreCountedNotFatal) {
     SceneModel scene(config());
     SceneModel::Handlers dispatcher;
-    scene.register_handlers(dispatcher);
+    scene.register_all_handlers(dispatcher);
 
     StaticMessageBuilder<256> msg(Direction::HostToIg);
     ASSERT_TRUE(msg.add(IgControl{}));
