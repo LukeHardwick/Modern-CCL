@@ -49,12 +49,41 @@ if(CIGI_BUILD_TRANSPORT)
     endif()
 endif()
 
-# Wireshark round trip: only when the example is built and the Wireshark command-line tools exist.
 find_program(CIGI_TSHARK tshark)
-find_program(CIGI_TEXT2PCAP text2pcap)
-find_program(CIGI_MERGECAP mergecap)
-if(TARGET cigi_frames AND CIGI_TSHARK AND CIGI_TEXT2PCAP AND CIGI_MERGECAP)
+
+cigi_add_test(cigi_tools_test SOURCES tools/pcap_writer_test.cpp LINK cigi::tools)
+if(CIGI_TSHARK)
+    # Reads the pcap writer's output back with tshark.
+    cigi_add_test(cigi_tools_tshark_test SOURCES tools/pcap_writer_tshark_test.cpp
+        LINK cigi::tools LABELS wireshark)
+    target_compile_definitions(cigi_tools_tshark_test PRIVATE CIGI_TSHARK_PATH="${CIGI_TSHARK}")
+endif()
+
+# Corpus generator for the Wireshark verification (tests/interop/wireshark).
+add_executable(make_wireshark_corpus interop/wireshark/make_wireshark_corpus.cpp)
+target_link_libraries(make_wireshark_corpus PRIVATE cigi::cigi cigi::tools)
+cigi_apply_project_options(make_wireshark_corpus)
+
+# Wireshark verification: only when tshark is installed.
+if(CIGI_TSHARK)
     get_filename_component(_cigi_wireshark_bin "${CIGI_TSHARK}" DIRECTORY)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+        # Decode every MVP packet of the corpus with tshark and compare it with what was encoded.
+        add_test(NAME wireshark_corpus
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/interop/wireshark/check_tshark.py
+                    --generator $<TARGET_FILE:make_wireshark_corpus>
+                    --out ${CMAKE_CURRENT_BINARY_DIR}/wireshark_corpus
+                    --tshark ${CIGI_TSHARK})
+        set_tests_properties(wireshark_corpus PROPERTIES LABELS wireshark)
+    else()
+        message(STATUS "wireshark_corpus test skipped: Python 3 interpreter not found")
+    endif()
+else()
+    message(STATUS "Wireshark tests skipped: tshark not found (set CIGI_TSHARK to enable)")
+endif()
+if(TARGET cigi_frames AND CIGI_TSHARK)
     add_test(NAME wireshark_cigi_frames
         COMMAND ${CMAKE_SOURCE_DIR}/examples/wireshark/check_pcap.sh
                 $<TARGET_FILE:cigi_frames> ${CMAKE_CURRENT_BINARY_DIR}/wireshark)

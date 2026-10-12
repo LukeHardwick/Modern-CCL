@@ -17,6 +17,7 @@ else()
 endif()
 
 option(CIGI_BUILD_EXAMPLES "Build the examples" ${_cigi_top})
+option(CIGI_BUILD_TOOLS "Build the developer tools (pcap writer)" ${_cigi_top})
 option(CIGI_BUILD_TESTS "Build the unit tests" ${_cigi_top})
 option(CIGI_BUILD_TRANSPORT "Build the UDP transport (fetches Boost.Asio) and platform helpers"
        ${_cigi_top})
@@ -126,6 +127,10 @@ if(CIGI_BUILD_TRANSPORT)
         endif()
         cigi_apply_project_options(${_t})
     endforeach()
+endif()
+
+if(CIGI_BUILD_TOOLS OR CIGI_BUILD_TESTS OR CIGI_BUILD_EXAMPLES)
+    add_subdirectory(tools)
 endif()
 
 if(CIGI_BUILD_EXAMPLES)

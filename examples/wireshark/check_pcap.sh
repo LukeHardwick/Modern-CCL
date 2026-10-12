@@ -6,6 +6,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=$2
 "$here/make_pcap.sh" "$1" "$out" >/dev/null
+command -v tshark >/dev/null 2>&1 || { echo "error: 'tshark' not found on PATH" >&2; exit 1; }
 
 opts=(-o cigi.host:10.0.0.1 -o cigi.ig:10.0.0.2)
 total=$(tshark -r "$out/cigi_frames.pcap" "${opts[@]}" -Y cigi | wc -l)

@@ -1,15 +1,17 @@
 # Viewing CIGI frames in Wireshark
 
 `cigi_frames` simulates a short Host/IG start-up exchange in memory (no network), using only the
-public `MessageBuilder` / `MessageView` API, and `make_pcap.sh` turns it into `cigi_frames.pcap`
-so you can see our bytes decoded by an independent tool.
+public `MessageBuilder` / `MessageView` API, and writes the datagrams to `cigi_frames.pcap`
+(through `cigi::tools::PcapWriter`) so you can see our bytes decoded by an independent tool.
+The larger verification of every MVP packet is in `docs/interop/wireshark.md`.
 
 ## Prerequisites
 
-Wireshark with its command-line tools (`tshark`, `text2pcap`, `mergecap`) on `PATH`.
+Wireshark (or just `tshark`) to read the pcap; writing it needs nothing.
 
 - macOS: `brew install --cask wireshark` (tools land in `/opt/homebrew/bin`) or wireshark.org.
-- Debian/Ubuntu: `sudo apt install wireshark tshark`. Fedora: `sudo dnf install wireshark-cli wireshark`.
+- Debian/Ubuntu: `sudo apt install wireshark tshark`.
+- Fedora: `sudo dnf install wireshark-cli wireshark`.
 
 ## Build and run
 
@@ -18,9 +20,9 @@ cmake --preset clang-debug && cmake --build --preset clang-debug --target cigi_f
 examples/wireshark/make_pcap.sh build/clang-debug/examples/cigi_frames build/wireshark
 ```
 
-This prints a one-line summary per message, writes `host_to_ig.txt` / `ig_to_host.txt` (text2pcap
-hex dumps) and `cigi_frames.pcap` into the output directory, and prints the `tshark` command to
-inspect it. The pcap is generated, never committed; rerun the script to regenerate it.
+This prints a one-line summary per message, writes `cigi_frames.pcap` into the output directory
+(running `cigi_frames <dir>` directly does the same), and prints the `tshark` command to inspect
+it. The pcap is generated, never committed; rerun the script to regenerate it.
 `ctest -L wireshark` runs the same pipeline and checks it with tshark.
 
 ## Wireshark settings
@@ -35,7 +37,8 @@ tshark -r cigi_frames.pcap -o cigi.host:10.0.0.1 -o cigi.ig:10.0.0.2 -V
 
 ## What you should see
 
-Twelve datagrams, 16.667 ms apart (60 Hz): IG Start of Frame (SOF), 2 ms later the Host's IG Control.
+Twelve datagrams, 16.667 ms apart (60 Hz): IG Start of Frame (SOF), 2 ms later the Host's
+IG Control.
 
 | Frames | What |
 |---|---|
@@ -51,9 +54,9 @@ Number* equals the previous IG Control's *Host Frame Number*. Minor Version is 3
 
 See `docs/interop/discrepancies.md` for the full table. In short:
 
-- With Version "From Packet" the dissector learns the CIGI version from the first IG Control, so the
-  very first Start of Frame in a capture shows as "Unknown (24 bytes)". Real captures start with an
-  SOF, so this always happens once.
+- With Version "From Packet" the very first datagram of a capture shows as "Unknown (24 bytes)",
+  whether it is a Start of Frame or an IG Control; later ones decode. Real captures start with one
+  of them, so this happens once.
 - With Version forced to "CIGI 3" it uses the 3.0/3.1 16-byte layout: 24-byte packets then raise
   "Packet offset does not match packet length" (Malformed) and the 3.2/3.3 fields are not shown.
   Keep "From Packet".
