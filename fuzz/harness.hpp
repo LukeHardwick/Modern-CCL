@@ -161,10 +161,11 @@ template <class P> void round_trip_one(const P& decoded) {
 
     const auto again = decode(std::type_identity<P>{}, buf, wire::ByteOrder::Native);
     check(again.has_value(), "encoded bytes decode");
-    // Compare by value where that is safe (floats may hold NaN, which never compares equal) and,
-    // always, by bytes: re-encoding the decoded value must reproduce the first encoding exactly.
-    if constexpr (requires { decoded.version; }) {
-        check(*again == normalised(decoded), "decode(encode(p)) == p");
+    // Compare by value (a NaN field never compares equal to itself, so skip those) and, always,
+    // by bytes: re-encoding the decoded value must reproduce the first encoding exactly.
+    const P expected = normalised(decoded);
+    if (expected == expected) {
+        check(*again == expected, "decode(encode(p)) == p");
     }
     check(validate(*again).has_value() == validate(decoded).has_value(),
           "validate() is preserved by a round trip");

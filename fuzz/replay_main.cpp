@@ -3,14 +3,17 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <print>
 #include <span>
 #include <system_error>
 #include <vector>
 
+// The libFuzzer entry-point name is fixed by libFuzzer.
+// NOLINTNEXTLINE(readability-identifier-naming)
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size);
 
 namespace {
@@ -18,23 +21,23 @@ namespace {
 bool run_file(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        std::fprintf(stderr, "cannot read %s\n", path.string().c_str());
+        std::println(stderr, "cannot read {}", path.string());
         return false;
     }
     const std::vector<char> raw{std::istreambuf_iterator<char>(in), {}};
-    std::vector<std::uint8_t> bytes(raw.size());
-    for (std::size_t i = 0; i < raw.size(); ++i) {
-        bytes[i] = static_cast<std::uint8_t>(raw[i]);
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(raw.size());
+    for (const char c : raw) {
+        bytes.push_back(static_cast<std::uint8_t>(c));
     }
-    (void)LLVMFuzzerTestOneInput(bytes.data(), bytes.size());
+    (void)LLVMFuzzerTestOneInput(bytes.data(),
+                                 bytes.size()); // NOLINT(readability-identifier-naming)
     return true;
 }
 
-} // namespace
-
-int main(int argc, char** argv) {
+int run(std::span<char*> args) {
     std::size_t count = 0;
-    for (const char* arg : std::span(argv, static_cast<std::size_t>(argc)).subspan(1)) {
+    for (const char* arg : args.subspan(1)) {
         const std::filesystem::path path(arg);
         std::error_code ec;
         if (std::filesystem::is_directory(path, ec)) {
@@ -54,9 +57,21 @@ int main(int argc, char** argv) {
         }
     }
     if (count == 0) {
-        std::fputs("no input files\n", stderr);
+        std::println(stderr, "no input files");
         return 1;
     }
-    std::printf("replayed %zu inputs\n", count);
+    std::println("replayed {} inputs", count);
     return 0;
+}
+
+} // namespace
+
+// NOLINTNEXTLINE(bugprone-exception-escape): std::println in the handler may itself throw.
+int main(int argc, char** argv) {
+    try {
+        return run(std::span(argv, static_cast<std::size_t>(argc)));
+    } catch (const std::exception& e) {
+        std::println(stderr, "error: {}", e.what());
+        return 1;
+    }
 }

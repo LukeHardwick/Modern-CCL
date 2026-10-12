@@ -37,11 +37,11 @@ docker run --rm \
   -v "$root":/src:ro -v modern-ccl-linux-fuzz-build:/work \
   -v modern-ccl-fuzz-corpus:/corpus -v "$root/build/fuzz-artifacts":/artifacts \
   "$image" bash -euo pipefail -c '
-    cmake -S /src -B /work/linux-clang-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-      -DCMAKE_CXX_COMPILER=clang++ "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O1 -g" -DCIGI_ENABLE_FUZZING=ON -DCIGI_BUILD_TESTS=OFF \
-      -DCIGI_BUILD_EXAMPLES=OFF
-    cmake --build /work/linux-clang-fuzz --target "fuzz_'"$target"'"
-    mkdir -p "/corpus/'"$target"'"
-    "/work/linux-clang-fuzz/fuzz/fuzz_'"$target"'" \
-      -dict=/src/fuzz/cigi.dict -artifact_prefix=/artifacts/'"$target"'- \
-      '"${flags[*]}"' "/corpus/'"$target"'" "/src/fuzz/corpus/'"$target"'"'
+    target="$1"; shift
+    # --fresh: never reuse a stale cache left in the build volume by an older image/preset.
+    cmake --fresh -S /src --preset linux-clang-fuzz -B /work/linux-clang-fuzz
+    cmake --build /work/linux-clang-fuzz --target "fuzz_$target"
+    mkdir -p "/corpus/$target"
+    "/work/linux-clang-fuzz/fuzz/fuzz_$target" \
+      -dict=/src/fuzz/cigi.dict -artifact_prefix="/artifacts/$target-" \
+      "$@" "/corpus/$target" "/src/fuzz/corpus/$target"' _ "$target" "${flags[@]}"

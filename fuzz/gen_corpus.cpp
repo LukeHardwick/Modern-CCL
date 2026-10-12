@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <print>
 #include <span>
 #include <string>
 #include <system_error>
@@ -48,10 +49,17 @@ template <class P> Bytes message(const P& frame) {
 }
 
 /// A packet of `size` bytes with the given opcode and a recognisable filler.
-Bytes filler_packet(std::uint8_t opcode, std::uint8_t size, std::uint8_t fill) {
+struct Filler {
+    std::uint8_t opcode;
+    std::uint8_t size;
+    std::uint8_t fill;
+};
+
+Bytes filler_packet(const Filler& f) {
+    const auto [opcode, size, fill] = f;
     Bytes b(size, static_cast<std::byte>(fill));
-    b[0] = static_cast<std::byte>(opcode);
-    b[1] = static_cast<std::byte>(size);
+    b.at(0) = static_cast<std::byte>(opcode);
+    b.at(1) = static_cast<std::byte>(size);
     return b;
 }
 
@@ -67,16 +75,16 @@ Bytes foreign(Bytes b) {
 /// Turn a modern frame packet into what a CIGI 3.0 / 3.1 peer sends: 16 bytes, given minor.
 Bytes legacy(Bytes b, std::uint8_t minor) {
     const std::size_t flags =
-        std::to_integer<std::uint8_t>(b[0]) == cigi::ig_control_opcode ? 4 : 5;
+        std::to_integer<std::uint8_t>(b.at(0)) == cigi::ig_control_opcode ? 4 : 5;
     b.resize(16);
-    b[1] = std::byte{16};
-    b[flags] = static_cast<std::byte>((std::to_integer<std::uint8_t>(b[flags]) & 0x0FU) |
-                                      static_cast<unsigned>(minor << 4));
+    b.at(1) = std::byte{16};
+    b.at(flags) = static_cast<std::byte>((std::to_integer<unsigned>(b.at(flags)) & 0x0FU) |
+                                         (static_cast<unsigned>(minor) << 4U));
     return b;
 }
 
 Bytes with_byte(Bytes b, std::size_t i, std::uint8_t v) {
-    b[i] = static_cast<std::byte>(v);
+    b.at(i) = static_cast<std::byte>(v);
     return b;
 }
 
@@ -95,29 +103,38 @@ void make_seeds(Seeds& s) {
 
     // (b) Builder-made messages: each mode and flag combination, both packets, both orders.
     const IgControl ig_default{};
-    const IgControl ig_operate{.database_number = 5,
-                               .ig_mode = IgMode::Operate,
-                               .timestamp_valid = true,
-                               .extrapolation_enabled = true,
-                               .host_frame_number = 0x01020304,
-                               .timestamp = Timestamp{0x05060708},
-                               .last_ig_frame_number = 0x090A0B0C};
-    const IgControl ig_debug{.database_number = 127,
-                             .ig_mode = IgMode::Debug,
-                             .host_frame_number = 0xFFFFFFFF,
-                             .timestamp = Timestamp{0xFFFFFFFF}};
+    const IgControl ig_operate{
+        .database_number = 5,
+        .ig_mode = IgMode::Operate,
+        .timestamp_valid = true,
+        .extrapolation_enabled = true,
+        .host_frame_number = 0x01020304,
+        .timestamp = Timestamp{0x05060708},
+        .last_ig_frame_number = 0x090A0B0C,
+    };
+    const IgControl ig_debug{
+        .database_number = 127,
+        .ig_mode = IgMode::Debug,
+        .host_frame_number = 0xFFFFFFFF,
+        .timestamp = Timestamp{0xFFFFFFFF},
+    };
     const IgControl ig_offline{.database_number = -1, .ig_mode = IgMode::OfflineMaintenance};
     const StartOfFrame sof_default{};
-    const StartOfFrame sof_operate{.database_number = -128,
-                                   .ig_status = 0xA5,
-                                   .ig_mode = IgMode::Operate,
-                                   .timestamp_valid = true,
-                                   .earth_reference_model = EarthReferenceModel::HostDefined,
-                                   .ig_frame_number = 0x11223344,
-                                   .timestamp = Timestamp{0x55667788},
-                                   .last_host_frame_number = 0x99AABBCC};
+    const StartOfFrame sof_operate{
+        .database_number = -128,
+        .ig_status = 0xA5,
+        .ig_mode = IgMode::Operate,
+        .timestamp_valid = true,
+        .earth_reference_model = EarthReferenceModel::HostDefined,
+        .ig_frame_number = 0x11223344,
+        .timestamp = Timestamp{0x55667788},
+        .last_host_frame_number = 0x99AABBCC,
+    };
     const StartOfFrame sof_offline{
-        .database_number = 127, .ig_mode = IgMode::OfflineMaintenance, .ig_frame_number = 1};
+        .database_number = 127,
+        .ig_mode = IgMode::OfflineMaintenance,
+        .ig_frame_number = 1,
+    };
 
     const auto ig_default_m = message(ig_default);
     const auto ig_operate_m = message(ig_operate);
@@ -150,14 +167,14 @@ void make_seeds(Seeds& s) {
 
     // Multi-packet messages: frame packet followed by other packets, known or not.
     auto multi = ig_operate_m;
-    append(multi, filler_packet(2, 16, 0xAB));
-    append(multi, filler_packet(3, 48, 0xCD));
-    append(multi, filler_packet(201, 8, 0x5A));
+    append(multi, filler_packet({.opcode = 2, .size = 16, .fill = 0xAB}));
+    append(multi, filler_packet({.opcode = 3, .size = 48, .fill = 0xCD}));
+    append(multi, filler_packet({.opcode = 201, .size = 8, .fill = 0x5A}));
     s.add("ig_control_then_packets", multi);
     s.add("ig_control_then_packets_foreign", foreign(multi));
     auto multi_ig = sof_operate_m;
-    append(multi_ig, filler_packet(102, 24, 0x11));
-    append(multi_ig, filler_packet(105, 16, 0x22));
+    append(multi_ig, filler_packet({.opcode = 102, .size = 24, .fill = 0x11}));
+    append(multi_ig, filler_packet({.opcode = 105, .size = 16, .fill = 0x22}));
     s.add("sof_then_packets", multi_ig);
     auto dup = ig_default_m; // a second frame packet in one message (ICD 2.6)
     append(dup, ig_operate_m);
@@ -167,7 +184,8 @@ void make_seeds(Seeds& s) {
     s.add("ig_control_then_sof", wrong_dir);
     auto many = ig_default_m;
     for (std::uint8_t i = 0; i < 8; ++i) {
-        append(many, filler_packet(static_cast<std::uint8_t>(4 + i), 8, i));
+        append(many,
+               filler_packet({.opcode = static_cast<std::uint8_t>(4 + i), .size = 8, .fill = i}));
     }
     s.add("ig_control_many_small", many);
 
@@ -182,15 +200,16 @@ void make_seeds(Seeds& s) {
     s.add("size_255", with_byte(ig_operate_m, 1, 255));
     s.add("bad_magic", with_byte(ig_operate_m, 6, 0x12));
     s.add("bad_major_version", with_byte(ig_operate_m, 2, 4));
-    s.add("first_packet_not_frame", filler_packet(2, 24, 0));
+    s.add("first_packet_not_frame", filler_packet({.opcode = 2, .size = 24, .fill = 0}));
     auto bad_second = ig_operate_m;
-    append(bad_second, with_byte(filler_packet(2, 16, 0xAB), 1, 12));
+    append(bad_second, with_byte(filler_packet({.opcode = 2, .size = 16, .fill = 0xAB}), 1, 12));
     s.add("second_packet_bad_size", bad_second);
     auto zero_second = ig_operate_m;
-    append(zero_second, with_byte(filler_packet(2, 16, 0), 1, 0));
+    append(zero_second, with_byte(filler_packet({.opcode = 2, .size = 16, .fill = 0}), 1, 0));
     s.add("second_packet_size_zero", zero_second);
     auto overrun_second = ig_operate_m;
-    append(overrun_second, with_byte(filler_packet(2, 16, 0xAB), 1, 64));
+    append(overrun_second,
+           with_byte(filler_packet({.opcode = 2, .size = 16, .fill = 0xAB}), 1, 64));
     s.add("second_packet_overruns", overrun_second);
     auto trailing = ig_operate_m;
     append(trailing, bytes_of(0x02));
@@ -200,7 +219,7 @@ void make_seeds(Seeds& s) {
     s.add("ig_control_larger_than_24", [&] {
         auto b = ig_operate_m;
         append(b, bytes_of(1, 2, 3, 4, 5, 6, 7, 8));
-        b[1] = std::byte{32}; // a newer peer's longer packet: extra bytes are ignored
+        b.at(1) = std::byte{32}; // a newer peer's longer packet: extra bytes are ignored
         return b;
     }());
 }
@@ -210,9 +229,10 @@ bool write_file(const fs::path& path, const Bytes& b) {
     if (!out) {
         return false;
     }
-    out.write(reinterpret_cast<const char*>(
-                  b.data()), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-              static_cast<std::streamsize>(b.size()));
+    // ofstream::write takes char*; there is no byte-typed alternative.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    const auto* chars = reinterpret_cast<const char*>(b.data());
+    out.write(chars, static_cast<std::streamsize>(b.size()));
     return out.good();
 }
 
@@ -232,7 +252,7 @@ bool read_file(const fs::path& path, Bytes& b) {
 std::uint32_t le32(const Bytes& b, std::size_t at) {
     std::uint32_t v = 0;
     for (std::size_t i = 4; i-- > 0;) {
-        v = (v << 8U) | std::to_integer<std::uint32_t>(b[at + i]);
+        v = (v << 8U) | std::to_integer<std::uint32_t>(b.at(at + i));
     }
     return v;
 }
@@ -257,9 +277,9 @@ std::vector<Bytes> pcap_payloads(const Bytes& file) {
         }
         const std::size_t ip = pos + link_header;
         const std::size_t end = pos + len;
-        if (ip + 20 <= end && (std::to_integer<unsigned>(file[ip]) >> 4U) == 4U &&
-            std::to_integer<unsigned>(file[ip + 9]) == 17U) {
-            const std::size_t ihl = (std::to_integer<std::size_t>(file[ip]) & 0x0FU) * 4U;
+        if (ip + 20 <= end && (std::to_integer<unsigned>(file.at(ip)) >> 4U) == 4U &&
+            std::to_integer<unsigned>(file.at(ip + 9)) == 17U) {
+            const std::size_t ihl = (std::to_integer<std::size_t>(file.at(ip)) & 0x0FU) * 4U;
             const std::size_t payload = ip + ihl + 8;
             if (ihl >= 20 && payload <= end) {
                 out.emplace_back(file.begin() + static_cast<std::ptrdiff_t>(payload),
@@ -273,34 +293,34 @@ std::vector<Bytes> pcap_payloads(const Bytes& file) {
 
 } // namespace
 
+// NOLINTNEXTLINE(bugprone-exception-escape): a development tool, an exception just aborts it.
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fputs(
-            "usage: cigi_gen_corpus <out_dir> [--import <dir>]... [--import-pcap <file>]...\n",
-            stderr);
+        std::println(
+            stderr,
+            "usage: cigi_gen_corpus <out_dir> [--import <dir>]... [--import-pcap <file>]...");
         return 2;
     }
     const std::span<char*> args(argv, static_cast<std::size_t>(argc));
-    const fs::path out = args[1];
+    const fs::path out = args.subspan(1).front();
     Seeds seeds;
     make_seeds(seeds);
 
     std::vector<fs::path> imports;
     std::vector<fs::path> pcaps;
     for (std::size_t i = 2; i < args.size(); ++i) {
-        const std::string_view option = args[i];
+        const std::string_view option = args.subspan(i).front();
         if ((option != "--import" && option != "--import-pcap") || i + 1 >= args.size()) {
-            std::fputs("usage: cigi_gen_corpus <out_dir> [--import <dir>]... "
-                       "[--import-pcap <file>]...\n",
-                       stderr);
+            std::println(stderr, "usage: cigi_gen_corpus <out_dir> [--import <dir>]... "
+                                 "[--import-pcap <file>]...");
             return 2;
         }
-        (option == "--import" ? imports : pcaps).emplace_back(args[++i]);
+        (option == "--import" ? imports : pcaps).emplace_back(args.subspan(++i).front());
     }
     for (const auto& pcap : pcaps) {
         Bytes file;
         if (!read_file(pcap, file)) {
-            std::fprintf(stderr, "cannot read %s\n", pcap.string().c_str());
+            std::println(stderr, "cannot read {}", pcap.string());
             return 1;
         }
         std::size_t n = 0;
@@ -326,17 +346,19 @@ int main(int argc, char** argv) {
         for (const auto& [name, message] : seeds.items) {
             Bytes b = message;
             if (std::string_view(target) == "sessions") {
-                // options byte: cycle the five option bits; mode byte: cycle the four IG modes.
-                b.insert(b.begin(), {static_cast<std::byte>(index % 32U),
-                                     static_cast<std::byte>((index / 2U) % 4U)});
+                // options byte: cycle the five option bits; mode byte: decorrelated from the
+                // options so all 4x32 combinations occur.
+                const unsigned mode = ((index / 32U) + (index * 3U)) % 4U;
+                b.insert(b.begin(),
+                         {static_cast<std::byte>(index % 32U), static_cast<std::byte>(mode)});
             }
             ++index;
             if (!write_file(dir / (name + ".bin"), b)) {
-                std::fprintf(stderr, "cannot write %s\n", (dir / name).string().c_str());
+                std::println(stderr, "cannot write {}", (dir / name).string());
                 return 1;
             }
         }
     }
-    std::printf("wrote %zu seeds per target to %s\n", seeds.items.size(), out.string().c_str());
+    std::println("wrote {} seeds per target to {}", seeds.items.size(), out.string());
     return 0;
 }
