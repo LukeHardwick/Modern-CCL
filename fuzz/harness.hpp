@@ -97,8 +97,9 @@ template <class F> void walk_message(std::span<const std::byte> data, F&& on_pac
         check(raw.offset + raw.bytes.size() <= data.size(), "packet lies inside the datagram");
         check(raw.bytes.data() == data.data() + raw.offset, "packet bytes alias the datagram");
         expected_offset += raw.bytes.size();
-        saw_duplicate_frame = saw_duplicate_frame || (raw.offset != 0 &&
-                              raw.opcode == frame_packet_opcode(view->direction()));
+        saw_duplicate_frame =
+            saw_duplicate_frame ||
+            (raw.offset != 0 && raw.opcode == frame_packet_opcode(view->direction()));
 
         RawPacket flipped = raw;
         flipped.byte_order = opposite(raw.byte_order);

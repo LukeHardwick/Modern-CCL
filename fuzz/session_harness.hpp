@@ -28,9 +28,9 @@ namespace detail_sessions {
 template <class... Ps>
 void register_handlers(Dispatcher<PacketSet<Ps...>>& d, std::size_t& delivered) {
     (d.template on<Ps>([&delivered](const Ps& p) {
-         ++delivered;
-         (void)validate(p);
-     }),
+        ++delivered;
+        (void)validate(p);
+    }),
      ...);
     d.on_unknown([&delivered](const UnknownPacket& p) { delivered += p.bytes.size(); });
     d.on_error([&delivered](const Error& e) { delivered += e.offset; });

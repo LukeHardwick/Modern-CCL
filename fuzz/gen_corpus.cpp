@@ -275,7 +275,9 @@ std::vector<Bytes> pcap_payloads(const Bytes& file) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fputs("usage: cigi_gen_corpus <out_dir> [--import <dir>]... [--import-pcap <file>]...\n", stderr);
+        std::fputs(
+            "usage: cigi_gen_corpus <out_dir> [--import <dir>]... [--import-pcap <file>]...\n",
+            stderr);
         return 2;
     }
     const std::span<char*> args(argv, static_cast<std::size_t>(argc));
