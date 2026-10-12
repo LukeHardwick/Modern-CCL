@@ -24,10 +24,15 @@ MockIg::Replies MockIg::end_frame(double dt_s) {
 }
 
 Result<void> MockIg::build_reply(MessageBuilder& builder, const Replies& replies) const {
-    const bool operate = scene_.ig_control().ig_mode == IgMode::Operate;
+    // Operate and Debug are echoed; anything else (Reset/Standby, Offline Maintenance) reads as
+    // Reset/Standby from the IG.
+    const IgMode host_mode = scene_.ig_control().ig_mode;
+    const IgMode mode = (host_mode == IgMode::Operate || host_mode == IgMode::Debug)
+                            ? host_mode
+                            : IgMode::ResetStandby;
     // The frame just ended carried number ig_frame_ - 1 (ig_frame_ counts ended frames).
     if (auto r = builder.add(StartOfFrame{
-            .ig_mode = operate ? IgMode::Operate : IgMode::ResetStandby,
+            .ig_mode = mode,
             .ig_frame_number = ig_frame_ == 0 ? 0 : ig_frame_ - 1,
             .last_host_frame_number = scene_.host_frame_number(),
         });

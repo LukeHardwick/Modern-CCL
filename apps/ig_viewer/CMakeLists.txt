@@ -9,10 +9,3 @@ add_executable(ig_viewer
 target_link_libraries(ig_viewer PRIVATE cigi::mock_ig cigi_imgui raylib)
 target_compile_features(ig_viewer PRIVATE cxx_std_23)
 cigi_apply_project_options(ig_viewer)
-
-if(APPLE)
-    # PLATFORM: raylib needs these system frameworks (OpenGL is deprecated on macOS but still
-    # what raylib uses; deprecation warnings come from third-party headers only).
-    target_link_libraries(ig_viewer PRIVATE "-framework Cocoa" "-framework IOKit"
-                          "-framework CoreVideo" "-framework OpenGL")
-endif()

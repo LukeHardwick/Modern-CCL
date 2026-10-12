@@ -38,15 +38,18 @@ cigi_add_test(cigi_dispatch_alloc_test SOURCES message/dispatch_alloc_test.cpp)
 set_target_properties(cigi_dispatch_alloc_test PROPERTIES CXX_CLANG_TIDY "")
 
 # Mock IG (apps/mock_ig): scene model, HAT/HOT responder, terrain, describe(), scripted host.
-cigi_add_test(cigi_mock_ig_test SOURCES
-    mock_ig/describe_test.cpp
-    mock_ig/geo_test.cpp
-    mock_ig/hat_hot_test.cpp
-    mock_ig/scene_test.cpp
-    mock_ig/scripted_host_test.cpp
-    mock_ig/sky_test.cpp
-    mock_ig/terrain_test.cpp
-    LINK cigi_mock_ig)
+if(CIGI_BUILD_MOCK_IG)
+    cigi_add_test(cigi_mock_ig_test SOURCES
+        mock_ig/describe_test.cpp
+        mock_ig/geo_test.cpp
+        mock_ig/hat_hot_test.cpp
+        mock_ig/mock_ig_test.cpp
+        mock_ig/scene_test.cpp
+        mock_ig/scripted_host_test.cpp
+        mock_ig/sky_test.cpp
+        mock_ig/terrain_test.cpp
+        LINK cigi_mock_ig)
+endif()
 
 if(CIGI_BUILD_TRANSPORT)
     cigi_add_test(cigi_platform_test SOURCES platform/sleep_test.cpp LINK cigi::platform)

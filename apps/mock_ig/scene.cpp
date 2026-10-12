@@ -383,11 +383,31 @@ void SceneModel::register_handlers(Handlers& dispatcher, HatHotResponder* respon
 
 // ---- time -------------------------------------------------------------------------------------
 
+bool SceneModel::active_chain(const Entity& e) const {
+    const Entity* cur = &e;
+    // Hierarchy depth is bounded (cycles are refused), but cap the walk defensively.
+    for (std::size_t depth = 0; depth <= entities_.size(); ++depth) {
+        if (cur->state != EntityState::Active) {
+            return false;
+        }
+        if (!cur->attached) {
+            return true;
+        }
+        const auto it = entities_.find(cur->parent_id);
+        if (it == entities_.end()) {
+            return true;
+        }
+        cur = &it->second;
+    }
+    return false;
+}
+
 void SceneModel::advance(double dt_s) {
     if (dt_s > 0.0) {
         for (auto& [id, e] : entities_) {
             // An Inactive/Standby entity has no transformations applied (Table 7).
-            if (e.state == EntityState::Active) {
+            // ICD 4.1.2: the children of an Inactive entity are disabled too.
+            if (active_chain(e)) {
                 integrate(e, dt_s);
             }
         }

@@ -633,13 +633,45 @@ void draw_map(AppState& app) {
     // Entities.
     const Entity* nearest = nullptr;
     float nearest_dist = 14.0F;
-    std::vector<ImVec4> label_rects; // placed ID labels (min.x, min.y, max.x, max.y)
+    std::vector<ImVec4>& label_rects = app.ui.map_label_rects; // placed ID labels (x0 y0 x1 y1)
+    label_rects.clear();
+    // Try the right of the icon, then above, below and left; take the first free spot so
+    // neighbouring entities (e.g. 3 and 4) never print on top of each other.
+    const auto place_label = [&](std::uint16_t id, const ImVec2& s, float r) {
+        const std::string text = std::to_string(id);
+        const ImVec2 ts = ImGui::CalcTextSize(text.c_str());
+        const std::array<ImVec2, 6> candidates{{{s.x + r + 3.0F, s.y - (ts.y * 0.5F)},
+                                                {s.x + r + 3.0F, s.y - r - ts.y},
+                                                {s.x + r + 3.0F, s.y + r},
+                                                {s.x - r - 3.0F - ts.x, s.y - (ts.y * 0.5F)},
+                                                {s.x - (ts.x * 0.5F), s.y - r - ts.y - 6.0F},
+                                                {s.x - (ts.x * 0.5F), s.y + r + 6.0F}}};
+        for (const ImVec2& c : candidates) {
+            const ImVec4 rect{c.x - 1.0F, c.y, c.x + ts.x + 1.0F, c.y + ts.y};
+            const bool free = std::ranges::none_of(label_rects, [&](const ImVec4& q) {
+                return rect.x < q.z && q.x < rect.z && rect.y < q.w && q.y < rect.w;
+            });
+            if (free) {
+                label_rects.push_back(rect);
+                dl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, IM_COL32(0, 0, 0, 120));
+                dl->AddText(c, IM_COL32(255, 255, 255, 235), text.c_str());
+                return;
+            }
+        }
+    };
+    // The selected entity's label is placed first so it always wins a free spot.
+    if (app.draw.labels) {
+        if (const Entity* sel = scene.find(app.selected); sel != nullptr && sel->visible) {
+            place_label(app.selected, to_screen(sel->enu.x, sel->enu.y), 9.0F);
+        }
+    }
     for (const auto& [id, e] : scene.entities()) {
         if (!e.visible) {
             continue;
         }
         if (app.draw.trails && e.trail.size() > 1) {
-            std::vector<ImVec2> pts;
+            std::vector<ImVec2>& pts = app.ui.map_pts;
+            pts.clear();
             // ~24 points per entity keeps the map cheap (ImDrawIdx is 32-bit, see
             // Dependencies.cmake).
             const std::size_t first = e.trail.size() > 192 ? e.trail.size() - 192 : 0;
@@ -684,29 +716,8 @@ void draw_map(AppState& app) {
         if (id == app.selected) {
             dl->AddCircle(s, r + 4.0F, IM_COL32(255, 235, 60, 255), 24, 2.0F);
         }
-        if (app.draw.labels && (scale > 0.05F || id == app.selected || id < 100)) {
-            // Try the right of the icon, then above, below and left; take the first free spot
-            // so neighbouring entities (e.g. 3 and 4) never print on top of each other.
-            const std::string text = std::to_string(id);
-            const ImVec2 ts = ImGui::CalcTextSize(text.c_str());
-            const std::array<ImVec2, 6> candidates{{{s.x + r + 3.0F, s.y - (ts.y * 0.5F)},
-                                                    {s.x + r + 3.0F, s.y - r - ts.y},
-                                                    {s.x + r + 3.0F, s.y + r},
-                                                    {s.x - r - 3.0F - ts.x, s.y - (ts.y * 0.5F)},
-                                                    {s.x - (ts.x * 0.5F), s.y - r - ts.y - 6.0F},
-                                                    {s.x - (ts.x * 0.5F), s.y + r + 6.0F}}};
-            for (const ImVec2& c : candidates) {
-                const ImVec4 rect{c.x - 1.0F, c.y, c.x + ts.x + 1.0F, c.y + ts.y};
-                const bool free = std::ranges::none_of(label_rects, [&](const ImVec4& q) {
-                    return rect.x < q.z && q.x < rect.z && rect.y < q.w && q.y < rect.w;
-                });
-                if (free) {
-                    label_rects.push_back(rect);
-                    dl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, IM_COL32(0, 0, 0, 120));
-                    dl->AddText(c, IM_COL32(255, 255, 255, 235), text.c_str());
-                    break;
-                }
-            }
+        if (app.draw.labels && id != app.selected && (scale > 0.05F || id < 100)) {
+            place_label(id, s, r);
         }
         const float d = std::hypot(io.MousePos.x - s.x, io.MousePos.y - s.y);
         if (d < nearest_dist) {

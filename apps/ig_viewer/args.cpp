@@ -119,8 +119,8 @@ Args parse_args(int argc, const char* const* argv) {
     if (a.error.empty() && (a.origin_lat < -89.0 || a.origin_lat > 89.0)) {
         a.error = "origin latitude must be within +-89 degrees";
     }
-    if (a.error.empty() && (a.stress < 0 || a.stress > 2000)) {
-        a.error = "--stress must be 0..2000";
+    if (a.error.empty() && (a.stress < 0 || a.stress > 1000)) {
+        a.error = "--stress must be 0..1000 (the Host message must fit in a UDP datagram)";
     }
     return a;
 }

@@ -38,7 +38,7 @@ Options:
 | `--select ID` | entity selected at start |
 | `--start-hour H` | scripted UTC time of day at start (default 10) |
 | `--screenshot FILE.png --frames N` | render N frames, save a PNG, exit 0 |
-| `--stress N` | add N extra scripted entities (load testing) |
+| `--stress N` | add N extra scripted entities, 0..1000 (the Host message must fit one UDP datagram) |
 | `--bench N` | render N frames unthrottled and print the frame rate |
 
 ## Controls
@@ -56,6 +56,8 @@ Options:
 Camera modes: **Host view** uses the View Control / View Definition the Host sent (attached
 entity, offsets, FOV; falls back to the free camera until one exists), **Chase** orbits the
 selected entity, **Free** is a fly camera.
+
+![Host view: the scripted Host's view from the ownship, looking at the convoy](img/host-view.png)
 
 ![Free camera](img/free-view.png)
 
@@ -114,4 +116,3 @@ stress before this fix is gone.)
 - OpenGL is deprecated on macOS (raylib still uses it); high-DPI scaling is not tuned.
 - Windows/MSVC is expected to work but is unverified; the Linux build of the viewer is not
   required (`cigi_mock_ig` itself builds everywhere).
-- The Host-view screenshot shows only terrain when the scripted ownship looks at the ground.

@@ -321,8 +321,11 @@ Result<void> ScriptedHost::build_frame(MessageBuilder& builder) {
             .entity_id = ownship_id,
             .x_offset = 1.0F,
             .z_offset = -1.0F,
-            .pitch = -12.0F, // looking down and into the turn, so the convoy comes into view
-            .yaw = 45.0F,
+            // The ownship banks ~23 degrees into its clockwise turn, so its right wing points
+            // below the horizon: yaw 75 (convoy is a little ahead of the right wing) and pitch
+            // +12 (cancelling the bank) frame the convoy ~11 degrees below the horizon.
+            .pitch = 12.0F,
+            .yaw = 75.0F,
         });
     }
 

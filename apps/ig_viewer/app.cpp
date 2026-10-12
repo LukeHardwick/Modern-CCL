@@ -30,6 +30,8 @@ void step_simulation(AppState& app) {
     MessageBuilder builder(Direction::IgToHost, storage);
     if (app.ig.build_reply(builder, replies)) {
         record.ig_message.assign(builder.bytes().begin(), builder.bytes().end());
+    } else {
+        app.last_error = "reply: IG message does not fit its buffer";
     }
 
     app.history.push_back(std::move(record));

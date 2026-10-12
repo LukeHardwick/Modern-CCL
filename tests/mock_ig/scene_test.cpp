@@ -496,6 +496,21 @@ TEST(Scene, InactiveEntitiesDoNotMove) {
     EXPECT_DOUBLE_EQ(scene.find(1)->position.lat_deg, 51.5);
 }
 
+TEST(Scene, ChildrenOfAnInactiveParentAreNotExtrapolated) {
+    SceneModel scene(config());
+    auto p = top_level(1, 51.5, -0.12, 100.0);
+    p.entity_state = EntityState::InactiveStandby;
+    scene.apply(p);
+    scene.apply(child(2, 1, 1, 0, 0));
+    scene.apply(RateControl{.entity_id = 2, .x_linear_rate = 10.0F});
+    scene.advance(5.0);
+    EXPECT_DOUBLE_EQ(scene.find(2)->offset.x, 1.0);
+    p.entity_state = EntityState::Active;
+    scene.apply(p);
+    scene.advance(5.0);
+    EXPECT_GT(scene.find(2)->offset.x, 1.0);
+}
+
 TEST(Scene, ANewEntityControlRestartsExtrapolationFromItsState) {
     SceneModel scene(config());
     scene.apply(top_level(1, 51.5, -0.12, 100.0));

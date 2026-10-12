@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <imgui.h>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,9 @@ struct UiState {
     mock::Vec3d map_center{};
     float map_scale = 0.09F; ///< Pixels per metre.
     bool map_follow = false;
+    // Scratch buffers reused every frame by the map.
+    std::vector<ImVec2> map_pts;
+    std::vector<ImVec4> map_label_rects;
     // Inspector
     int inspector_offset = 0; ///< 0: newest recorded frame; n: n frames older.
     std::string inspector_filter;

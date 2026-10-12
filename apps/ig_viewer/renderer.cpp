@@ -611,11 +611,13 @@ void Renderer::draw_overlay(const CameraResult& cam, const SkyState& sky,
             const int x = static_cast<int>(s.x) - (w / 2);
             int y = static_cast<int>(s.y) - h - 4;
             int steps = 0;
-            while (steps < 12 && overlaps(x, y, w, h)) {
+            bool found = !overlaps(x, y, w, h);
+            while (!found && steps < 12) {
                 y -= h + 1;
                 ++steps;
+                found = !overlaps(x, y, w, h);
             }
-            if (steps == 12) {
+            if (!found) {
                 return; // no room: drop the label rather than draw an unreadable pile
             }
             placed.push_back({x, y, w, h});
@@ -648,8 +650,6 @@ void Renderer::draw_overlay(const CameraResult& cam, const SkyState& sky,
     const std::string hud =
         std::format("{}   UTC {:02}:{:02}   sun {:.0f} deg   {} entities", mode, c.hour, c.minute,
                     sky.sun.elevation_deg, scene.entities().size());
-    const int text_color_dark = sky.daylight > 0.5F ? 1 : 0;
-    (void)text_color_dark;
     DrawText(hud.c_str(), 12, GetScreenHeight() - 30, 20, Fade(BLACK, 0.85F));
     DrawText(hud.c_str(), 10, GetScreenHeight() - 32, 20, WHITE);
 }

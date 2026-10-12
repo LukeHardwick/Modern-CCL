@@ -265,6 +265,7 @@ public:
 private:
     void log_line(std::string text);
     void destroy_tree(std::uint16_t id);
+    [[nodiscard]] bool active_chain(const Entity& e) const;
     [[nodiscard]] bool would_cycle(std::uint16_t entity_id, std::uint16_t parent_id) const;
     void resolve_entity(Entity& e);
     void record_trails();
