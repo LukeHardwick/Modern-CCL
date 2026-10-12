@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
     cigi::demo::add_demo_host_options(app, options);
     CLI11_PARSE(app, argc, argv);
 
-    const auto logger =cigi::demo::make_logger("host", options.log_level);
+    const auto logger = cigi::demo::make_logger("host", options.log_level);
     auto host = cigi::demo::DemoHost::create(options, logger);
     if (!host) {
         logger->error("{}", host.error());

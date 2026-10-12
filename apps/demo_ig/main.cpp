@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
     cigi::demo::add_demo_ig_options(app, options);
     CLI11_PARSE(app, argc, argv);
 
-    const auto logger =cigi::demo::make_logger("ig", options.log_level);
+    const auto logger = cigi::demo::make_logger("ig", options.log_level);
     auto ig = cigi::demo::DemoIg::create(options, logger);
     if (!ig) {
         logger->error("{}", ig.error());
