@@ -39,5 +39,17 @@ ignore). Start-up exchange: §2.8, §4.1.1 IG Control, §4.2.1 Start of Frame.
    Host. Document `on_user<P>` in `docs/guide/host-quickstart.md` and in the "User-defined packets"
    section of `docs/design/03-packet-and-message-api.md` (replace the "deferred" note).
 
+5. **T09a review follow-ups** (facade; small, same files as item 1):
+   - Standby false positive: a Host-requested Standby plus one reordered stale frame before the
+     IG's first Standby SOF counts as an IG restart (and replays the database). Skip the restart
+     rule while the requested mode is Standby. Test it.
+   - `FaultInjectingTransport` header: document that a failing `send()` returns its own error and
+     drops (but still counts) the deferred datagram.
+   - `examples/host_minimal.cpp:19`: the comment still says "a plain flag is async-signal-safe";
+     correct it (only `volatile std::sig_atomic_t` / lock-free atomics are).
+   - `Ig` logs "Host connected" on every failed latch attempt (`src/facade/ig.cpp` ~149-151): log
+     once per successful latch.
+   - Missing tests: "-n after Lost", "request_database while Lost", IgCore-level latch retry.
+
 ## Acceptance
 README rules 6–9; ≥ 95 % line coverage on new code; `check_pcap.sh` passes.
