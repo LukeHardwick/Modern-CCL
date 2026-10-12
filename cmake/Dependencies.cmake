@@ -168,3 +168,23 @@ if(CIGI_BUILD_SESSION)
         FetchContent_MakeAvailable(spdlog)
     endblock()
 endif()
+
+if(CIGI_BUILD_DEMOS)
+    # CLI11 2.7.2 (released 2026-08-02; tag verified with `git ls-remote`, tag object
+    # 919ce47..., commit cbd58a3...): command-line parsing for the demo apps only (header-only,
+    # exceptions on; the library never links it).
+    FetchContent_Declare(CLI11
+        URL https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.7.2.tar.gz
+        URL_HASH SHA256=46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    # Normal variables inside block() so a parent project's settings are never overridden.
+    block()
+        set(CLI11_BUILD_TESTS OFF)
+        set(CLI11_BUILD_EXAMPLES OFF)
+        set(CLI11_BUILD_DOCS OFF)
+        set(CLI11_INSTALL OFF)
+        FetchContent_MakeAvailable(CLI11)
+    endblock()
+endif()
