@@ -3,6 +3,9 @@
 Tools track · Depends on T20 (manifest format) · Runs before T22 · Branch `task/t22a-sample-models`
 Follow the shared rules in [README.md](README.md) (rule 6 does not apply).
 
+> **📌 User input first (2026-10-12):** do not start or launch this task until the user has
+> given their extra requirements for it. Ask them first; fold their answers into this brief.
+
 ## Why (planner, 2026-10-12)
 Free CC0/CC-BY models rarely have separate, correctly pivoted nodes for articulated parts (CIGI
 ICD 4.1.6). Some are skinned, which T22 does not support. Generating our own models from a script
