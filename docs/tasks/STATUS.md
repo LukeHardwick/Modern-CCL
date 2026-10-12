@@ -23,7 +23,13 @@ README.md). All checks green on the release candidate: macOS 658/658 (98.3 % lin
 debug + ASan 655/655.
 
 ## Open task branches
-None: every task branch is merged. No agents are running.
+Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel):
+- **T09** `task/t09-demo-apps`: demo_host + demo_ig, CLI11. Told not to touch the facade/examples
+  (report facade gaps instead) or `apps/ig_viewer/`.
+- **T09c** `task/t09c-facade-examples`: `on_user<P>`, examples on the facade, T09a follow-ups
+  (folded into its brief). Told not to touch `apps/` or `cmake/Dependencies.cmake`.
+Next: T09b Part 2 after T09 merges (reuses its CLI11/options) → T11 (ask the user before it
+downloads/builds the LGPL CCL) → M1.
 
 ### T09b Part 1 — merged
 Opus review fixes applied (CIGI_BUILD_MOCK_IG guard, Host view aimed at the convoy, SOF echoes
