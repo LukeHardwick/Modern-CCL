@@ -2,7 +2,12 @@
 # node names and pivots the CIGI articulated parts need and no licence questions.
 #
 #   blender --background --python tools/models/make_models.py -- \
-#       --out databases/sample/models [--preview docs/guide/img/models] [--only jet]
+#       --out databases/sample/models [--preview docs/guide/img/models] [--deflect] [--only jet]
+#       [--detail K]
+#
+# --detail K multiplies every tessellation count and never changes the shapes, so a --detail 4
+# build is a dense reference for the audit (keep it out of the repository: it is about 16x the
+# size, and its primitives exceed raylib's vertex limit, which is then only a note).
 #
 # Or use scripts/make_models.sh.
 #
@@ -37,6 +42,10 @@ MODELS = {
     "jet": (lambda detail: hawk.build(detail), (12.43, 9.94, 3.98)),
 }
 
+# raylib 6.0 keeps mesh indices as unsigned short: at most 65 536 vertices per (node, material)
+# primitive (its glTF loader truncates 32-bit indices with only a warning).
+MAX_PRIMITIVE_VERTICES = 65536
+
 # Preview poses: node -> (axis index, degrees); used by --deflect.
 DEFLECT = {
     "aileron_l": (0, 22.0), "aileron_r": (0, -22.0), "flap_l": (0, -28.0),
@@ -66,22 +75,45 @@ def glb_json(path):
     return json.loads(data[20:20 + chunk_length])
 
 
-def check_glb(path, expected):
-    """Node names exist, left/right are on the right sides, no skins or animations."""
+def glb_primitives(doc):
+    """(node, material, vertices, triangles) for every primitive, as a viewer loads them."""
+    acc = doc.get("accessors", [])
+    mats = [m.get("name") for m in doc.get("materials", [])]
+    out = []
+    for node in doc.get("nodes", []):
+        if "mesh" not in node:
+            continue
+        for prim in doc["meshes"][node["mesh"]]["primitives"]:
+            nv = acc[prim["attributes"]["POSITION"]]["count"]
+            nt = (acc[prim["indices"]]["count"] if "indices" in prim else nv) // 3
+            mat = mats[prim["material"]] if "material" in prim else None
+            out.append((node.get("name"), mat, nv, nt))
+    return out
+
+
+def check_glb(path, expected, vertex_limit=True):
+    """Node names exist, left/right are on the right sides, no skins or animations, and every
+    primitive fits raylib's 16-bit indices. Returns (problems, notes, doc): over-limit
+    primitives are only notes when `vertex_limit` is off (dense reference builds)."""
     doc = glb_json(path)
     nodes = {n.get("name"): n for n in doc.get("nodes", [])}
     problems = [f"missing node {n}" for n in expected if n not in nodes]
+    notes = []
     for name, node in nodes.items():
         x = (node.get("translation") or [0.0, 0.0, 0.0])[0]
         if name.endswith("_l") and not x > 0.01:
             problems.append(f"{name}: left part must have +X (glTF), got x={x:.3f}")
         if name.endswith("_r") and not x < -0.01:
             problems.append(f"{name}: right part must have -X (glTF), got x={x:.3f}")
+    for node, mat, nv, _nt in glb_primitives(doc):
+        if nv > MAX_PRIMITIVE_VERTICES:
+            (problems if vertex_limit else notes).append(
+                f"{node}/{mat}: {nv} vertices > {MAX_PRIMITIVE_VERTICES} (raylib 16-bit indices)")
     if doc.get("skins"):
         problems.append("skins present")
     if doc.get("animations"):
         problems.append("animations present")
-    return problems, doc
+    return problems, notes, doc
 
 
 def scene_stats():
@@ -231,8 +263,8 @@ def pose(deflect):
                 obj.rotation_euler[axis] = math.radians(deg)
 
 
-def render_previews(name, outdir, ground_z, c, size):
-    """c = centre of the model, size = reference length."""
+def render_previews(name, outdir, ground_z, c, size, deflect=False):
+    """c = centre of the model, size = reference length; `deflect` adds the deflected pose."""
     scene = setup_preview_scene(ground_z)
     outdir.mkdir(parents=True, exist_ok=True)
     pose(False)
@@ -252,11 +284,18 @@ def render_previews(name, outdir, ground_z, c, size):
     scene.render.resolution_x, scene.render.resolution_y = 960, 600
     render_view((outdir / f"{name}_closeup.png").resolve(), loc=(cx + 3.4, cy - 8.6, cz + 1.8),
                 target=(cx + 0.1, cy - 3.0, cz + 0.2), lens=48)
+    # canopy and spine side profile, intake close-up (left side)
+    render_view((outdir / f"{name}_canopy.png").resolve(), loc=(cx + 60, cy - 1.0 * k, 1.25 * k),
+                target=(cx, cy - 1.0 * k, 1.25 * k), ortho=6.6 * k, up_hint=(0, 0, 1))
+    render_view((outdir / f"{name}_intake.png").resolve(), loc=(cx + 2.6 * k, -4.0 * k, 0.7 * k),
+                target=(cx + 0.85 * k, -1.7 * k, 0.12 * k), lens=50)
     scene.render.resolution_x, scene.render.resolution_y = 1100, 700
-    pose(True)
-    render_view((outdir / f"{name}_deflected.png").resolve(),
-                loc=(cx - 12 * k, cy + 14 * k, cz + 7 * k), target=(cx, cy + 0.5 * k, cz), lens=42)
-    pose(False)
+    if deflect:
+        pose(True)
+        render_view((outdir / f"{name}_deflected.png").resolve(),
+                    loc=(cx - 12 * k, cy + 14 * k, cz + 7 * k), target=(cx, cy + 0.5 * k, cz),
+                    lens=42)
+        pose(False)
 
 
 # ---------------------------------------------------------------- main
@@ -267,6 +306,8 @@ def main():
     parser = argparse.ArgumentParser(prog="make_models.py")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--preview", type=Path, help="also render preview PNGs into this folder")
+    parser.add_argument("--deflect", action="store_true",
+                        help="with --preview: also render the control surfaces deflected")
     parser.add_argument("--no-export", action="store_true", help="skip writing .glb files")
     parser.add_argument("--only", choices=sorted(MODELS), action="append")
     parser.add_argument("--detail", type=float, default=1.0)
@@ -281,10 +322,18 @@ def main():
         tris, length, span, height = scene_stats()
         floating = check_islands()
         glb = args.out / f"{name}.glb"
+        notes = []
         if not args.no_export:
             export_glb(glb)
-            problems, _doc = check_glb(glb, expected)
+            # dense reference builds (--detail > 1) are not loaded by raylib
+            problems, notes, doc = check_glb(glb, expected, vertex_limit=args.detail <= 1.0)
             size_kb = glb.stat().st_size / 1024
+            prims = glb_primitives(doc)
+            verts = sum(p[2] for p in prims)
+            big = max(prims, key=lambda p: p[2])
+            print(f"[make_models] {name}: glTF {sum(p[3] for p in prims)} tris, {verts} vertices "
+                  f"({verts / max(1, sum(p[3] for p in prims)):.3f} per tri), {len(prims)} "
+                  f"primitives, largest {big[0]}/{big[1]} {big[2]} vertices")
         else:
             problems, size_kb = [], 0
         dim_err = [abs(a - b) / b for a, b in zip((length, span, height), want)]
@@ -293,11 +342,14 @@ def main():
         if max(dim_err) > 0.04:
             problems.append(f"dimensions off by {max(dim_err) * 100:.1f} %")
         problems += floating
+        for n in notes:
+            print(f"[make_models] {name}: note: {n}")
         for p in problems:
             print(f"[make_models] {name}: PROBLEM: {p}")
         failed |= bool(problems)
         if args.preview:
-            render_previews(name, args.preview, hawk.GROUND, (0.0, 0.3, 0.3), 12.43)
+            render_previews(name, args.preview, hawk.GROUND, (0.0, 0.3, 0.3), 12.43,
+                            args.deflect)
     sys.exit(1 if failed else 0)
 
 

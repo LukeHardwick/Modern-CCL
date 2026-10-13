@@ -6,6 +6,16 @@
 #
 # Every glTF node is one `Mesh` (a bmesh with per-face material index and vertex colour); an
 # object's origin is the node pivot, so a moving part is built around its hinge.
+#
+# Detail: a Mesh multiplies the segment counts it is given (tubes, sweeps, bands, revolves) by
+# its `detail`; builders scale their own ring and profile counts the same way. A higher detail
+# only refines the tessellation of the same analytic shapes, so `--detail 4` is a dense
+# reference for the `--detail 1` model.
+#
+# Colour: a colour is an RGBA tuple or a field `f(p, c)` evaluated per face corner, where `p` is
+# the corner's vertex position and `c` the face centre (parent frame). Continuous terms come from
+# `p`, so every corner of a vertex gets the same colour and the glTF exporter shares the vertex;
+# a region (panel, radome) may come from `c`, which splits vertices only along its boundary.
 
 import math
 
@@ -64,6 +74,11 @@ def smoothstep(t):
     return t * t * (3.0 - 2.0 * t)
 
 
+def count(base, d, lo=3):
+    """A tessellation count scaled by the detail factor."""
+    return max(lo, int(round(base * d)))
+
+
 def pchip(xs, ys):
     """Monotone cubic Hermite interpolant (Fritsch-Carlson) through (xs, ys)."""
     n = len(xs)
@@ -97,6 +112,58 @@ def superellipse_point(theta, n):
     c, s = math.cos(theta), math.sin(theta)
     e = 2.0 / n
     return (math.copysign(abs(c) ** e, c), math.copysign(abs(s) ** e, s))
+
+
+def superellipse_normal(sx, sz, a, b, n):
+    """Outward 2-D normal of (x/a)^n + (z/b)^n = 1 at the unit-shape point (sx, sz)."""
+    gx = math.copysign(abs(sx) ** (n - 1), sx) / a
+    gz = math.copysign(abs(sz) ** (n - 1), sz) / b
+    k = math.hypot(gx, gz) or 1.0
+    return gx / k, gz / k
+
+
+# ---------------------------------------------------------------- stations (tessellation)
+
+
+def _warp(t, cosine):
+    return 0.5 - 0.5 * math.cos(math.pi * t) if cosine else t
+
+
+def _unwarp(s, cosine):
+    return math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * s))) / math.pi if cosine else s
+
+
+def _knot_params(a, b, knots, cosine):
+    lo, hi = min(a, b), max(a, b)
+    inner = sorted(k for k in set(knots) if lo < k < hi)
+    if a > b:
+        inner.reverse()
+    return [0.0] + [_unwarp((k - a) / (b - a), cosine) for k in inner] + [1.0], inner
+
+
+def station_counts(a, b, n, knots=(), cosine=True):
+    """Segments per interval between consecutive knots for `stations` (at least one each)."""
+    ts, _inner = _knot_params(a, b, knots, cosine)
+    return [max(1, int(round((t1 - t0) * n))) for t0, t1 in zip(ts, ts[1:])]
+
+
+def stations(a, b, n, knots=(), cosine=True, counts=None):
+    """About n + 1 values from a to b, cosine-spaced (denser at both ends) or uniform, with every
+    knot inside (a, b) present exactly, so that feature lines (panel joints, hinge lines) fall on
+    vertex rings. `counts` (from station_counts) fixes the segments per interval so that several
+    lofts line up. Knots only move tessellation points; the shape stays the same."""
+    ts, inner = _knot_params(a, b, knots, cosine)
+    counts = counts or station_counts(a, b, n, knots, cosine)
+    assert len(counts) == len(ts) - 1, "knots outside the range differ between lofts"
+    out = []
+    for i, k in enumerate(counts):
+        for j in range(k):
+            if j == 0 and i > 0:
+                out.append(inner[i - 1])
+            else:
+                out.append(a + (b - a) * _warp(ts[i] + (ts[i + 1] - ts[i]) * j / k, cosine))
+    out.append(b)
+    return out
 
 
 # ---------------------------------------------------------------- scene and materials
@@ -136,7 +203,7 @@ class Mesh:
     """A bmesh being built for one glTF node. `origin` is the node pivot in the parent frame:
     all points passed in are in the PARENT frame and are stored relative to the origin."""
 
-    def __init__(self, name, origin=(0.0, 0.0, 0.0), shade=True):
+    def __init__(self, name, origin=(0.0, 0.0, 0.0), shade=True, detail=1.0):
         self.name = name
         self.bm = bmesh.new()
         self.origin = Vector(origin)
@@ -144,6 +211,12 @@ class Mesh:
         self.mat = MAT["paint"]
         self.color = grey(0.7)
         self.shade = shade
+        self.detail = detail
+        self.last_rings = None
+
+    def n(self, base, lo=3):
+        """A segment count scaled by this mesh's detail."""
+        return count(base, self.detail, lo)
 
     # -- low level
     def vert(self, p):
@@ -167,13 +240,15 @@ class Mesh:
         except ValueError:
             return None
         m, c = self._style(mat, color)
-        if callable(c):
-            centre = sum((v.co for v in uniq), Vector()) / len(uniq) + self.origin
-            c = c(centre)
         f.material_index = m
         f.smooth = smooth
-        for loop in f.loops:
-            loop[self.layer] = c
+        if callable(c):
+            centre = sum((v.co for v in uniq), Vector()) / len(uniq) + self.origin
+            for loop in f.loops:
+                loop[self.layer] = c(loop.vert.co + self.origin, centre)
+        else:
+            for loop in f.loops:
+                loop[self.layer] = c
         return f
 
     def poly(self, points, mat=None, color=None, smooth=False):
@@ -190,6 +265,20 @@ class Mesh:
             if f.normal.dot(Vector(want(c))) < 0:
                 f.normal_flip()
 
+    def orient_all(self, faces, sample, want):
+        """Flip every face in `faces` together when most of the `sample` faces point against
+        `want(centre)`: keeps a consistently wound open surface consistent."""
+        score = 0.0
+        for f in sample:
+            if f is None or not f.is_valid:
+                continue
+            f.normal_update()
+            score += f.normal.dot(Vector(want(f.calc_center_median() + self.origin)))
+        if score < 0:
+            for f in faces:
+                if f is not None and f.is_valid:
+                    f.normal_flip()
+
     def recalc(self, faces):
         faces = [f for f in faces if f is not None and f.is_valid]
         if faces:
@@ -197,11 +286,18 @@ class Mesh:
 
     # -- surfaces
     def rings(self, rings, wrap_rings=False, close_ring=True, caps=(True, True), mat=None,
-              color=None, smooth=True, solid=True, flip=False, skip=None):
+              color=None, smooth=True, solid=True, flip=False, skip=None, ends=(None, None)):
         """Loft through equal-length point rings. Coincident points inside a ring merge into
-        one vertex (poles). Returns the faces. `skip(centre)` leaves holes."""
+        one vertex (poles). Returns the faces. `skip(centre)` leaves holes. `ends` may give
+        existing vertex lists for the first and/or last ring, so lofts can be chained; the
+        vertex rings used are kept in `last_rings`."""
         vr = []
-        for ring in rings:
+        last = len(rings) - 1
+        for r, ring in enumerate(rings):
+            given = ends[0] if r == 0 else (ends[1] if r == last else None)
+            if given is not None:
+                vr.append(list(given))
+                continue
             verts, cache = [], []
             for p in ring:
                 p = Vector(p)
@@ -214,6 +310,7 @@ class Mesh:
                     cache.append((p, v))
                     verts.append(v)
             vr.append(verts)
+        self.last_rings = vr
         faces = []
         pairs = list(zip(vr, vr[1:]))
         if wrap_rings:
@@ -247,6 +344,7 @@ class Mesh:
         """Cone/cylinder between two points."""
         p0, p1 = Vector(p0), Vector(p1)
         r1 = r0 if r1 is None else r1
+        seg = self.n(seg)
         axis = (p1 - p0).normalized()
         ref = Vector((0, 0, 1)) if abs(axis.z) < 0.9 else Vector((1, 0, 0))
         u = axis.cross(ref).normalized()
@@ -260,6 +358,7 @@ class Mesh:
     def sweep(self, pts, radius, seg=6, mat=None, color=None, smooth=True, closed=False):
         """Circular tube along a polyline (parallel-transport frame)."""
         pts = [Vector(p) for p in pts]
+        seg = self.n(seg)
         n = len(pts)
         rings = []
         t0 = (pts[1] - pts[0]).normalized()
@@ -277,11 +376,33 @@ class Mesh:
                           for k in range(seg)])
         return self.rings(rings, wrap_rings=closed, mat=mat, color=color, smooth=smooth)
 
+    def band(self, pts, normals, width, thick, seg=8, mat=None, color=None):
+        """A flat frame strip along the polyline `pts` lying on a surface with unit `normals`:
+        a rounded-rectangle section `width` across, standing `thick` proud of the surface (its
+        base is sunk by thick/2 so no gap shows)."""
+        pts = [Vector(p) for p in pts]
+        seg = self.n(seg, 4)
+        n = len(pts)
+        rings = []
+        for i in range(n):
+            t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+            nr = Vector(normals[i])
+            nr = (nr - t * nr.dot(t)).normalized()
+            side = t.cross(nr)
+            c = pts[i] + nr * (thick * 0.25)
+            ring = []
+            for k in range(seg):
+                sx, sz = superellipse_point(2 * math.pi * (k + 0.5) / seg, 4.0)
+                ring.append(c + side * (width * 0.5 * sx) + nr * (thick * 0.75 * sz))
+            rings.append(ring)
+        return self.rings(rings, mat=mat, color=color, smooth=True)
+
     def revolve_x(self, centre, profile, seg=24, mat=None, color=None, smooth=True,
                   closed_profile=False):
         """Surface of revolution about an axis parallel to X through `centre`; `profile` is
         (u along the axis, radius) points."""
         c = Vector(centre)
+        seg = self.n(seg)
         rings = [[c + Vector((u, r * math.cos(2 * math.pi * k / seg),
                               r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
                  for u, r in profile]
@@ -320,9 +441,9 @@ class Mesh:
         self.recalc(faces)
         return faces
 
-
-    # -- surface decals (panel lines, patches, fasteners): thin raised geometry
-    def oriented(self, verts, hint, mat=None, color=None, smooth=False):
+    # -- surface decals (panel lines, fasteners): thin raised geometry, smooth shaded so the
+    # strips share their vertices
+    def oriented(self, verts, hint, mat=None, color=None, smooth=True):
         f = self.face(verts, mat, color, smooth)
         if f is not None:
             f.normal_update()
@@ -330,9 +451,9 @@ class Mesh:
                 f.normal_flip()
         return f
 
-    def ribbon(self, surf, uvs, width, grow=0.004, color=None, mat=None):
+    def ribbon(self, surf, uvs, width, grow=0.004, color=None, mat=None, skip=None):
         """A narrow strip following the polyline `uvs` of the surface function `surf(u, v) ->
-        (point, normal)`."""
+        (point, normal)`. Stations where `skip(point)` is true are left out (hidden parts)."""
         pts = [surf(u, v) for u, v in uvs]
         n = len(pts)
         left, right = [], []
@@ -340,13 +461,17 @@ class Mesh:
             a = pts[max(i - 1, 0)][0]
             b = pts[min(i + 1, n - 1)][0]
             t = (b - a)
-            if t.length < 1e-9:
+            if t.length < 1e-9 or (skip is not None and skip(p)):
+                left.append(None)
+                right.append(None)
                 continue
             side = t.normalized().cross(nr).normalized() * (width / 2.0)
             q = p + nr * grow
             left.append((self.vert(q - side), nr))
             right.append((self.vert(q + side), nr))
         for i in range(len(left) - 1):
+            if left[i] is None or left[i + 1] is None:
+                continue
             self.oriented([left[i][0], right[i][0], right[i + 1][0], left[i + 1][0]],
                           left[i][1], mat, color)
 
@@ -477,17 +602,18 @@ def naca_t(x):
                   - 0.1036 * x ** 4)
 
 
-def foil_ring(le, te, normal, tc, a, b, count, scale=1.0, mid_scale=None):
+def foil_ring(le, te, normal, tc, a, b, count, scale=1.0, mid_scale=None, xs=None):
     """Closed loop around an aerofoil between chord fractions a..b: upper surface front to
     back, then lower surface back to front. `scale` shrinks thickness (tip rounding);
-    `mid_scale` pulls the section toward its mid-chord point."""
+    `mid_scale` pulls the section toward its mid-chord point. `xs` gives the chord fractions
+    explicitly (default: `count` cosine-spaced steps)."""
     le, te, normal = Vector(le), Vector(te), Vector(normal).normalized()
     chord = te - le
     c = chord.length
+    if xs is None:
+        xs = [a + (b - a) * (0.5 - 0.5 * math.cos(math.pi * k / count)) for k in range(count + 1)]
     upper, lower = [], []
-    for k in range(count + 1):
-        t = k / count
-        x = a + (b - a) * (0.5 - 0.5 * math.cos(math.pi * t))
+    for x in xs:
         th = naca_t(x) * tc * c * scale
         base = le + chord * x
         if mid_scale is not None:
@@ -498,5 +624,8 @@ def foil_ring(le, te, normal, tc, a, b, count, scale=1.0, mid_scale=None):
     return upper + lower[::-1]
 
 
-def smoothstep_blend(t):
-    return smoothstep(t)
+def tip_params(k, n):
+    """Rounded tip, ring k of n (1..n): (fraction of the tip length, thickness scale, chord
+    scale toward mid-chord); an elliptic cap ending in a thin flat edge."""
+    s = math.sin(0.5 * math.pi * k / n)
+    return s, 0.15 + 0.85 * math.sqrt(max(0.0, 1.0 - s * s)), 1.0 - 0.45 * s ** 3
