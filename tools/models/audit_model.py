@@ -3,12 +3,14 @@
 #
 #   blender --background --factory-startup --python tools/models/audit_model.py -- \
 #       --model M.glb --reference R.glb --config tools/models/audit/jet.toml --out DIR \
-#       [--images] [--fast] [--strict]
+#       [--images] [--fast] [--strict] [--jobs N]
 #
 # Writes DIR/<name>_audit.json (byte-identical for the same inputs), DIR/<name>_audit.md
 # (PASS/FAIL per gate) and, with --images, heat-map PNGs. Exit status 1 when a hard gate fails
-# (any gate with --strict), 2 on bad input. The method is explained in plain language in
-# docs/research/04-model-audit.md; scripts/audit_models.sh builds the reference and runs this.
+# (any gate with --strict), 2 on bad input. On large models the visibility rays are cast by
+# N worker processes (Blender again, with --visibility-worker); the result does not depend on
+# N. The method is explained in plain language in docs/research/04-model-audit.md;
+# scripts/audit_models.sh builds the reference and runs this.
 #
 # Everything is measured on the file's own data (glb_io reads it with struct + numpy) in the
 # modelling frame of tools/models: metres, x = vehicle left, y = aft (nose at -y), z = up.
@@ -40,7 +42,8 @@ DEFAULTS = {
     "sampling": {"spacing": 0.05, "inset": 0.01, "weld": 1e-6, "kmax": 64,
                  "vis_spacing": 0.25, "vis_kmax": 4, "vis_inset": 0.001},
     "view": {"width": 1920, "height": 1080, "vfov_deg": 60.0},
-    "visibility": {"directions": 162, "ray_offset": 1e-4, "clusters": 10},
+    "visibility": {"directions": 162, "ray_offset": 1e-4, "clusters": 10,
+                   "parallel_min": 20000},
     "headroom": {"ratios": [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01],
                  "min_component": 2000, "slack": 0.05, "max_reverse_points": 50000},
     "hygiene": {"degenerate_area": 1e-10, "sliver_deg": 2.0, "island_margin": 0.05},
@@ -72,8 +75,11 @@ def load_config(path):
     cfg = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
            for k, v in DEFAULTS.items()}
     if path is not None:
-        with open(path, "rb") as fh:
-            user = tomllib.load(fh)
+        raw = Path(path).read_bytes()
+        user = tomllib.loads(raw.decode("utf-8"))
+        # the report identifies the config by the bytes actually used
+        cfg["_path"], cfg["_sha256"], cfg["_bytes"] = path, hashlib.sha256(raw).hexdigest(), \
+            len(raw)
         for k, v in user.items():
             if isinstance(v, dict) and isinstance(cfg.get(k), dict):
                 cfg[k] = {**cfg[k], **v}
@@ -701,11 +707,16 @@ class Visibility:
     (every edge shared by an even number of its triangles, no glass) and every sample lies
     inside that piece (odd number of crossings along two fixed rays), then every ray from
     every sample must cross the piece, so both sides are hidden without casting the rest.
-    Each piece is tried once per triangle."""
+    Each piece is tried once per triangle.
+
+    `part = (i, n)` tests only every n-th non-degenerate triangle, starting at the i-th (one
+    worker's share, see Audit.start_visibility). A triangle's result and its ray counts do not
+    depend on any other triangle, so merged() over parts 0..n-1 equals one run over all."""
 
     PARITY_DIRS = ((0.53766, 0.29129, 0.79123), (-0.45192, 0.83174, -0.32269))
 
-    def __init__(self, model, geos, cfg, fast, want_back=None, gcomp=None, closed=None):
+    def __init__(self, model, geos, cfg, fast, want_back=None, gcomp=None, closed=None,
+                 part=(0, 1)):
         from mathutils import Vector
         vcfg = cfg["visibility"]
         smp = cfg["sampling"]
@@ -718,6 +729,7 @@ class Visibility:
         gcomp = np.zeros(T, dtype=np.int64) if gcomp is None else gcomp
         closed = np.zeros(int(gcomp.max()) + 1 if T else 0, dtype=bool) if closed is None \
             else closed
+        closed_set = set(np.nonzero(closed)[0].tolist())
         self.front = np.zeros(T, dtype=bool)
         self.back = np.zeros(T, dtype=bool)
         self.tested = ~deg
@@ -732,6 +744,7 @@ class Visibility:
         owner, bary, _pts, starts = make_samples(rest, idx, smp["vis_spacing"], smp["inset"],
                                                  smp["vis_kmax"], smp["vis_inset"])
         self.samples = len(owner)
+        mine = idx[int(part[0])::int(part[1])]
         hits = {}  # triangle -> set of node ids that blocked a ray (non-visible triangles)
         centre = np.zeros(3)
         for pi, (pose, geo) in enumerate(zip(cfg["poses"], geos)):
@@ -761,12 +774,12 @@ class Visibility:
             reach = 2.0 * radius + 1.0
             eye_pos = [Vector(geo.empties[e].tolist()) for e in eyes if e in geo.empties]
             if pi == 0:
-                cand = idx
+                cand = mine
             else:
                 # Re-test only what this pose can change: triangles of moved or hidden nodes,
                 # and triangles that some moved node blocked in an earlier pose (a ray that
                 # was blocked only by geometry that did not move stays blocked).
-                cand = np.array(sorted(t for t in idx.tolist()
+                cand = np.array(sorted(t for t in mine.tolist()
                                        if (not self.front[t] or (want_back[t] and
                                                                  not self.back[t]))
                                        and pose_map[t] >= 0 and
@@ -775,7 +788,7 @@ class Visibility:
                 self.pose_retests[pose["name"]] = int(len(cand))
             if len(cand) == 0 or tree is None:
                 if tree is None and pi == 0:
-                    self.front[idx] = True
+                    self.front[mine] = True
                 continue
             pieces = _Pieces(geo, rest_of, occ, gcomp, closed, reach, eye_pos, self)
             gi = pose_map[cand]
@@ -790,21 +803,12 @@ class Visibility:
                 pts = b[:, 0:1] * v[0] + b[:, 1:2] * v[1] + b[:, 2:3] * v[2]
                 n = nrm[ci]
                 blockers = hits.setdefault(t, set())
-                own = gcomp[t]
-                tried = set()
-
-                def try_enclose(w, pts=pts, own=own, tried=tried, blockers=blockers):
-                    if w in tried or w == own or not closed[w]:
-                        return False
-                    tried.add(w)
-                    if pieces.encloses(w, pts):
-                        blockers.add(pieces.node_of(w))
-                        return True
-                    return False
+                # closed pieces this triangle's rays may test for enclosure (each once)
+                enclose = (closed_set, int(gcomp[t]), set(), pieces, blockers)
                 dirs = hemi[:, 0:1] * t1[ci] + hemi[:, 1:2] * t2[ci] + hemi[:, 2:3] * n
                 if not self.front[t]:
                     r = self._side(tree, occ_node, occ_comp, pts, n, dirs, reach, eye_pos,
-                                   blockers, try_enclose)
+                                   enclose)
                     if r == "enclosed":
                         self.enclosed += 1
                         continue  # every ray from every sample is blocked: both sides
@@ -812,7 +816,7 @@ class Visibility:
                         self.front[t] = True
                 if (not self.front[t] or want_back[t]) and not self.back[t]:
                     r = self._side(tree, occ_node, occ_comp, pts, -n, -dirs, reach, [],
-                                   blockers, try_enclose)
+                                   enclose)
                     if r == "enclosed":
                         self.enclosed += 1
                         continue
@@ -824,6 +828,40 @@ class Visibility:
         self.back_only = self.tested & ~self.front & self.back
         self.centre = centre
 
+    def as_part(self):
+        """This run's results as plain arrays (what a worker process hands back)."""
+        return {"front": self.front, "back": self.back, "rays": np.int64(self.rays),
+                "enclosed": np.int64(self.enclosed), "samples": np.int64(self.samples),
+                "retest_names": np.array(sorted(self.pose_retests), dtype=str),
+                "retests": np.array([self.pose_retests[k] for k in sorted(self.pose_retests)],
+                                    dtype=np.int64)}
+
+    @classmethod
+    def merged(cls, parts, rest, cfg, fast):
+        """One result from the parts (i, n), i = 0..n-1, of a split run (see `part`)."""
+        self = cls.__new__(cls)
+        T = len(rest.v)
+        self.ndir = cfg["fast"]["directions"] if fast else cfg["visibility"]["directions"]
+        self.off = cfg["visibility"]["ray_offset"]
+        self.tested = ~(rest.area < cfg["hygiene"]["degenerate_area"])
+        self.front = np.zeros(T, dtype=bool)
+        self.back = np.zeros(T, dtype=bool)
+        self.rays = self.enclosed = 0
+        self.pose_retests = {}
+        for p in parts:
+            self.front |= np.asarray(p["front"], dtype=bool)
+            self.back |= np.asarray(p["back"], dtype=bool)
+            self.rays += int(p["rays"])
+            self.enclosed += int(p["enclosed"])
+            for name, count in zip(np.asarray(p["retest_names"]).tolist(),
+                                   np.asarray(p["retests"]).tolist()):
+                self.pose_retests[name] = self.pose_retests.get(name, 0) + int(count)
+        self.samples = int(parts[0]["samples"]) if parts else 0
+        self.hidden = self.tested & ~self.front & ~self.back
+        self.back_only = self.tested & ~self.front & self.back
+        self.centre = None
+        return self
+
     def _pose_map(self, rest, geo, pose):
         """Rest triangle index -> triangle index in the posed geo (-1 when hidden)."""
         if len(geo.v) == len(rest.v):
@@ -834,28 +872,24 @@ class Visibility:
         out[keep] = np.arange(int(keep.sum()))
         return out
 
-    def _side(self, tree, occ_node, occ_comp, pts, n, dirs, reach, eyes, blockers,
-              try_enclose):
+    def _side(self, tree, occ_node, occ_comp, pts, n, dirs, reach, eyes, enclose):
         """True when a ray from some sample escapes (or reaches an eyepoint), "enclosed" when
-        the samples turn out to lie inside a closed piece that a ray hit, else False."""
+        the samples turn out to lie inside a closed piece that a ray hit, else False.
+
+        The eyepoint rays (one per sample and eyepoint) go first: they are few, and most
+        cockpit triangles are seen from an eyepoint. The order changes only how many rays are
+        cast, never the answer. `enclose` = (ids of the closed pieces, the triangle's own
+        piece, pieces already tried for this triangle, _Pieces, nodes that blocked a ray)."""
         from mathutils import Vector
+        closed_set, own, tried, pieces, blockers = enclose
         rc = tree.ray_cast
-        dl = [Vector(d) for d in dirs.tolist()]
         nv = Vector(n.tolist())
+        off = nv * self.off
+        origins = [Vector(p) + off for p in pts.tolist()]
         rays = 0
         try:
-            for p in pts.tolist():
-                o = Vector(p) + nv * self.off
-                for d in dl:
-                    rays += 1
-                    hit = rc(o, d, reach)
-                    if hit[0] is None:
-                        return True
-                    k = hit[2]
-                    blockers.add(occ_node[k])
-                    if try_enclose(occ_comp[k]):
-                        return "enclosed"
-                for e in eyes:
+            for e in eyes:
+                for o in origins:
                     to = e - o
                     dist = to.length
                     if dist < 1e-9 or to.dot(nv) <= 0:
@@ -865,6 +899,21 @@ class Visibility:
                     if hit[0] is None:
                         return True
                     blockers.add(occ_node[hit[2]])
+            dl = [Vector(d) for d in dirs.tolist()]
+            for o in origins:
+                for d in dl:
+                    rays += 1
+                    hit = rc(o, d, reach)
+                    if hit[0] is None:
+                        return True
+                    k = hit[2]
+                    blockers.add(occ_node[k])
+                    w = occ_comp[k]
+                    if w in closed_set and w != own and w not in tried:
+                        tried.add(w)
+                        if pieces.encloses(w, pts):
+                            blockers.add(pieces.node_of(w))
+                            return "enclosed"
             return False
         finally:
             self.rays += rays
@@ -885,19 +934,23 @@ class _Pieces:
             sel = self.occ[self.gcomp[self.rest_of[self.occ]] == w]
             self.trees[w] = bvh(self.geo.v[sel])
             self.nodes[w] = int(self.geo.node[sel[0]])
-            self.eye_inside[w] = any(self._inside(self.trees[w], e) for e in self.eyes)
+            # not counted in `rays`: it is done once per piece, not per triangle, so a count
+            # would depend on how the triangles are split between worker processes
+            self.eye_inside[w] = any(self._inside(self.trees[w], e, count=False)
+                                     for e in self.eyes)
         return self.trees[w]
 
     def node_of(self, w):
         self._tree(w)
         return self.nodes[w]
 
-    def _crossings(self, tree, p, d):
+    def _crossings(self, tree, p, d, count=True):
         """Number of surface crossings along the ray, or None when the start point is
         within 0.1 mm of the surface (inside/outside not decidable there)."""
-        n, o, travelled = 0, p, 0.0
+        n, o = 0, p
         for _ in range(10000):
-            self.owner.rays += 1
+            if count:
+                self.owner.rays += 1
             hit = tree.ray_cast(o, d, self.reach)
             if hit[0] is None:
                 return n
@@ -907,8 +960,8 @@ class _Pieces:
             o = hit[0] + d * 2e-5
         return None
 
-    def _inside(self, tree, p):
-        counts = [self._crossings(tree, p, d) for d in self.owner.pdirs]
+    def _inside(self, tree, p, count=True):
+        counts = [self._crossings(tree, p, d, count) for d in self.owner.pdirs]
         return all(c is not None and c % 2 == 1 for c in counts)
 
     def encloses(self, w, pts):
@@ -1165,10 +1218,13 @@ def run_probe(probe, geo, topo, cfg):
 
 
 class Audit:
-    def __init__(self, model_path, ref_path, cfg, fast=False, log=print):
+    def __init__(self, model_path, ref_path, cfg, fast=False, log=print, jobs=1):
         self.cfg = cfg
         self.fast = fast
         self.log = log
+        self.jobs = max(1, int(jobs))  # worker processes for the visibility check
+        self.vis_workers = 0           # how many actually ran (0 = in this process)
+        self.worker_command = None     # tests only: replaces the Blender command line
         self.model_path = Path(model_path)
         self.ref_path = Path(ref_path) if ref_path else None
         self.warnings = []
@@ -1245,14 +1301,10 @@ class Audit:
         self.matches = matches
         self.tick("shape+shading", t0)
 
-        # C: headroom
-        t0 = time.perf_counter()
-        self.headroom = self.run_headroom(geo, rgeo, topo, matches, groups)
-        self.tick("headroom", t0)
-
-        # C: visibility (the back side is also tested where the normal disagrees with the
-        # reference by more than 90 degrees, to tell which of the two is flipped)
-        t0 = time.perf_counter()
+        # C: visibility inputs (the back side is also tested where the normal disagrees with
+        # the reference by more than 90 degrees, to tell which of the two is flipped). On a
+        # large model the rays are cast by worker processes while this one does the headroom.
+        t_vis = time.perf_counter()
         self.ref_flip = self.has_ref & (self.nerr > 90.0)
         gcomp = np.zeros(len(geo.v), dtype=np.int64)
         closed, offset = [], 0
@@ -1262,9 +1314,27 @@ class Audit:
             closed.append(tp.closed_components(geo))
             offset += tp.ncomp
         closed = np.concatenate(closed) if closed else np.zeros(0, dtype=bool)
-        self.vis = Visibility(model, geos, cfg, self.fast, want_back=self.ref_flip,
-                              gcomp=gcomp, closed=closed)
-        self.tick("visibility", t0)
+        vis_inputs = (model, geos, self.ref_flip, gcomp, closed)
+        job = self.start_visibility(*vis_inputs)
+        try:
+            # C: headroom
+            t0 = time.perf_counter()
+            self.headroom = self.run_headroom(geo, rgeo, topo, matches, groups)
+            self.tick("headroom", t0)
+        except BaseException:
+            if job is not None:
+                for proc in job["procs"]:
+                    proc.kill()
+                    proc.wait()
+                import shutil
+                shutil.rmtree(job["dir"], ignore_errors=True)
+            raise
+
+        # C: visibility
+        if job is None:
+            t_vis = time.perf_counter()
+        self.vis = self.finish_visibility(job, *vis_inputs)
+        self.tick("visibility", t_vis)
 
         # D
         t0 = time.perf_counter()
@@ -1303,6 +1373,90 @@ class Audit:
         self.result = self.assemble()
         self.timing["total"] = time.perf_counter() - t_all
         return self.result
+
+    # -------------------------------------------------------------- visibility workers
+
+    def start_visibility(self, model, geos, want_back, gcomp, closed):
+        """Start `jobs` Blender processes that each run the visibility check on every
+        jobs-th triangle (Visibility `part`), when jobs > 1 and the model has at least
+        [visibility] parallel_min triangles. They run while this process does the headroom
+        check; finish_visibility() collects them. Returns None to run it in this process."""
+        cfg = self.cfg
+        if self.jobs < 2 or len(geos[0].v) < cfg["visibility"]["parallel_min"]:
+            return None
+        command = self.worker_command
+        if command is None:
+            try:
+                import bpy
+            except ImportError:
+                return None
+            command = [bpy.app.binary_path, "--background", "--factory-startup",
+                       "--python-exit-code", "2", "--python", str(Path(__file__).resolve()),
+                       "--"]
+        import shutil
+        import subprocess
+        import tempfile
+        tmp = Path(tempfile.mkdtemp(prefix="audit_visibility_"))
+        procs = []
+        try:
+            np.save(tmp / "want_back.npy", want_back)
+            np.save(tmp / "gcomp.npy", gcomp)
+            np.save(tmp / "closed.npy", closed)
+            spec = {"model": str(self.model_path.resolve()), "sha256": self.model.sha256,
+                    "config": {k: v for k, v in cfg.items() if not k.startswith("_")},
+                    "fast": self.fast, "dir": str(tmp), "parts": self.jobs}
+            for i in range(self.jobs):
+                (tmp / f"spec{i}.json").write_text(json.dumps({**spec, "part": i}))
+                with open(tmp / f"log{i}.txt", "w") as log:
+                    procs.append(subprocess.Popen(
+                        command + ["--visibility-worker", str(tmp / f"spec{i}.json")],
+                        stdout=log, stderr=subprocess.STDOUT))
+        except OSError as exc:  # could not start them: run the check in this process
+            print(f"[audit] could not start visibility workers ({exc}); running here",
+                  file=sys.stderr)
+            for proc in procs:
+                proc.kill()
+                proc.wait()
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None
+        return {"dir": tmp, "procs": procs}
+
+    def finish_visibility(self, job, model, geos, want_back, gcomp, closed):
+        """The visibility result: computed here (job None) or merged from the workers. A
+        part whose worker failed is computed here instead, so the result is the same."""
+        cfg = self.cfg
+        if job is None:
+            return Visibility(model, geos, cfg, self.fast, want_back=want_back, gcomp=gcomp,
+                              closed=closed)
+        import shutil
+        n = len(job["procs"])
+        parts = []
+        worked = 0
+        try:
+            for i, proc in enumerate(job["procs"]):
+                code = proc.wait()
+                part = None
+                if code == 0:
+                    try:
+                        with np.load(job["dir"] / f"part{i}.npz") as z:
+                            part = {k: z[k] for k in z.files}
+                        worked += 1
+                    except (OSError, ValueError):
+                        part = None
+                if part is None:
+                    tail = (job["dir"] / f"log{i}.txt").read_text(errors="replace")[-1500:]
+                    print(f"[audit] visibility worker {i + 1}/{n} failed (exit {code}); "
+                          f"computing its part here. Its log ends:\n{tail}", file=sys.stderr)
+                    part = Visibility(model, geos, cfg, self.fast, want_back=want_back,
+                                      gcomp=gcomp, closed=closed, part=(i, n)).as_part()
+                parts.append(part)
+        finally:
+            for proc in job["procs"]:
+                if proc.poll() is None:
+                    proc.kill()
+            shutil.rmtree(job["dir"], ignore_errors=True)
+        self.vis_workers = worked
+        return Visibility.merged(parts, geos[0], cfg, self.fast)
 
     # -------------------------------------------------------------- pieces
 
@@ -1435,11 +1589,15 @@ class Audit:
             res["tool"]["blender"] = bpy.app.version_string
         except ImportError:
             pass
-        for key, path in (("model", self.model_path), ("reference", self.ref_path),
-                          ("config", self.cfg.get("_path"))):
-            if path is not None:
-                res["inputs"][key] = {"file": Path(path).name, "sha256": sha256(path),
-                                      "bytes": Path(path).stat().st_size}
+        # identified by the bytes that were measured (hashed when they were read)
+        for key, path, glb in (("model", self.model_path, self.model),
+                               ("reference", self.ref_path, self.ref)):
+            if glb is not None:
+                res["inputs"][key] = {"file": Path(path).name, "sha256": glb.sha256,
+                                      "bytes": int(glb.size)}
+        if cfg.get("_path") is not None:
+            res["inputs"]["config"] = {"file": Path(cfg["_path"]).name,
+                                       "sha256": cfg["_sha256"], "bytes": cfg["_bytes"]}
         res["settings"] = {
             "sample_spacing": rm(cfg["fast"]["spacing"] if self.fast
                                  else cfg["sampling"]["spacing"]),
@@ -1751,7 +1909,12 @@ def mm(v):
     return "-" if v is None else f"{v * 1000:.2f}"
 
 
-def write_md(res, name, timing=None):
+def num(n):
+    """Whole number with a space as the thousands separator."""
+    return f"{n:,}".replace(",", " ")
+
+
+def write_md(res, name, timing=None, timing_note=None):
     L = []
     s = res["summary"]
     m = res["model"]
@@ -1780,13 +1943,12 @@ def write_md(res, name, timing=None):
     L.append("")
     L.append("## Model")
     L.append("")
-    L.append(f"{m['triangles']:,} triangles, {m['vertices']:,} vertices "
+    L.append(f"{num(m['triangles'])} triangles, {num(m['vertices'])} vertices "
              f"({m['verts_per_tri']:.2f} per triangle), {m['nodes']} nodes, "
              f"{m['primitives']} primitives (draw calls), {m['materials']} materials; largest "
-             f"primitive {m['max_vertices_per_primitive']:,} vertices. Size "
+             f"primitive {num(m['max_vertices_per_primitive'])} vertices. Size "
              f"{m['length']:.3f} × {m['span']:.3f} × {m['height']:.3f} m (length × span × "
-             f"height). Hidden: {m['hidden']:,} triangles ({m['hidden_frac'] * 100:.2f} %)."
-             .replace(",", " "))
+             f"height). Hidden: {num(m['hidden'])} triangles ({m['hidden_frac'] * 100:.2f} %).")
     L.append("")
     L.append("## Per node")
     L.append("")
@@ -1891,6 +2053,7 @@ def write_md(res, name, timing=None):
         L.append("## Runtime")
         L.append("")
         L.append(", ".join(f"{k} {v:.1f} s" for k, v in timing.items()) +
+                 (f"; {timing_note}" if timing_note else "") +
                  " (the only part of this report that changes between runs).")
         L.append("")
     return "\n".join(L)
@@ -1899,9 +2062,40 @@ def write_md(res, name, timing=None):
 # ---------------------------------------------------------------- main
 
 
+def visibility_worker(spec_path):
+    """Entry point of a worker process started by Audit.start_visibility: run one part of
+    the visibility check and save it as part<i>.npz next to the spec."""
+    import os
+    spec = json.loads(Path(spec_path).read_text())
+    out = Path(spec["dir"])
+    if sha256(spec["model"]) != spec["sha256"]:
+        print("[audit worker] the model file changed during the audit", file=sys.stderr)
+        return 2
+    cfg = spec["config"]
+    model = glb_io.read_glb(spec["model"])
+    geos = [Geo(model, p, cfg["model"]["glass_materials"]) for p in cfg["poses"]]
+    vis = Visibility(model, geos, cfg, spec["fast"], want_back=np.load(out / "want_back.npy"),
+                     gcomp=np.load(out / "gcomp.npy"), closed=np.load(out / "closed.npy"),
+                     part=(spec["part"], spec["parts"]))
+    final = out / f"part{spec['part']}.npz"
+    partial = out / f"part{spec['part']}.partial"
+    with open(partial, "wb") as fh:
+        np.savez(fh, **vis.as_part())
+    os.replace(partial, final)  # the parent never sees a half-written file
+    return 0
+
+
+def default_jobs():
+    """Worker processes for the visibility check: up to 4, never more than the CPUs."""
+    import os
+    return max(1, min(4, os.cpu_count() or 1))
+
+
 def main(argv=None):
     if argv is None:
         argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if argv[:1] == ["--visibility-worker"]:
+        return visibility_worker(argv[1])
     ap = argparse.ArgumentParser(prog="audit_model.py", description=__doc__)
     ap.add_argument("--model", required=True, type=Path)
     ap.add_argument("--reference", type=Path)
@@ -1912,12 +2106,16 @@ def main(argv=None):
     ap.add_argument("--fast", action="store_true",
                     help="fewer samples and directions, for iteration (not for checkpoints)")
     ap.add_argument("--strict", action="store_true", help="exit 1 when any gate fails")
+    ap.add_argument("--jobs", type=int, default=None,
+                    help="worker processes for the visibility check on large models "
+                         f"(default {default_jobs()} here; 1 = none). Results do not depend "
+                         "on it.")
     args = ap.parse_args(argv)
     try:
         cfg = load_config(args.config)
-        cfg["_path"] = args.config
         name = args.name or cfg["model"].get("name") or args.model.stem
-        audit = Audit(args.model, args.reference, cfg, fast=args.fast)
+        jobs = default_jobs() if args.jobs is None else args.jobs
+        audit = Audit(args.model, args.reference, cfg, fast=args.fast, jobs=jobs)
         res = audit.run()
     except (glb_io.GlbError, OSError, tomllib.TOMLDecodeError, KeyError, ValueError) as exc:
         print(f"[audit] error: {exc}", file=sys.stderr)
@@ -1930,7 +2128,11 @@ def main(argv=None):
         import audit_render
         audit_render.render_all(audit, args.out, name)
         timing["images"] = time.perf_counter() - t0
-    (args.out / f"{name}_audit.md").write_text(write_md(res, name, timing))
+    note = None
+    if audit.vis_workers:
+        note = (f"the visibility check ran in {audit.vis_workers} worker processes alongside "
+                "the headroom check, so the stage times add up to more than the total")
+    (args.out / f"{name}_audit.md").write_text(write_md(res, name, timing, note))
     s = res["summary"]
     print(f"[audit] {name}: {s['gates'] - s['failed']}/{s['gates']} gates pass, "
           f"{s['failed']} fail ({s['hard_failed']} hard); {timing['total']:.1f} s; "

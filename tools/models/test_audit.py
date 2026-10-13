@@ -145,8 +145,8 @@ def config(**over):
     return cfg
 
 
-def audit(model, ref=None, cfg=None, fast=False):
-    a = am.Audit(model, ref, cfg or config(), fast=fast, log=lambda s: None)
+def audit(model, ref=None, cfg=None, fast=False, jobs=1):
+    a = am.Audit(model, ref, cfg or config(), fast=fast, log=lambda s: None, jobs=jobs)
     return a, a.run()
 
 
@@ -249,6 +249,72 @@ class KnownAnswers(unittest.TestCase):
         self.assertEqual(res["nodes"]["flip"]["hidden_frac"], 1.0)
         self.assertGreater(res["nodes"]["poke"]["hidden"], 0)
         self.assertLess(res["nodes"]["poke"]["hidden"], 12)
+
+    def test_3d_worker_processes_match_one_process(self):
+        """The visibility check split over 3 worker processes gives the same JSON, byte for
+        byte, as one process (closed pieces, an inside-out box, glass, a lid that a pose
+        opens)."""
+        v, t, n = uv_sphere(1.0, 24)
+        av, at = box((-0.3, -0.3, -0.3), (0.3, 0.3, 0.3))
+        bv, bt = box((0.6, -0.2, -0.2), (1.4, 0.2, 0.2))
+        cv, ct = box((-0.2, -0.2, 0.5), (0.2, 0.2, 0.7))
+        gv, gt = box((-0.4, -0.4, 1.0), (0.4, 0.4, 1.3))
+        sv, st = box((2.5, -0.5, -0.5), (3.5, 0.5, 0.0))
+        lv, lt = box((-1.0, -0.5, 0.0), (0.0, 0.5, 0.05))  # hinged at its +x edge
+        m = write("workers", [
+            node("ball", v, t, n), node("inner", av, at), node("poke", bv, bt),
+            node("flip", cv, ct[:, ::-1]), node("cap", gv, gt, material="glass"),
+            node("base", sv, st),
+            {**node("lid", lv, lt), "translation": to_gltf([[3.5, 0.0, 0.0]])[0],
+             "parent": "base"}])
+        cfg = config(nodes=["ball", "inner", "poke", "flip", "cap", "base", "lid"])
+        cfg["poses"] = [{"name": "rest"}, {"name": "open", "rotate": {"lid": [1, 100.0]}}]
+        cfg["visibility"]["parallel_min"] = 0
+        one, res1 = audit(m, None, cfg, jobs=1)
+        three, res3 = audit(m, None, cfg, jobs=3)
+        self.assertEqual((one.vis_workers, three.vis_workers), (0, 3))
+        self.assertTrue(np.array_equal(one.vis.hidden, three.vis.hidden))
+        self.assertTrue(np.array_equal(one.vis.back_only, three.vis.back_only))
+        self.assertEqual(am.dump_json(res1), am.dump_json(res3))
+        # workers that fail are replaced by computing their parts here: same answer
+        import contextlib
+        import io
+        broken = am.Audit(m, None, cfg, log=lambda s: None, jobs=2)
+        broken.worker_command = [sys.executable, "-c", "raise SystemExit(3)"]
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            res_b = broken.run()
+        self.assertEqual(err.getvalue().count("failed (exit 3)"), 2)
+        self.assertEqual(broken.vis_workers, 0)
+        self.assertEqual(am.dump_json(res1), am.dump_json(res_b))
+        NOTE["3d workers: hidden triangles, rays (1 and 3 processes)"] = (
+            int(one.vis.hidden.sum()), one.vis.rays, three.vis.rays)
+        self.assertEqual(res1["nodes"]["inner"]["hidden_frac"], 1.0)
+        self.assertEqual(res1["nodes"]["flip"]["hidden_frac"], 1.0)
+
+    def test_3e_eyepoint_sees_inside(self):
+        """A cube inside a closed shell: hidden from outside, but with an eyepoint inside the
+        shell in front of the cube's -y face, exactly that face (2 triangles) is seen. The
+        closed-shell shortcut must not fire when an eyepoint is inside the shell."""
+        ov, ot = box((-1, -1, -1), (1, 1, 1))
+        cv, ct = box((-0.2, -0.2, -0.2), (0.2, 0.2, 0.2))
+        eye = {"name": "eyepoint_front", "translation": to_gltf([[0.0, -0.6, 0.0]])[0]}
+        m = write("eyebox", [node("shell", ov, ot), node("cube", cv, ct), eye])
+        cfg = config(nodes=["shell", "cube"])
+        cfg["model"]["eyepoints"] = []
+        a, res = audit(m, None, cfg)
+        self.assertEqual(res["nodes"]["cube"]["hidden"], 12)
+        self.assertGreater(a.vis.enclosed, 0)
+        cfg["model"]["eyepoints"] = ["eyepoint_front", "eyepoint_rear"]  # rear one absent
+        a, res = audit(m, None, cfg)
+        cube = np.nonzero(a.geo.node == a.geo.node_index("cube"))[0]
+        seen = cube[~a.vis.hidden[cube]] - cube[0]
+        NOTE["3e eyepoint: cube triangles seen, enclosed shortcuts"] = (seen.tolist(),
+                                                                      a.vis.enclosed)
+        self.assertEqual(seen.tolist(), [4, 5])  # the -y face
+        self.assertEqual(res["nodes"]["shell"]["hidden"], 0)
+        self.assertEqual(a.vis.enclosed, 0)
+        self.assertEqual(res["hygiene"]["flipped"], 0)
 
     def test_3b_pose_reveals_hidden(self):
         """A lid that closes a box: the box's top face is hidden at rest and seen once the
@@ -429,7 +495,8 @@ class KnownAnswers(unittest.TestCase):
     def test_9_two_runs_byte_identical(self):
         """Two separate audit processes on the same files write byte-identical JSON. The
         model exercises every check: shape, shading, headroom (a 3 968-triangle sphere),
-        hidden faces over poses, a profile probe, hygiene and budgets."""
+        hidden faces over poses (in 2 worker processes), a profile probe, hygiene and
+        budgets."""
         import bpy
         v, t, n = uv_sphere(1.0, 64)
         rv, rt, rn = uv_sphere(1.0, 256)
@@ -443,6 +510,7 @@ class KnownAnswers(unittest.TestCase):
         cfgp.write_text(
             '[model]\nname = "det"\npublished_size = { length = 2.0, span = 2.0, height = 2.1 }\n'
             '[headroom]\nmin_component = 2000\n'
+            '[visibility]\nparallel_min = 0\n'
             '[budget]\ntotal = 100000\n'
             '[[groups]]\nname = "exterior"\nnodes = ["ball", "cap", "core"]\n'
             '[[poses]]\nname = "rest"\n'
@@ -455,9 +523,12 @@ class KnownAnswers(unittest.TestCase):
             cmd = [bpy.app.binary_path, "--background", "--factory-startup",
                    "--python-exit-code", "2", "--python", str(HERE / "audit_model.py"), "--",
                    "--model", str(m), "--reference", str(r), "--config", str(cfgp),
-                   "--out", str(out)]
+                   "--out", str(out), "--jobs", "2"]
             proc = subprocess.run(cmd, capture_output=True, text=True)
             self.assertIn(proc.returncode, (0, 1), proc.stdout[-2000:] + proc.stderr[-2000:])
+            self.assertNotIn("visibility worker", proc.stderr)  # no worker failed
+            md = (out / "det_audit.md").read_text()
+            self.assertIn("ran in 2 worker processes", md)
             blobs.append((out / "det_audit.json").read_bytes())
         NOTE["9 determinism: JSON bytes, identical"] = (len(blobs[0]), blobs[0] == blobs[1])
         self.assertEqual(blobs[0], blobs[1])

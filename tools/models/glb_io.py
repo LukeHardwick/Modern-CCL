@@ -9,6 +9,7 @@
 # The writer exists for the known-answer tests: it writes plain meshes (positions, normals,
 # optional colours, u16 or u32 indices) under named nodes.
 
+import hashlib
 import json
 import struct
 from pathlib import Path
@@ -65,9 +66,11 @@ class Node:
 
 
 class GlbModel:
-    def __init__(self, path, size, doc, nodes, materials, prims, scene_nodes, warnings):
+    def __init__(self, path, size, doc, nodes, materials, prims, scene_nodes, warnings,
+                 sha256=None):
         self.path = path
         self.size = size
+        self.sha256 = sha256              # of the bytes that were read
         self.doc = doc
         self.nodes = nodes                # list of Node (file order)
         self.materials = materials        # list of dicts: name, alpha_mode, double_sided
@@ -205,7 +208,8 @@ def read_glb(path):
         for c in n.children:
             nodes[c].parent = n.index
 
-    model = GlbModel(path, len(data), doc, nodes, materials, [], [], warnings)
+    model = GlbModel(path, len(data), doc, nodes, materials, [], [], warnings,
+                     hashlib.sha256(data).hexdigest())
     reach = []
 
     def visit(i):
