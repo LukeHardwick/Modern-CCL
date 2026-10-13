@@ -30,24 +30,18 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   (report facade gaps instead) or `apps/ig_viewer/`.
 - **T09c merged `d348d73`** (Opus review fixes applied; macOS 671/671, 98.3 % lines; Linux 668/668).
   Notes for T09d: IG dispatches before latching the sender (ig.cpp ~147-161); latch-retry test needs a seam.
-- **T22a** `task/t22a-sample-models` (CP1 accepted; the stopped CP2 attempt's WIP committed as
-  `ee579f6`, its worktree removed, then `main` merged in). **Read the "Plan update — 2026-10-12
-  late" section at the end of the T22a brief.** One fresh Opus 5.5 session (task chip), MCP + script
-  hybrid; it starts only after the user has had the T22c audit method explained and has approved
-  the gates. Budget decided 2026-10-13: **cap 250 k triangles** (exterior ≤ 100 k, cockpit
-  ≤ 150 k), `.glb` ≤ 10 MB. **CP2a part 1** (the five CP1 fixes, `--detail` scaling, per-vertex
-  colour, raylib 65 536-vertex check) handed to a new Opus session via a task chip on 2026-10-13
-  (base `4cc297f`; it switches its worktree to the branch, uses the Blender MCP with the user's
-  Blender open, and stops for review). Re-mesh, cockpit and LODs wait for the audit approval.
-  2026-10-13: that session is **paused by the user until the audit tool is ready**; its work is
-  WIP committed as `d34e913` in worktree `mystifying-shtern-4a5d56` (shape fixes and plumbing done; 0.74
-  vertices/triangle vs target 0.65; detail-shape proof, determinism, previews still to do). Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
-- **T22c** `task/t22c-model-audit` @ `b3eef14`: deterministic model audit tool, **review fixes done**
-  (all 10 findings + nits; 37/37 tests, re-run by the planner, 11 s; the reviewer's own probe cases
-  re-run against the fixes and now correct). New proposed gates for the user: unmeasured ≤ 2 %, node
-  missing from one file = FAIL, group present (exterior required, cockpit from CP2b), probe coverage
-  ≥ 95 %, canopy exactly one maximum, worker timeout 1200 s. Waiting for the user's OK to merge into
-  the T22a branch (clean worktree `mystifying-shtern-4a5d56`; T22c only adds 7 files, no overlap).
+- **T22a** `task/t22a-sample-models` @ `f7b47a8` (CP2a part 1 WIP `d34e913` + T22c merged). **Read the
+  "Plan update — 2026-10-12 late" section at the end of the T22a brief.** Budget: cap 250 k triangles
+  (exterior ≤ 100 k, cockpit ≤ 150 k), `.glb` ≤ 10 MB. The first jet session (CP1 fixes, detail
+  scaling, per-vertex colour at 0.74 v/tri, vertex-limit check) is finished; its worktree
+  `mystifying-shtern-4a5d56` was switched back to its own branch so the jet branch is free.
+  2026-10-13: a **new session** (task chip, Opus, Blender MCP + script) does the remaining work with
+  a stop at each checkpoint: finish part 1 + first real audit (user sets the gates) → CP2a re-mesh →
+  CP2b cockpit → CP3 LODs/wrap-up → Opus review → merge. Blender MCP registered at user scope.
+- **T22c merged into the T22a branch** (`f7b47a8`, 2026-10-13) after the independent Opus review
+  and verified fixes: 37/37 tests on the merged tree. It reaches `main` with T22a. Proposed new
+  gates (unmeasured ≤ 2 %, probe coverage ≥ 95 %, exact canopy maximum, group presence) are set
+  by the user with the other gate values at the first real audit.
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
