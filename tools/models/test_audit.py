@@ -351,6 +351,37 @@ class KnownAnswers(unittest.TestCase):
         self.assertEqual((small["base"]["rev_p99"], small["base"]["rev_max"]),
                          (g["shape_reverse"]["p99"], g["shape_reverse"]["max"]))
 
+    def test_1f_not_measured_flat_shaded(self):
+        """The not-measured rule also finds flat-shaded curves: a triangle that coincides
+        with the reference and has an edge neighbour turned by 0.5 to 45 degrees (a facet of
+        a curve). A flat-shaded 24-segment sphere written identically in both files: every
+        triangle is not measured, so its A and B gates FAIL "not measured" and the
+        not-measured share is 100 %. A flat-shaded box written identically: its edges turn by
+        90 degrees (real creases), so every triangle is measured, error 0, and its A, B and
+        not-measured gates pass."""
+        v, t, _n = uv_sphere(1.0, 24)
+        ball = write("um_flat_ball", [node("ball", v, t)])
+        _a, res = audit(ball, ball, config(nodes=["ball"]))
+        g = res["groups"]["exterior"]
+        self.assertEqual(res["nodes"]["ball"]["unmeasured_triangles"], len(t))
+        self.assertEqual(g["unmeasured_area_frac"], 1.0)
+        ab = ("A.exterior.p99", "A.exterior.max", "A.exterior.rev_p99", "A.exterior.rev_max",
+              "B.exterior.p95", "B.exterior.max")
+        for gid in ab:
+            self.assertEqual(gate(res, gid)["status"], "not_measured", gid)
+        self.assertEqual(gate(res, "A.exterior.unmeasured")["status"], "fail")
+        bv, bt = box((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+        cube = write("um_flat_box", [node("cube", bv, bt)])
+        _a, res2 = audit(cube, cube, config(nodes=["cube"]))
+        g2 = res2["groups"]["exterior"]
+        NOTE["1f flat-shaded: sphere not measured (tris, share); box not measured, max"] = (
+            res["nodes"]["ball"]["unmeasured_triangles"], g["unmeasured_area_frac"],
+            res2["nodes"]["cube"]["unmeasured_triangles"], g2["shape"]["max"])
+        self.assertEqual(res2["nodes"]["cube"]["unmeasured_triangles"], 0)
+        self.assertEqual((g2["shape"]["count"], g2["shape"]["max"]), (12, 0.0))
+        for gid in ab + ("A.exterior.unmeasured",):
+            self.assertEqual(gate(res2, gid)["status"], "pass", gid)
+
     def test_2a_dense_plate_headroom(self):
         """A 64 x 64 flat plate against a one-quad plate: Decimate can remove >= 95 %."""
         v, t = grid_plate(64)
