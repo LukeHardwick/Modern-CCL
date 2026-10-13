@@ -282,16 +282,17 @@ def render_all(audit, outdir, name):
         written.append(path)
         clear_cameras()
 
-    # 3. profile probes
+    # 3. profile probes, each on the model in the probe's pose (no image when no ray hit)
+    poses = [p["name"] for p in audit.cfg["poses"]]
     for probe in audit.cfg["probes"]:
         res = audit.probes[probe["name"]]
         s, h, start, u, d, hitp = audit.probe_raw[probe["name"]]
         reset()
-        tri_object("model", geo.v, np.zeros(len(geo.v), dtype=np.int32),
-                   [material("plain")])
+        pv = audit.geos[poses.index(probe["pose"])].v
+        tri_object("model", pv, np.zeros(len(pv), dtype=np.int32), [material("plain")])
         path = outdir / f"{name}_profile_{probe['name']}.png"
-        render_probe(probe, res, h, hitp, start, u, d, path)
-        written.append(path)
+        if render_probe(probe, res, h, hitp, start, u, d, path):
+            written.append(path)
     return written
 
 
@@ -305,7 +306,7 @@ def render_probe(probe, res, h, hitp, start, u, d, path):
                                                                          ok.tolist())]
     good_pts = [p for p in pts if p is not None]
     if not good_pts:
-        return
+        return False
     lo = Vector([min(p[i] for p in good_pts) for i in range(3)])
     hi_ = Vector([max(p[i] for p in good_pts) for i in range(3)])
     mid = (lo + hi_) / 2
@@ -358,6 +359,7 @@ def render_probe(probe, res, h, hitp, start, u, d, path):
                  f"{probe['min_feature'] * 100:g} cm along the probe)", 0.02, 0.03, 0.0145,
                  key="ink")
     render(path)
+    return True
 
 
 def curve_line(points, radius, key):

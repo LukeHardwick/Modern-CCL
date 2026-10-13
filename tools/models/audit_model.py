@@ -1430,7 +1430,7 @@ class Audit:
         geos = [Geo(model, p, glass) for p in cfg["poses"]]
         geo = geos[0]
         rgeo = Geo(ref, None, glass) if ref is not None else None
-        self.geo, self.rgeo = geo, rgeo
+        self.geo, self.rgeo, self.geos = geo, rgeo, geos
         self.check_inputs(model, geo)
         self.tick("load", t0)
 
