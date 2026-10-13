@@ -618,7 +618,8 @@ class KnownAnswers(unittest.TestCase):
         """A pose that hides a node hides its children too. A closed hood around a cube is a
         child of another node; hiding that parent opens the cube to view (0 of 12 hidden;
         with the hood left in place all 12 would stay hidden). A profile probe in that pose
-        traces the cube's top (z = 0.2 m), the same probe at rest the hood's (z = 0.5 m)."""
+        traces the cube's top (z = 0.2 m), the same probe at rest the hood's (z = 0.5 m). A
+        pose that names a node the model does not have changes nothing and is warned about."""
         cv, ct = box((-0.2, -0.2, -0.2), (0.2, 0.2, 0.2))
         sv, st = box((2.0, -0.5, -0.5), (3.0, 0.5, 0.5))
         hv, ht = box((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
@@ -640,10 +641,11 @@ class KnownAnswers(unittest.TestCase):
             self.assertEqual(p["coverage"], 1.0)
             self.assertEqual({h for _s, h in p["profile"]}, {height})
             self.assertTrue(gate(res, f"F.{name}.maxima")["pass"])
-        cfg["poses"] = [{"name": "rest"}]
+        cfg["poses"] = [{"name": "rest"}, {"name": "typo", "hide": ["shel"]}]
         cfg["probes"] = []
         _a, res = audit(m, None, cfg)
         self.assertEqual(res["nodes"]["core"]["hidden"], 12)
+        self.assertIn("pose typo: no node named shel in the model (ignored)", res["warnings"])
 
     def test_3b_pose_reveals_hidden(self):
         """A lid that closes a box: the box's top face is hidden at rest and seen once the

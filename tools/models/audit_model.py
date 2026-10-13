@@ -1567,6 +1567,13 @@ class Audit:
     def check_inputs(self, model, geo):
         """Warnings about input that the audit would otherwise treat silently."""
         cfg = self.cfg
+        names = {n.name for n in model.nodes}
+        for pose in cfg["poses"]:
+            unknown = sorted((set(pose.get("rotate") or {}) | set(pose.get("hide") or []))
+                             - names)
+            if unknown:
+                self.warnings.append(f"pose {pose['name']}: no node named "
+                                     f"{', '.join(unknown)} in the model (ignored)")
         glass = set(cfg["model"]["glass_materials"])
         used = {p.material for p in model.prims}
         for mat in model.materials:
