@@ -38,13 +38,18 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   ≤ 150 k), `.glb` ≤ 10 MB. **CP2a part 1** (the five CP1 fixes, `--detail` scaling, per-vertex
   colour, raylib 65 536-vertex check) handed to a new Opus session via a task chip on 2026-10-13
   (base `4cc297f`; it switches its worktree to the branch, uses the Blender MCP with the user's
-  Blender open, and stops for review). Re-mesh, cockpit and LODs wait for the audit approval. Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
+  Blender open, and stops for review). Re-mesh, cockpit and LODs wait for the audit approval.
+  2026-10-13: that session is **paused by the user until the audit tool is ready**; its work is
+  uncommitted in worktree `mystifying-shtern-4a5d56` (shape fixes and plumbing done; 0.74
+  vertices/triangle vs target 0.65; detail-shape proof, determinism, previews still to do). Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
 - **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
   `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
   16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
   (user's choice), based on the T22a branch. Scope changed 2026-10-13: no CP1 baseline (the new
-  model is evaluated instead). Stops after the tool, tests and plain-language doc; the planner
-  explains it to the user, then Opus review, then merge into the T22a branch.
+  model is evaluated instead). First agent stopped by the usage limit at `7a5e2ec` (tool, GLB reader,
+  config, known-answer tests committed); a **fresh Opus agent** took over 2026-10-13 07:30 to run and
+  fix the tests, add `scripts/audit_models.sh`, a two-run CP1 smoke test and the plain-language doc
+  `docs/research/04-model-audit.md`. Then: the planner explains it, Opus review, merge into T22a.
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
