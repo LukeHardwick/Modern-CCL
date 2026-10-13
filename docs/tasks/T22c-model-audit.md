@@ -162,3 +162,6 @@ Skip the CP1 baseline: no baseline report, no CP1 heat maps, no baseline section
 `docs/research/04-model-audit.md`. One smoke run on CP1 is allowed only to prove the tool runs at
 full size and to measure the runtime. The model is evaluated when the new version (CP2a) is
 finished; the user sets the final gate values then.
+Tooling only (user, 2026-10-13): the CP1 jet will be replaced, so do not review, interpret or tune
+anything to its numbers. The smoke run reports only: completed, runtime, two runs byte-identical.
+Correctness is shown with the synthetic known-answer tests.
