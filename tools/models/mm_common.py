@@ -54,10 +54,17 @@ def lerp(a, b, t):
 
 
 def hash01(*vals):
-    """Deterministic pseudo-random 0..1 from quantised numbers (FNV-1a)."""
+    """Deterministic pseudo-random 0..1 from quantised numbers: FNV-1a over the values, then
+    the MurmurHash3 finaliser, so that neighbouring small integers (panel indices) do not give
+    repeating patterns."""
     h = 2166136261
     for v in vals:
         h = ((h ^ (int(round(v * 100)) & 0xFFFFFFFF)) * 16777619) & 0xFFFFFFFF
+    h ^= h >> 16
+    h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+    h ^= h >> 16
     return h / 4294967295.0
 
 
@@ -213,6 +220,7 @@ class Mesh:
         self.shade = shade
         self.detail = detail
         self.last_rings = None
+        self.round = set()  # faces of round sections (tubes, bands): never creased in finish()
 
     def n(self, base, lo=3):
         """A segment count scaled by this mesh's detail."""
@@ -286,11 +294,13 @@ class Mesh:
 
     # -- surfaces
     def rings(self, rings, wrap_rings=False, close_ring=True, caps=(True, True), mat=None,
-              color=None, smooth=True, solid=True, flip=False, skip=None, ends=(None, None)):
+              color=None, smooth=True, solid=True, flip=False, skip=None, ends=(None, None),
+              rounded=False):
         """Loft through equal-length point rings. Coincident points inside a ring merge into
         one vertex (poles). Returns the faces. `skip(centre)` leaves holes. `ends` may give
         existing vertex lists for the first and/or last ring, so lofts can be chained; the
-        vertex rings used are kept in `last_rings`."""
+        vertex rings used are kept in `last_rings`. `rounded`: a coarse round section (tube,
+        frame band) that stays smooth however few segments it has (no crease in finish)."""
         vr = []
         last = len(rings) - 1
         for r, ring in enumerate(rings):
@@ -326,7 +336,10 @@ class Mesh:
                     c = sum((v.co for v in quad), Vector()) / 4.0 + self.origin
                     if skip(c):
                         continue
-                faces.append(self.face(quad, mat, color, smooth))
+                f = self.face(quad, mat, color, smooth)
+                faces.append(f)
+                if rounded and f is not None:
+                    self.round.add(f)
         if not wrap_rings and solid:
             for ring, first in ((vr[0], True), (vr[-1], False)):
                 if caps[0 if first else 1]:
@@ -353,7 +366,8 @@ class Mesh:
         for p, r in ((p0, r0), (p1, r1)):
             rings.append([p + r * (math.cos(2 * math.pi * k / seg) * u
                                    + math.sin(2 * math.pi * k / seg) * v) for k in range(seg)])
-        return self.rings(rings, caps=(caps, caps), mat=mat, color=color, smooth=smooth)
+        return self.rings(rings, caps=(caps, caps), mat=mat, color=color, smooth=smooth,
+                          rounded=smooth)
 
     def sweep(self, pts, radius, seg=6, mat=None, color=None, smooth=True, closed=False):
         """Circular tube along a polyline (parallel-transport frame)."""
@@ -374,7 +388,8 @@ class Mesh:
             rings.append([pts[i] + radius * (math.cos(2 * math.pi * k / seg) * u
                                              + math.sin(2 * math.pi * k / seg) * v)
                           for k in range(seg)])
-        return self.rings(rings, wrap_rings=closed, mat=mat, color=color, smooth=smooth)
+        return self.rings(rings, wrap_rings=closed, mat=mat, color=color, smooth=smooth,
+                          rounded=smooth)
 
     def band(self, pts, normals, width, thick, seg=8, mat=None, color=None):
         """A flat frame strip along the polyline `pts` lying on a surface with unit `normals`:
@@ -395,7 +410,7 @@ class Mesh:
                 sx, sz = superellipse_point(2 * math.pi * (k + 0.5) / seg, 4.0)
                 ring.append(c + side * (width * 0.5 * sx) + nr * (thick * 0.75 * sz))
             rings.append(ring)
-        return self.rings(rings, mat=mat, color=color, smooth=True)
+        return self.rings(rings, mat=mat, color=color, smooth=True, rounded=True)
 
     def revolve_x(self, centre, profile, seg=24, mat=None, color=None, smooth=True,
                   closed_profile=False):
@@ -451,28 +466,36 @@ class Mesh:
                 f.normal_flip()
         return f
 
-    def ribbon(self, surf, uvs, width, grow=0.004, color=None, mat=None, skip=None):
+    def ribbon(self, surf, uvs, width, grow=0.004, color=None, mat=None, skip=None,
+               closed=False):
         """A narrow strip following the polyline `uvs` of the surface function `surf(u, v) ->
-        (point, normal)`. Stations where `skip(point)` is true are left out (hidden parts)."""
+        (point, normal)`; with `closed` the polyline is a loop (do not repeat the first point).
+        Corners are mitred, so the strip keeps its width round them. Stations where
+        `skip(point)` is true are left out (hidden parts)."""
         pts = [surf(u, v) for u, v in uvs]
         n = len(pts)
         left, right = [], []
         for i, (p, nr) in enumerate(pts):
-            a = pts[max(i - 1, 0)][0]
-            b = pts[min(i + 1, n - 1)][0]
-            t = (b - a)
-            if t.length < 1e-9 or (skip is not None and skip(p)):
+            a = pts[(i - 1) % n if closed else max(i - 1, 0)][0]
+            b = pts[(i + 1) % n if closed else min(i + 1, n - 1)][0]
+            t1, t2 = p - a, b - p
+            if (t1.length < 1e-9 and t2.length < 1e-9) or (skip is not None and skip(p)):
                 left.append(None)
                 right.append(None)
                 continue
-            side = t.normalized().cross(nr).normalized() * (width / 2.0)
+            t1 = t1.normalized() if t1.length > 1e-9 else t2.normalized()
+            t2 = t2.normalized() if t2.length > 1e-9 else t1
+            t = t1 + t2
+            mitre = 1.0 / max(0.5, math.sqrt(max(0.0, (1.0 + t1.dot(t2)) / 2.0)))
+            side = t.normalized().cross(nr).normalized() * (width / 2.0 * mitre)
             q = p + nr * grow
             left.append((self.vert(q - side), nr))
             right.append((self.vert(q + side), nr))
-        for i in range(len(left) - 1):
-            if left[i] is None or left[i + 1] is None:
+        for i in range(n if closed else n - 1):
+            j = (i + 1) % n
+            if left[i] is None or left[j] is None:
                 continue
-            self.oriented([left[i][0], right[i][0], right[i + 1][0], left[i + 1][0]],
+            self.oriented([left[i][0], right[i][0], right[j][0], left[j][0]],
                           left[i][1], mat, color)
 
     def patch(self, surf, u0, u1, v0, v1, nu, nv, grow=0.004, color=None, mat=None):
@@ -485,8 +508,12 @@ class Mesh:
                               grid[i][j][1], mat, color)
 
     def dot(self, surf, u, v, du, dv, grow=0.004, color=None):
-        """A small square fastener head of size (du, dv) in surface parameters."""
-        self.patch(surf, u - du / 2, u + du / 2, v - dv / 2, v + dv / 2, 1, 1, grow, color)
+        """A small fastener head with the area of a du x dv rectangle in surface parameters:
+        one triangle (3 vertices; about a pixel across at the exterior design distance, where
+        its shape cannot be told from a square's)."""
+        a, b = du / math.sqrt(2.0), dv / math.sqrt(2.0)
+        pts = [surf(u - a, v - b), surf(u + a, v - b), surf(u, v + b)]
+        self.oriented([self.vert(p + nr * grow) for p, nr in pts], pts[0][1], None, color)
 
     # -- finish
     def finish(self, mats, parent=None, smooth_angle=40.0, ao=None):
@@ -497,7 +524,8 @@ class Mesh:
         for e in bm.edges:
             if len(e.link_faces) == 2:
                 f0, f1 = e.link_faces
-                if (f0.smooth and f1.smooth and f0.normal.angle(f1.normal, 0.0) > limit):
+                if (f0.smooth and f1.smooth and not (f0 in self.round and f1 in self.round)
+                        and f0.normal.angle(f1.normal, 0.0) > limit):
                     e.smooth = False
         if self.shade:
             aocache = {}

@@ -132,10 +132,21 @@ def fus_color(p, c):
     t = fus_theta(c)
     if ANTIGLARE[0] < c.y < ANTIGLARE[1] and ANTIGLARE[2] < t < ANTIGLARE[3]:
         return BLACK
-    cell = (bisect.bisect(FUS_Y_JOINTS, c.y), bisect.bisect(FUS_T_JOINTS, t))
-    col = tone(PAINT, 1.0 + 0.09 * (hash01(*cell) - 0.5))  # panel-to-panel tone, +-4.5 %
+    # panel cell; the bands either side of theta = +-pi (the right side) are one panel
+    cell = (bisect.bisect(FUS_Y_JOINTS, c.y), bisect.bisect(FUS_T_JOINTS, t) % len(FUS_T_JOINTS))
+    col = panel_tone(PAINT, cell)
     s = soot(p)
     return mix(col, SOOT, 0.7 * s) if s > 0.0 else col
+
+
+def panel_tone(base, cell, share=0.30, amount=0.10):
+    """Tone of the skin panel `cell` (a tuple of indices): most panels keep the base tone and
+    about `share` of them, chosen by a hash of the cell, are repainted a little lighter or
+    darker. Vertices split only along boundaries between panels of different tone."""
+    h = hash01(*cell)
+    if h >= share:
+        return base
+    return tone(base, 1.0 + amount if h < share / 2 else 1.0 - amount)
 
 
 def segs(base, d, lo=8):
@@ -206,8 +217,7 @@ def sill_band(m, y0, y1, side, width, thick, d, mat="paint", color=FRAME):
 
 
 def spine_color(p, c):
-    cell = bisect.bisect(FUS_Y_JOINTS, c.y)
-    return tone(PAINT, 1.0 + 0.08 * (hash01(cell, 7) - 0.5))
+    return panel_tone(PAINT, (bisect.bisect(FUS_Y_JOINTS, c.y), 7))
 
 
 def build_spine(m, d):
@@ -353,8 +363,8 @@ def wing_color(side):
         upper = c.z > wing_z(x)
         if upper and x < WALKWAY[0] and WALKWAY[1] < v < WALKWAY[2]:
             return tone(PAINT_WING, 0.91)
-        cell = (bisect.bisect(WING_X_JOINTS, x), bisect.bisect(WING_V_JOINTS, v), upper)
-        return tone(PAINT_WING, 1.0 + 0.08 * (hash01(*cell) - 0.5))
+        cell = (bisect.bisect(WING_X_JOINTS, x), bisect.bisect(WING_V_JOINTS, v), upper, side)
+        return panel_tone(PAINT_WING, cell)
     return f
 
 
@@ -461,12 +471,12 @@ def skin_hidden(p):
 def fus_rect(m, y0, y1, t0, t1, d):
     """Access panel: outline (4 panel lines) and fastener rows on the long edges."""
     ky = count(max(2, int((y1 - y0) / 0.22)), d, 2)
-    kt = count(max(2, int(abs(t1 - t0) / 0.07)), d, 2)
-    for e in (line((y0, t0), (y1, t0), ky), line((y0, t1), (y1, t1), ky),
-              line((y0, t0), (y0, t1), kt), line((y1, t0), (y1, t1), kt)):
-        m.ribbon(fus_surf, e, 0.007, 0.004, LINE, skip=skin_hidden)
+    kt = count(max(2, int(abs(t1 - t0) / 0.12)), d, 2)  # sags at most ~1.3 mm under the 4 mm lift
+    loop = (line((y0, t0), (y1, t0), ky)[:-1] + line((y1, t0), (y1, t1), kt)[:-1]
+            + line((y1, t1), (y0, t1), ky)[:-1] + line((y0, t1), (y0, t0), kt)[:-1])
+    m.ribbon(fus_surf, loop, 0.007, 0.004, LINE, skip=skin_hidden, closed=True)
     if y1 - y0 > 0.5:
-        k = int((y1 - y0) / 0.12)
+        k = int((y1 - y0) / 0.18)
         for t in (t0, t1):
             for i in range(1, k):
                 u, v = lerp(y0, y1, i / k), lerp(t, t0 + (t1 - t0) / 2, 0.06)
@@ -485,7 +495,7 @@ LEFT_RECTS = [  # (y0, y1, theta0, theta1), left side; the right side is mirrore
 
 def fuselage_decals(m, d):
     for y in FUS_Y_JOINTS:
-        m.ribbon(fus_surf, line((y, -math.pi), (y, math.pi), count(64, d, 8)), 0.007, 0.004,
+        m.ribbon(fus_surf, line((y, -math.pi), (y, math.pi), count(48, d, 8)), 0.007, 0.004,
                  LINE, skip=skin_hidden)
     y0, y1 = FUS_Y_JOINTS[0], FUS_Y_JOINTS[-1]
     for t in FUS_T_JOINTS:
@@ -508,7 +518,7 @@ def wing_decals(m, side, d):
             m.ribbon(s, line((x, 0.05), (x, 0.62), count(8, d, 2)), 0.006, 0.004, LINE)
         for v, xa, xb in ((0.14, 0.80, 4.80), (0.36, 0.80, 4.80), (0.56, 0.80, 4.40)):
             m.ribbon(s, line((xa, v), (xb, v), count(14, d, 4)), 0.006, 0.004, LINE)
-        for x in [0.9 + 0.1 * i for i in range(39)]:
+        for x in [0.9 + 0.15 * i for i in range(26)]:
             m.dot(s, x, 0.14, 0.012, 0.014, 0.005, LINE)
         m.patch(s, 0.80, 4.85, 0.004, 0.05, count(10, d, 2), 1, 0.004, ERODE)  # leading edge
     up = wing_surf(side, True)
@@ -518,9 +528,11 @@ def wing_decals(m, side, d):
         p, _n = up(x, 0.20)
         psi = math.radians(14.0 if i % 2 else -14.0)
         along = Vector((math.sin(psi), math.cos(psi), 0.0)) * 0.07
-        across = Vector((math.cos(psi), -math.sin(psi), 0.0)) * 0.004
-        m.plate([p, p + along, p + along * 0.5 + Vector((0, 0, 0.04))], across, mat="paint",
-                color=PAINT_SURF)
+        across = Vector((math.cos(psi), -math.sin(psi), 0.0)) * 0.0005
+        vane = [p, p + along, p + along * 0.5 + Vector((0, 0, 0.04))]
+        for sg in (1.0, -1.0):  # one face per side, 1 mm apart: a vane with no edge faces
+            f = m.poly([q + across * sg for q in vane], "paint", PAINT_SURF)
+            m.orient([f], lambda c, sg=sg: across * sg)
     # wing fence
     pa, _ = up(2.62, 0.02)
     pb, _ = up(2.62, 0.66)
@@ -534,7 +546,7 @@ def fin_decals(m, side, d):
         m.ribbon(s, line((z, 0.06), (z, 0.60), count(8, d, 2)), 0.006, 0.004, LINE)
     for v in (0.18, 0.38):
         m.ribbon(s, line((0.8, v), (2.3, v), count(8, d, 2)), 0.006, 0.004, LINE)
-    for z in [0.8 + 0.1 * i for i in range(16)]:
+    for z in [0.8 + 0.15 * i for i in range(11)]:
         m.dot(s, z, 0.18, 0.014, 0.012, 0.005, LINE)
     m.patch(s, 0.8, 2.40, 0.004, 0.04, count(6, d, 2), 1, 0.004, ERODE)
 
@@ -634,19 +646,7 @@ def build_fuselage(d):
 
     build_fixed_wing(m, d)
 
-    # --- fin (fixed part) with a rounded tip
-    cnt = count(20, d, 5)
-    m.rings([fin_ring(z, cnt=cnt) for z in stations(0.45, 0.62, count(1, d, 1), cosine=False)],
-            mat="paint", color=PAINT_WING, smooth=True)
-    m.rings([fin_ring(z, None, RUDDER_HINGE, cnt=cnt)
-             for z in stations(0.62, 2.42, count(4, d, 2), cosine=False)],
-            mat="paint", color=PAINT_WING, smooth=True)
-    tip = [fin_ring(2.42, cnt=cnt), fin_ring(2.46, cnt=cnt)]
-    nt = count(2, d, 2)
-    for k in range(1, nt + 1):
-        s, sc, mid = tip_params(k, nt)
-        tip.append(fin_ring(2.46 + (FIN_TOP - 2.46) * s, None, None, sc, mid, cnt))
-    m.rings(tip, mat="paint", color=PAINT_WING, smooth=True)
+    build_fin(m, d)
     m.tube((0, 5.74, 2.40), (0, 5.84, 2.40), 0.035, 0.035, 8, mat="light", color=WHITE_LAMP)
 
     # --- wing-tip pods carrying the navigation lights: left (+x) red, right (-x) green
@@ -666,26 +666,113 @@ def build_fuselage(d):
     return m
 
 
+FLAP_CUT = (WING["x0"], 2.80)  # spans where the trailing edge behind the hinge is cut away
+AIL_CUT = (3.00, 4.55)
+WING_TIP_X = 4.90  # the rounded tip starts here
+
+
+def wing_hinge_y(x):
+    """y of the hinge line at span station x: the flap's inboard, the aileron's outboard; the
+    full-chord stretch between them blends from one to the other (a station, not a cut)."""
+    return lerp(FLAP_HINGE, AIL_HINGE, smoothstep((x - FLAP_CUT[1]) / (AIL_CUT[0] - FLAP_CUT[1])))
+
+
+def foil_loft(m, stns, ring_at, hinge, is_cut, span_dir, outward, color, root_cap=False):
+    """A lifting surface as one loft: `ring_at(s, scale, mid)` gives the aerofoil ring at span
+    station s (LE, upper surface, TE, lower surface; the same chord stations on every ring,
+    with the hinge line at index `hinge`), so neighbouring stretches share their rings. Where
+    `is_cut(sa, sb)` the skin behind the hinge is left out (a flap, aileron or rudder sits
+    there), with a hinge face along the cut and a wall where the cut starts or ends.
+    `span_dir` points along increasing s, `outward(c)` is the skin's outward direction near
+    c. The last ring is capped (the tip); the first only with `root_cap`."""
+    rings = [[m.vert(q) for q in ring_at(s, sc, mid)] for s, sc, mid in stns]
+    n, h = len(rings[0]), hinge
+    front = list(range(n - h, n)) + list(range(0, h))  # edges ahead of the hinge
+    back = list(range(h, n - h + 1))  # behind the hinge, from hinge to hinge round the TE
+    span_dir = Vector(span_dir)
+    skin = []
+    for i in range(len(rings) - 1):
+        ra, rb = rings[i], rings[i + 1]
+        cut = is_cut(stns[i][0], stns[i + 1][0])
+        for j in (front if cut else range(n)):
+            skin.append(m.face([ra[j], rb[j], rb[(j + 1) % n], ra[(j + 1) % n]], "paint",
+                               color, smooth=True))
+        if not cut:
+            continue
+        f = m.face([ra[h], rb[h], rb[n - h], ra[n - h]], "paint", color)  # hinge face
+        m.orient([f], lambda c: (0.0, 1.0, 0.0))
+        for r, other in ((i, i - 1), (i + 1, i + 2)):  # a wall where the cut starts or ends
+            if 0 <= other < len(rings) and not is_cut(*sorted((stns[r][0], stns[other][0]))):
+                f = m.face([rings[r][j] for j in back], "paint", color)
+                m.orient([f], lambda c, w=span_dir * (1.0 if other < r else -1.0): w)
+    m.orient(skin, outward)
+    ends = [(rings[-1], span_dir)] + ([(rings[0], -span_dir)] if root_cap else [])
+    for ring, w in ends:
+        f = m.face(list(ring), "paint", color)
+        m.orient([f], lambda c, w=w: w)
+
+
+def foil_points(le, te, normal, tc, xs, scale=1.0, mid=None):
+    """One closed aerofoil ring through the chord fractions xs (0 .. 1): LE, upper surface,
+    TE (shared by both surfaces), lower surface."""
+    pts = foil_ring(le, te, normal, tc, 0.0, 1.0, len(xs) - 1, scale, mid, xs)
+    k = len(xs) - 1
+    return pts[:k + 1] + pts[k + 2:-1]
+
+
 def build_fixed_wing(m, d):
-    nsp = count(3, d, 1)
+    """Fixed part of each wing (foil_loft); the panel joints and the hinge line are chord
+    knots, so the panel tones change exactly at panel lines. The root is open, inside the
+    fuselage."""
+    nsp = count(9, d, 1)
     cnt = count(22, d, 5)
+    xs = stations(WING["x0"], WING_TIP_X, nsp, WING_X_JOINTS + FLAP_CUT[1:] + AIL_CUT,
+                  cosine=False)
+    nt = count(3, d, 2)
+    stns = [(x, 1.0, None) for x in xs] + [
+        (WING_TIP_X + 0.045 * s, sc, mid) for s, sc, mid in
+        (tip_params(k, nt) for k in range(1, nt + 1))]
+    le0, te0 = wing_le_te(LEFT, WING["x0"])
+    counts = station_counts(0.0, 1.0, cnt, WING_V_JOINTS + (
+        (wing_hinge_y(WING["x0"]) - le0.y) / (te0.y - le0.y),))
+    hinge = sum(counts[:len(WING_V_JOINTS) + 1])
+
+    def is_cut(xa, xb):
+        return any(lo - 1e-9 <= xa and xb <= hi + 1e-9 for lo, hi in (FLAP_CUT, AIL_CUT))
+
     for side in (LEFT, RIGHT):
-        col = wing_color(side)
-        for xa, xb, b_y in ((WING["x0"], 2.80, FLAP_HINGE), (2.80, 3.00, None),
-                            (3.00, 4.55, AIL_HINGE), (4.55, 4.90, None)):
-            le, te = wing_le_te(side, xa)
-            b0 = 1.0 if b_y is None else (b_y - le.y) / (te.y - le.y)
-            counts = station_counts(0.0, b0, cnt, WING_V_JOINTS)
-            rings = [wing_station(side, x, None, b_y, cnt=cnt, counts=counts)
-                     for x in stations(xa, xb, nsp, WING_X_JOINTS, cosine=False)]
-            m.rings(rings, mat="paint", color=col, smooth=True)
-        counts = station_counts(0.0, 1.0, cnt, WING_V_JOINTS)
-        rings = [wing_station(side, 4.90, cnt=cnt, counts=counts)]
-        nt = count(3, d, 2)
-        for k in range(1, nt + 1):
-            s, sc, mid = tip_params(k, nt)
-            rings.append(wing_station(side, 4.90 + 0.045 * s, None, None, sc, mid, cnt, counts))
-        m.rings(rings, mat="paint", color=col, smooth=True)
+        def ring_at(x, sc, mid, side=side):
+            le, te = wing_le_te(side, x)
+            vh = (wing_hinge_y(x) - le.y) / (te.y - le.y)
+            cs = stations(0.0, 1.0, cnt, WING_V_JOINTS + (vh,), counts=counts)
+            return foil_points(le, te, (0, 0, 1), wing_tc(x), cs, sc, mid)
+        foil_loft(m, stns, ring_at, hinge, is_cut, (side, 0.0, 0.0),
+                  lambda c: (0.0, 0.0, c.z - wing_z(c.x)), wing_color(side))
+
+
+FIN_CUT = (0.62, 2.42)  # the rudder sits behind the hinge between these heights
+
+
+def build_fin(m, d):
+    """Fixed part of the fin (foil_loft) with a rounded tip; the root is capped because its
+    trailing edge stands just clear of the jet pipe."""
+    cnt = count(20, d, 5)
+    zs = stations(0.45, 2.46, count(5, d, 2), FIN_CUT, cosine=False)
+    nt = count(2, d, 2)
+    stns = [(z, 1.0, None) for z in zs] + [
+        (2.46 + (FIN_TOP - 2.46) * s, sc, mid) for s, sc, mid in
+        (tip_params(k, nt) for k in range(1, nt + 1))]
+    le0, te0 = fin_le_te(0.45)
+    counts = station_counts(0.0, 1.0, cnt, ((RUDDER_HINGE - le0.y) / (te0.y - le0.y),))
+    hinge = counts[0]
+
+    def ring_at(z, sc, mid):
+        le, te = fin_le_te(z)
+        cs = stations(0.0, 1.0, cnt, ((RUDDER_HINGE - le.y) / (te.y - le.y),), counts=counts)
+        return foil_points(le, te, (1, 0, 0), fin_tc(z), cs, sc, mid)
+    foil_loft(m, stns, ring_at, hinge,
+              lambda za, zb: FIN_CUT[0] - 1e-9 <= za and zb <= FIN_CUT[1] + 1e-9,
+              (0.0, 0.0, 1.0), lambda c: (c.x, 0.0, 0.0), PAINT_WING, root_cap=True)
 
 
 def wick(m, p, direction, length=0.15):
@@ -736,7 +823,8 @@ def build_elevator(d):
         for k in range(1, nt + 1):
             s, sc, mid = tip_params(k, nt)
             rings.append(tail_ring(side, x_tip + (TAIL_X1 - x_tip) * s, sc, mid, cnt))
-        m.rings(rings, mat="paint", color=_surf_tone("elevator"), smooth=True)
+        m.rings(rings, mat="paint", color=_surf_tone("elevator"), smooth=True,
+                caps=(False, True))  # the root stays inside the fuselage in every pose
         if d >= 0.5:
             _le, te = tail_le_te(side, TAIL_X1 - 0.05)
             wick(m, te, (0, 1, 0.05), 0.12)
