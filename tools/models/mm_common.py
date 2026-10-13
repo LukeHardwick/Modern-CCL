@@ -450,11 +450,14 @@ class Mesh:
             ks = [k for k in corners if k[axis] == sgn]
             ks.sort(key=lambda k: math.atan2(k[(axis + 2) % 3], k[(axis + 1) % 3]))
             faces.append(self.poly([corners[k] for k in ks], mat, color, smooth))
-        self.recalc(faces)
+        # the faces share no vertices (flat shading), so recalc_face_normals cannot tell the
+        # inside from the outside: orient each one away from the centre
+        self.orient(faces, lambda c: c - Vector(centre))
         return faces
 
     def plate(self, outline, offset, mat=None, color=None, smooth=False):
-        """Extrude a planar polygon (3D points) along the vector `offset` (flat shaded)."""
+        """Extrude a planar convex polygon (3D points) along the vector `offset` (flat
+        shaded); every face is oriented away from the plate's centre."""
         offset = Vector(offset)
         a = [Vector(p) for p in outline]
         b = [p + offset for p in a]
@@ -462,7 +465,8 @@ class Mesh:
         for i in range(len(a)):
             j = (i + 1) % len(a)
             faces.append(self.poly([a[i], a[j], b[j], b[i]], mat, color))
-        self.recalc(faces)
+        centre = sum(a, Vector()) / len(a) + offset / 2.0
+        self.orient(faces, lambda c: c - centre)
         return faces
 
     # -- surface decals (panel lines, fasteners): thin raised geometry, smooth shaded so the

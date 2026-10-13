@@ -857,16 +857,23 @@ def build_airbrake(d):
         outer.append(o)
         inner.append(i_)
     col = _surf_tone("airbrake")
-    m.rings([outer[0], outer[1]], close_ring=False, solid=False, mat="paint", color=col,
-            smooth=True)
-    m.rings([inner[0], inner[1]], close_ring=False, solid=False, mat="paint", color=col,
-            smooth=True, flip=True)
-    for a, b in ((outer[0], inner[0]), (outer[1], inner[1])):
-        m.rings([a, b], close_ring=False, solid=False, mat="paint", color=col)
+
+    def radial(c):  # away from the fuselage axis
+        _w, top, bot, _n = fus_section(c.y)
+        return Vector((c.x, 0.0, c.z - (top + bot) / 2.0))
+    # the outer and inner skins, ends and sides are separate pieces (flat ends), so each group
+    # is oriented outwards explicitly
+    m.orient(m.rings([outer[0], outer[1]], close_ring=False, solid=False, mat="paint",
+                     color=col, smooth=True), radial)
+    m.orient(m.rings([inner[0], inner[1]], close_ring=False, solid=False, mat="paint",
+                     color=col, smooth=True), lambda c: -radial(c))
+    for (a, b), dy in (((outer[0], inner[0]), -1.0), ((outer[1], inner[1]), 1.0)):
+        m.orient(m.rings([a, b], close_ring=False, solid=False, mat="paint", color=col),
+                 lambda c, dy=dy: (0.0, dy, 0.0))
     for idx in (0, n):
-        m.rings([[outer[0][idx], inner[0][idx]], [outer[1][idx], inner[1][idx]]],
-                close_ring=False, solid=False, mat="paint", color=col)
-    m.recalc(list(m.bm.faces))
+        m.orient(m.rings([[outer[0][idx], inner[0][idx]], [outer[1][idx], inner[1][idx]]],
+                         close_ring=False, solid=False, mat="paint", color=col),
+                 lambda c: (c.x, 0.0, 0.0))
     return m
 
 
