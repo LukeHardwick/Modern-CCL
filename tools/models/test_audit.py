@@ -450,6 +450,45 @@ class KnownAnswers(unittest.TestCase):
                         first["rev_max"] > h2["threshold_max"])
         self.assertEqual(h2["headroom"], 0.0)
 
+    def test_2d_headroom_counts_what_the_a_gate_counts(self):
+        """The headroom judges a decimated piece only where the A gate measures the piece. A
+        64 x 64 plate is rippled (5 mm egg-box waves, 12.5 cm long, faded out by x = 0.25 m)
+        and flat beyond; it matches its 128 x 128 reference to under 1 mm, so it meets the
+        shape gate. With everything left of x = 0.3125 m shut inside a closed box (hidden, so
+        not measured), what counts is the flat strip on the right, 1 536 triangles: it stays
+        flat however far the plate is decimated, so every step passes and the headroom is that
+        of a flat plate (>= 95 %). Without the box the ripples count; once the flat parts have
+        been collapsed they lose their shape, and the headroom is far smaller."""
+        def rippled(n):
+            v, t = grid_plate(n)
+            v = v.copy()
+            x, y = v[:, 0], v[:, 1]
+            fade = np.where(x < 0.25, np.sin(math.pi * (x + 0.5) / 0.75) ** 2, 0.0)
+            v[:, 2] = 0.005 * fade * np.sin(2 * math.pi * x / 0.125) * np.sin(
+                2 * math.pi * y / 0.125)
+            return v, t
+        bv, bt = box((-0.55, -0.55, -0.05), (0.3125, 0.55, 0.05))
+        lid = node("lid", bv, bt)
+        mv, mt = rippled(64)
+        rv, rt = rippled(128)
+        results = {}
+        for name, extra in (("boxed", [lid]), ("open", [])):
+            m = write(f"region_{name}", [node("plate", mv, mt, smooth=True)] + extra)
+            r = write(f"region_{name}_ref", [node("plate", rv, rt, smooth=True)] + extra)
+            _a, res = audit(m, r, config(nodes=["plate", "lid"]))
+            results[name] = [x for x in res["headroom"] if x["node"] == "plate"][0]
+        boxed, opened = results["boxed"], results["open"]
+        NOTE["2d headroom region: boxed (measured, base max mm, headroom); open (same)"] = (
+            boxed["measured_triangles"], boxed["base"]["fwd_max"] * 1000, boxed["headroom"],
+            opened["measured_triangles"], opened["base"]["fwd_max"] * 1000, opened["headroom"])
+        self.assertEqual(boxed["measured_triangles"], 1536)
+        self.assertLess(boxed["base"]["fwd_max"], 1e-5)
+        self.assertTrue(all(s["pass"] for s in boxed["steps"]))
+        self.assertGreaterEqual(boxed["headroom"], 0.95)
+        self.assertEqual(opened["measured_triangles"], 8192)
+        self.assertLess(opened["base"]["fwd_max"], 0.001)  # meets the gate before decimation
+        self.assertLessEqual(opened["headroom"], 0.9)
+
     def test_3_box_in_box(self):
         """A closed box inside a closed box: the inner one is 100 % hidden, the outer 0 %.
         The inner node also holds one degenerate triangle, which is not counted in its

@@ -203,7 +203,8 @@ checks this to the micrometre), and "5 % worse" is relative to those figures. (O
 more than 50 000 reverse points, every n-th one is used, for speed, so its reverse figures can
 differ slightly.) A decimated piece has new, larger triangles that cross the old ones; there a
 sample counts when the nearest triangle of the original piece counts, and a triangle's weight
-is its area times the share of its samples that count. A piece none of whose triangles counts
+is its area times the share of its samples that count (test 2d: a plate whose rippled part is
+hidden has the headroom of a flat plate, 99 %; the same plate in the open, 80 %). A piece none of whose triangles counts
 (all hidden, flipped or not measured) is skipped and listed as such. Because it needs to know
 what can be seen, this check runs after the visibility check.
 
@@ -456,7 +457,7 @@ CPU or Blender release could change a last digit.
 ## 6. Known-answer tests
 
 `tools/models/test_audit.py` builds small models whose answers are known in advance, writes them
-as `.glb` files and audits them. All 36 pass (Blender 5.2.2, 10 s in total). Tests marked
+as `.glb` files and audits them. All 37 pass (Blender 5.2.2, 11 s in total). Tests marked
 **new** were added after the review (section 10).
 
 | # | Test | Expected | Result |
@@ -470,6 +471,7 @@ as `.glb` files and audits them. All 36 pass (Blender 5.2.2, 10 s in total). Tes
 | 2a | 64 × 64 flat plate (8 192 triangles) against a one-square plate | headroom ≥ 95 % | 99.0 % (80 triangles kept); the gate fails as it should |
 | 2b | Two-triangle plate against itself | headroom 0, nothing flagged | 0 %, no gate fails, shape and shading error 0 |
 | 2c **new** | The 5 % rule: a 64 × 64 plate 5 mm off its reference; a fine sphere 5 mm inside its reference | plate: every step stays at 5 mm (within 5.25 mm), headroom ≥ 95 %; sphere: the first step (90 %) is more than 5 % worse, headroom 0 | plate 99.0 %; sphere 6.116 mm → 7.041 mm at 90 %, headroom 0 |
+| 2d **new** | The headroom's region: a plate rippled (5 mm) on its left, flat on its right, matching its reference within 1 mm; once with everything left of x = 0.3125 m shut in a closed box, once open | boxed: only the flat strip (1 536 triangles) counts, every step passes, headroom ≥ 95 %; open: the ripples count and the headroom is far smaller | boxed 99.0 %; open 80.0 % (the 10 % step fails) |
 | 3 | Closed box inside a closed box (the inner node also holds a degenerate triangle) | inner 100 % hidden, outer 0 %; the degenerate triangle not counted | 100 % (12 of 12) and 0 % |
 | 3b | Box closed by a hinged lid | top face hidden at rest, seen once a pose opens the lid | as expected |
 | 3c | Sphere holding a box inside, a box poking out and an inside-out box | the closed-piece shortcut gives the same hidden and flipped triangles as casting every ray | identical; 23 005 rays instead of 109 402 |
@@ -626,12 +628,12 @@ measured, and some smaller faults. What changed, in the order of the review's fi
 6. **Hiding a part in a pose hides its children** (test 3h).
 7. **The headroom is measured like the A gate**: area-weighted in both directions, over the
    triangles the A gate measures, so its "5 % worse" rule compares like with like (tests 1e,
-   2c). To keep the audit fast, nearest-point searches now look within 1 cm first (section 7).
+   2c, 2d). To keep the audit fast, nearest-point searches now look within 1 cm first (section 7).
 8. **Test 6 now fails only the index gate**, and its 65 536-vertex model passes every hard
    gate.
 9. **A probe in a pose that hides parts works** (it used to look up the wrong triangles), and
    its image shows the model in that pose.
-10. **New tests** for all of the above (17 more, 36 in all; section 6).
+10. **New tests** for all of the above (18 more, 37 in all; section 6).
 
 Smaller points: the sample grids state their true limits (20 m and 16 m triangles, with a
 warning beyond); a visibility worker that hangs is stopped after `worker_timeout` and its share
