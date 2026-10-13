@@ -36,7 +36,7 @@ Research: [docs/research/03-model-format-and-fidelity.md](../research/03-model-f
 
 ## Deliverables
 1. `tools/models/audit_model.py`, run headless:
-   `blender --background --factory-startup --python tools/models/audit_model.py -- --model M.glb --reference R.glb --config tools/models/audit/jet.toml --out DIR [--images] [--fast]`
+   `blender --background --factory-startup --python-exit-code 2 --python tools/models/audit_model.py -- --model M.glb --reference R.glb --config tools/models/audit/jet.toml --out DIR [--images] [--fast]`
    writes `DIR/<name>_audit.json`, `DIR/<name>_audit.md` (PASS/FAIL per gate) and, with `--images`,
    heat-map PNGs. Exit status 1 when a hard gate fails.
 2. `tools/models/audit/jet.toml`: design viewing conditions, node groups, poses, profile probes and

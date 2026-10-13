@@ -46,7 +46,10 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   agent after the first hit the usage limit): 19/19 known-answer tests pass (re-run by the planner,
   9 s); full audit of a 250 k-triangle model 2.8 min with 4 worker processes; wrapper
   `scripts/audit_models.sh`; method doc `docs/research/04-model-audit.md`. No CP1 baseline (user).
-  Independent Opus review running. Merge into the T22a branch after the review and the user's OK;
+  Independent Opus review: **merge after fixes** (unmeasured triangles counted as zero error, probes
+  that miss pass silently, step metric blind to drops on a slope, crash exits 0, eyepoint-only
+  reversed faces missed, `hide` ignores children, plus lows/nits). A fresh Opus agent is fixing
+  them (2026-10-13). Merge into the T22a branch after the fixes and the user's OK;
   the T22a session does that merge (it has the branch checked out with uncommitted work).
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
