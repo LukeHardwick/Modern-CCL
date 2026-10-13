@@ -22,11 +22,12 @@
 #                     results do not depend on it
 # Environment: BLENDER (default: blender on the PATH).
 # Only the --out, --only and --detail flags of make_models.py are used.
-# Exit status: the audit's (0 = no hard gate failed, 1 = a hard gate failed, 2 = bad input);
-# 3 when the reference build wrote no .glb; 64 on a usage error.
+# Exit status: the audit's (0 = no hard gate failed, 1 = a hard gate failed, 2 = bad input or
+# an internal error); 3 when the reference build wrote no .glb; 64 on a usage error.
 #
 # Example: scripts/audit_models.sh --images --out /tmp/jet_audit
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1   # neither Blender run leaves __pycache__ in tools/models
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 generator="$repo/tools/models"
@@ -75,8 +76,8 @@ if [ -z "$reference" ]; then
   [ -f "$generator/make_models.py" ] || {
     echo "audit_models: no make_models.py in $generator" >&2; exit 2; }
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/audit_reference.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT   # set first, so nothing below can leave the directory behind
   tmp="$(cd "$tmp" && pwd -P)"
-  trap 'rm -rf "$tmp"' EXIT
   case "$tmp/" in
     "$(cd "$repo" && pwd -P)"/*)
       echo "audit_models: the temporary directory $tmp is inside the repository; set TMPDIR" >&2
@@ -84,7 +85,8 @@ if [ -z "$reference" ]; then
   esac
   echo "[audit_models] building the reference: $name at --detail $detail ($generator)"
   build_status=0
-  "$blender" --background --factory-startup --python "$generator/make_models.py" -- \
+  "$blender" --background --factory-startup --python-exit-code 2 \
+    --python "$generator/make_models.py" -- \
     --out "$tmp" --only "$name" --detail "$detail" > "$tmp/build.log" 2>&1 || build_status=$?
   reference="$tmp/$name.glb"
   if [ ! -f "$reference" ]; then
@@ -94,9 +96,11 @@ if [ -z "$reference" ]; then
   fi
   grep '^\[make_models\]' "$tmp/build.log" || true
   if [ "$build_status" -ne 0 ]; then
-    # make_models.py exits 1 when its own checks find a problem; the .glb is still complete.
+    # make_models.py exits 1 when its own checks find a problem (listed above); 2 is a Python
+    # error after the export (its end is shown). The .glb was written either way.
+    [ "$build_status" -eq 1 ] || tail -n 15 "$tmp/build.log"
     echo "[audit_models] note: make_models.py exited $build_status for the reference" \
-         "(problems listed above); auditing against it anyway"
+         "after writing $name.glb; auditing against it anyway"
   fi
   echo "[audit_models] reference built in $(( $(date +%s) - start )) s"
 fi
