@@ -594,10 +594,18 @@ def bvh(v):
     return BVHTree.FromPolygons(pts.tolist(), faces.tolist(), all_triangles=True)
 
 
-def nearest(tree, pts):
-    """Index of the nearest triangle for each point (-1 when the tree is empty)."""
+def nearest(tree, pts, bound=None):
+    """Index of the nearest triangle for each point (-1 when the tree is empty). With
+    `bound` (m) each search is first limited to that distance, which is several times
+    faster, and repeated without the limit where nothing lies within it: the same triangle
+    either way, except that of two equally near triangles either may come back."""
     fn = tree.find_nearest
-    out = [fn(p)[2] for p in pts.tolist()]
+    pl = pts.tolist()
+    if bound is None:
+        out = [fn(p)[2] for p in pl]
+    else:
+        out = [fn(p, bound)[2] for p in pl]
+        out = [fn(p)[2] if i is None else i for p, i in zip(pl, out)]
     return np.array([-1 if i is None else i for i in out], dtype=np.int64)
 
 
@@ -620,7 +628,7 @@ class NodeMatch:
         self.samples = len(pts)
         rv = ref.v[self.rtri]
         tree = bvh(rv)
-        j = nearest(tree, pts)
+        j = nearest(tree, pts, bound=0.01)
         a, b, c = rv[j, 0], rv[j, 1], rv[j, 2]
         rb = closest_bary(pts, a, b, c)
         q = rb[:, 0:1] * a + rb[:, 1:2] * b + rb[:, 2:3] * c
@@ -680,7 +688,7 @@ class NodeMatch:
         rc = ref.v[rsel].mean(axis=1)
         mv = geo.v[self.tri]
         mtree = bvh(mv)
-        k = nearest(mtree, rc)
+        k = nearest(mtree, rc, bound=0.01)
         bb = closest_bary(rc, mv[k, 0], mv[k, 1], mv[k, 2])
         q = bb[:, 0:1] * mv[k, 0] + bb[:, 1:2] * mv[k, 1] + bb[:, 2:3] * mv[k, 2]
         self.rerr = norm(rc - q)
@@ -797,7 +805,7 @@ def measure_patch(tv, tree_ref, ref_v, rc_pts, rc_w, cfg, spacing, counted=None,
         return {"fwd_p99": math.inf, "fwd_max": math.inf, "rev_p99": math.inf,
                 "rev_max": math.inf}
     owner, _bary, pts, starts = make_samples(patch, keep, spacing, smp["inset"], smp["kmax"])
-    j = nearest(tree_ref, pts)
+    j = nearest(tree_ref, pts, bound=0.01)  # only the distance is used: ties do not matter
     a, b, c = ref_v[j, 0], ref_v[j, 1], ref_v[j, 2]
     rb = closest_bary(pts, a, b, c)
     q = rb[:, 0:1] * a + rb[:, 1:2] * b + rb[:, 2:3] * c
@@ -805,7 +813,9 @@ def measure_patch(tv, tree_ref, ref_v, rc_pts, rc_w, cfg, spacing, counted=None,
     w = patch.area[keep]
     if region is not None:
         tree_old, old_counted = region
-        inside = old_counted[nearest(tree_old, pts)]
+        # (a decimated piece stays within millimetres of the original, so a 1 cm bound
+        # finds almost every sample's triangle at the first try)
+        inside = old_counted[nearest(tree_old, pts, bound=0.01)]
         err = np.maximum.reduceat(np.where(inside, d, -1.0), starts[:-1])
         share = np.add.reduceat(inside.astype(np.float64), starts[:-1]) / np.diff(starts)
         sel = share > 0
@@ -819,7 +829,7 @@ def measure_patch(tv, tree_ref, ref_v, rc_pts, rc_w, cfg, spacing, counted=None,
     if len(rc_pts):
         live = np.nonzero(patch.area >= cfg["hygiene"]["degenerate_area"])[0]
         pv = tv[live]
-        k = nearest(bvh(pv), rc_pts)
+        k = nearest(bvh(pv), rc_pts, bound=0.01)
         bb = closest_bary(rc_pts, pv[k, 0], pv[k, 1], pv[k, 2])
         q = bb[:, 0:1] * pv[k, 0] + bb[:, 1:2] * pv[k, 1] + bb[:, 2:3] * pv[k, 2]
         rev = wstats(norm(rc_pts - q), rc_w)
