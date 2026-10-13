@@ -13,7 +13,10 @@ the shading right, and does every triangle earn its place? It reads the `.glb` f
 loads, compares it with a much denser build of the same model, and checks the result against
 pass marks ("gates") in `jet.toml`. Each gate is reported as PASS or FAIL; a few are **hard**
 (a definite fault, such as a mesh raylib cannot load correctly) and make the tool exit with
-status 1.
+status 1. Exit status 2 means the audit could not run: bad input (a missing or broken file, a
+configuration error; one line says what) or an error in the tool itself (the Python traceback is
+printed). A crash can never end with status 0, so a script that checks the status cannot mistake
+it for a pass.
 
 How to run it (Blender 5.2, headless; nothing is installed):
 
@@ -24,13 +27,18 @@ How to run it (Blender 5.2, headless; nothing is installed):
 scripts/audit_models.sh [--images] [--out DIR] [--fast]
 
 # The tool itself, when you already have a reference build:
-blender --background --factory-startup --python tools/models/audit_model.py -- \
+blender --background --factory-startup --python-exit-code 2 \
+    --python tools/models/audit_model.py -- \
     --model M.glb --reference R.glb --config tools/models/audit/jet.toml --out DIR \
     [--images] [--fast] [--strict] [--jobs N]
 
 # The known-answer tests (exit status 0 when all pass):
-blender --background --factory-startup --python tools/models/test_audit.py
+blender --background --factory-startup --python-exit-code 2 \
+    --python tools/models/test_audit.py
 ```
+
+`--python-exit-code 2` matters: without it Blender ends with status 0 even when the Python script
+fails before it can set its own status.
 
 Outputs: `<name>_audit.json` (every number; byte-identical between runs), `<name>_audit.md` (the
 gate table, per-node figures, the worst places with coordinates) and, with `--images`, heat-map

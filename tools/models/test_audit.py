@@ -984,9 +984,12 @@ class KnownAnswers(unittest.TestCase):
 
     def test_11_internal_error_exits_2(self):
         """An unexpected error inside the audit prints its traceback and gives exit status
-        2, never 0; a configuration error gives 2 with a one-line message."""
+        2, never 0, also as the exit status of the Blender process (which exits 0 after an
+        uncaught Python error unless --python-exit-code is given); a configuration error or
+        a missing file gives 2 with a one-line message."""
         import contextlib
         import io
+        import bpy
         v, t = box((0, 0, 0), (1, 1, 1))
         m = write("crash", [node("cube", v, t)])
         original = am.Audit.run
@@ -997,10 +1000,29 @@ class KnownAnswers(unittest.TestCase):
                 code = am.main(["--model", str(m), "--out", str(TMP / "crash_out")])
         finally:
             am.Audit.run = original
-        NOTE["11 internal error: exit status"] = code
         self.assertEqual(code, 2)
         self.assertIn("Traceback", err.getvalue())
         self.assertIn("ZeroDivisionError", err.getvalue())
+        # the same bug in a Blender process started without --python-exit-code: exit 2
+        expr = (f"import sys; sys.path.insert(0, {str(HERE)!r}); import audit_model as am; "
+                "am.Audit.run = lambda self: 1 / 0; "
+                f"sys.exit(am.main(['--model', {str(m)!r}, '--out', "
+                f"{str(TMP / 'crash_out')!r}]))")
+        proc = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup",
+                               "--python-expr", expr], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2, proc.stdout[-1500:] + proc.stderr[-1500:])
+        self.assertIn("ZeroDivisionError", proc.stderr)
+        # the real script on a missing model file: exit 2 and a one-line message
+        proc_missing = subprocess.run(
+            [bpy.app.binary_path, "--background", "--factory-startup", "--python-exit-code",
+             "2", "--python", str(HERE / "audit_model.py"), "--", "--model",
+             str(TMP / "no_such.glb"), "--out", str(TMP / "crash_out")],
+            capture_output=True, text=True)
+        self.assertEqual(proc_missing.returncode, 2)
+        self.assertIn("[audit] error:", proc_missing.stderr)
+        self.assertNotIn("Traceback", proc_missing.stderr)
+        NOTE["11 internal error: exit status in process, Blender process; missing file"] = (
+            code, proc.returncode, proc_missing.returncode)
         path = TMP / "bad_pose.toml"
         path.write_text('[[poses]]\nname = "rest"\nhide = ["cube"]\n')
         err = io.StringIO()
