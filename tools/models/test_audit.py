@@ -1079,6 +1079,31 @@ class KnownAnswers(unittest.TestCase):
         self.assertIn("[audit] error: pose 'rest'", err.getvalue())
         self.assertNotIn("Traceback", err.getvalue())
 
+    def test_12_config_is_checked(self):
+        """A misspelt key would leave its gate unchecked without a word, so the config file
+        is checked: unknown sections and keys, a missing required key, a name used twice and
+        a zero-length probe are configuration errors (exit 2). The shipped jet.toml passes."""
+        probe = '[[probes]]\nname = "p"\nstart = [0, 0, 1]\nnodes = ["a"]\n'
+        cases = [
+            ("[gates]\nhiden_max = 0.02\n", "[gates]: unknown key(s) hiden_max"),
+            ("[gate]\nhidden_max = 0.02\n", "unknown section [gate]"),
+            (probe + "end = [0, 1, 1]\nmax_maxim = 1\n",
+             "[[probes]] 'p': unknown key(s) max_maxim"),
+            (probe + "end = [0, 0, 1]\n", "[[probes]] 'p': start and end are the same point"),
+            ('[[groups]]\nname = "g"\n', "[[groups]] 'g': missing nodes"),
+            ('[[groups]]\nname = "g"\nnodes = ["a"]\n[[groups]]\nname = "g"\nnodes = ["b"]\n',
+             "[[groups]]: name used more than once: g"),
+        ]
+        for i, (text, message) in enumerate(cases):
+            path = TMP / f"bad_config{i}.toml"
+            path.write_text(text)
+            with self.assertRaises(am.ConfigError, msg=text) as ctx:
+                am.load_config(path)
+            self.assertIn(message, str(ctx.exception))
+        cfg = am.load_config(HERE / "audit" / "jet.toml")
+        NOTE["12 config: errors caught, jet.toml groups / probes"] = (
+            len(cases), len(cfg["groups"]), len(cfg["probes"]))
+
     def test_glb_variants(self):
         """The reader handles what the writer can also produce: a node with a matrix,
         positions and normals interleaved in one strided buffer view, two primitives of one

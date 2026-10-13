@@ -65,7 +65,7 @@ DEFAULTS = {
               "verts_per_tri_max": 0.65, "index_max": 65535, "degenerate_max": 0,
               "duplicate_max": 0, "flipped_max": 0, "floating_max": 0, "winding_max": 0,
               "sliver_max": 0.01, "size_tolerance": 0.02, "unmeasured_max": 0.02,
-              "hard":["index_max", "degenerate_max", "duplicate_max", "flipped_max",
+              "hard": ["index_max", "degenerate_max", "duplicate_max", "flipped_max",
                        "floating_max", "budget_total"]},
     "budget": {},
     "groups": [],
@@ -87,6 +87,51 @@ PROBE_DEFAULTS = {"direction": [0.0, 0.0, -1.0], "step": 0.005, "materials": Non
 # cannot be measured against this reference ("not measured").
 IDENTICAL_DIST = 1e-6
 
+# Keys a config file may use (a misspelt gate key would otherwise leave its gate unchecked
+# without a word): section -> keys; array of tables -> (keys, required keys).
+SECTION_KEYS = {k: set(v) for k, v in DEFAULTS.items() if isinstance(v, dict)}
+SECTION_KEYS["budget"] = {"total", "file_bytes", "nodes", "materials", "primitives", "groups",
+                          "node_triangles"}
+ENTRY_KEYS = {
+    "groups": (set(GROUP_DEFAULTS) | {"name", "nodes"}, ("name", "nodes")),
+    "poses": ({"name", "rotate", "hide"}, ("name",)),
+    "probes": (set(PROBE_DEFAULTS) | {"name", "start", "end", "nodes"},
+               ("name", "start", "end", "nodes")),
+}
+
+
+def check_config_keys(user):
+    """Refuse unknown sections and keys, entries without their required keys, two entries
+    of one name (their gates would share ids) and zero-length probes (ConfigError)."""
+    for sect, val in user.items():
+        if sect in SECTION_KEYS:
+            if not isinstance(val, dict):
+                raise ConfigError(f"[{sect}] must be a table")
+            unknown = sorted(set(val) - SECTION_KEYS[sect])
+            if unknown:
+                raise ConfigError(f"[{sect}]: unknown key(s) {', '.join(unknown)}")
+        elif sect in ENTRY_KEYS:
+            known, required = ENTRY_KEYS[sect]
+            if not isinstance(val, list) or not all(isinstance(e, dict) for e in val):
+                raise ConfigError(f"[[{sect}]] must be an array of tables")
+            names = []
+            for i, e in enumerate(val):
+                label = f"[[{sect}]] {e['name']!r}" if "name" in e else f"[[{sect}]] #{i + 1}"
+                unknown = sorted(set(e) - known)
+                if unknown:
+                    raise ConfigError(f"{label}: unknown key(s) {', '.join(unknown)}")
+                missing = [k for k in required if k not in e]
+                if missing:
+                    raise ConfigError(f"{label}: missing {', '.join(missing)}")
+                if sect == "probes" and list(e["start"]) == list(e["end"]):
+                    raise ConfigError(f"{label}: start and end are the same point")
+                names.append(e["name"])
+            twice = sorted({n for n in names if names.count(n) > 1})
+            if twice:
+                raise ConfigError(f"[[{sect}]]: name used more than once: {', '.join(twice)}")
+        else:
+            raise ConfigError(f"unknown section [{sect}]")
+
 
 def load_config(path):
     cfg = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
@@ -94,6 +139,7 @@ def load_config(path):
     if path is not None:
         raw = Path(path).read_bytes()
         user = tomllib.loads(raw.decode("utf-8"))
+        check_config_keys(user)
         # the report identifies the config by the bytes actually used
         cfg["_path"], cfg["_sha256"], cfg["_bytes"] = path, hashlib.sha256(raw).hexdigest(), \
             len(raw)
