@@ -27,7 +27,10 @@
 #
 # Example: scripts/audit_models.sh --images --out /tmp/jet_audit
 set -euo pipefail
-export PYTHONDONTWRITEBYTECODE=1   # neither Blender run leaves __pycache__ in tools/models
+# No __pycache__ next to the tools: Blender's Python ignores this variable (it reads no PYTHON*
+# variables unless started with --python-use-system-env), so the Blender runs below also set
+# sys.dont_write_bytecode themselves; the variable covers any other Python.
+export PYTHONDONTWRITEBYTECODE=1
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 generator="$repo/tools/models"
@@ -86,6 +89,7 @@ if [ -z "$reference" ]; then
   echo "[audit_models] building the reference: $name at --detail $detail ($generator)"
   build_status=0
   "$blender" --background --factory-startup --python-exit-code 2 \
+    --python-expr "import sys; sys.dont_write_bytecode = True" \
     --python "$generator/make_models.py" -- \
     --out "$tmp" --only "$name" --detail "$detail" > "$tmp/build.log" 2>&1 || build_status=$?
   reference="$tmp/$name.glb"

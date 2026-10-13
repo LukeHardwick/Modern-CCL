@@ -1091,7 +1091,8 @@ class KnownAnswers(unittest.TestCase):
         self.assertIn("Traceback", err.getvalue())
         self.assertIn("ZeroDivisionError", err.getvalue())
         # the same bug in a Blender process started without --python-exit-code: exit 2
-        expr = (f"import sys; sys.path.insert(0, {str(HERE)!r}); import audit_model as am; "
+        expr = ("import sys; sys.dont_write_bytecode = True; "
+                f"sys.path.insert(0, {str(HERE)!r}); import audit_model as am; "
                 "am.Audit.run = lambda self: 1 / 0; "
                 f"sys.exit(am.main(['--model', {str(m)!r}, '--out', "
                 f"{str(TMP / 'crash_out')!r}]))")
