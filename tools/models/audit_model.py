@@ -1905,7 +1905,10 @@ class Audit:
             if self.rgeo is None:
                 entry["not_measured"] = "no reference given"
             elif not ms:
-                entry["not_measured"] = "no node of the group has a reference node of its name"
+                why = [f"{n}: {self.no_reference.get(n, 'only degenerate triangles')}"
+                       for n in g["present"]]
+                entry["not_measured"] = ("no node of the group can be compared with the "
+                                         "reference (" + "; ".join(why) + ")")
             else:
                 entry.update(self.ab_stats(ms, g))
                 if entry["shape"]["count"] == 0:
@@ -2142,20 +2145,26 @@ class Audit:
         for p in cfg["probes"]:
             r = res["probes"][p["name"]]
             n = p["name"]
-            few = f"too few rays hit ({r['hits']} of {r['samples']})"
+            # hits that analyse_profile needs for each figure (w samples per chord)
+            w = max(1, int(round(p["segment"] / p["step"])))
+            need = {"maxima": 3, "minima": 3, "kink": 2 * w + 1, "step": 2 * w + 2}
+
+            def few(kind):
+                return (f"too few points on the outline: {r['hits']} of {r['samples']} rays "
+                        f"hit, this figure needs at least {need[kind]}")
             add(f"F.{n}.coverage", "F", f"Profile {n}: share of rays that hit", r["coverage"],
                 p["min_coverage"], ">=", "frac", "profile")
             for kind in ("maxima", "minima"):
                 if p[kind] is not None:
                     add(f"F.{n}.{kind}", "F", f"Profile {n}: {kind} (exact count)", r[kind],
-                        p[kind], "==", "count", "profile", reason=few)
+                        p[kind], "==", "count", "profile", reason=few(kind))
                 else:
                     add(f"F.{n}.{kind}", "F", f"Profile {n}: {kind}", r[kind],
-                        p[f"max_{kind}"], "<=", "count", "profile", reason=few)
+                        p[f"max_{kind}"], "<=", "count", "profile", reason=few(kind))
             add(f"F.{n}.kink", "F", f"Profile {n}: largest kink", r["kink_deg"],
-                p["kink_max_deg"], "<=", "deg", "profile", reason=few)
+                p["kink_max_deg"], "<=", "deg", "profile", reason=few("kink"))
             add(f"F.{n}.step", "F", f"Profile {n}: largest step", r["step"], p["step_max"], "<=",
-                "m", "profile", reason=few)
+                "m", "profile", reason=few("step"))
         b = cfg["budget"]
         add("G.total", "G", "Triangles, total", mres["triangles"], b.get("total"), "<=", "count",
             "budget_total")

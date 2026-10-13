@@ -839,7 +839,8 @@ class KnownAnswers(unittest.TestCase):
         """A probe that misses the model fails its coverage gate (0 % of the rays hit) and
         its other gates are FAIL "not measured" instead of passing on an empty outline. A
         probe that runs 1 m past the end of a 2 m strip hits 50 % and fails coverage while
-        its outline is still analysed."""
+        its outline is still analysed. An 8 cm probe (17 rays, all hit) is too short for two
+        5 cm chords: its maxima pass, its kink and step are FAIL "not measured"."""
         flat_poly = [(0.0, 0.0), (2.0, 0.0)]
         gates = {"max_maxima": 1, "max_minima": 0, "kink_max_deg": 2.0, "step_max": 0.002}
         p = self._probe("probe_miss", flat_poly, start=[5.0, 0.05, 1.0], end=[5.0, 1.95, 1.0],
@@ -851,13 +852,22 @@ class KnownAnswers(unittest.TestCase):
         for kind in ("maxima", "minima", "kink", "step"):
             g = gate(res, f"F.p.{kind}")
             self.assertEqual((g["status"], g["pass"]), ("not_measured", False), kind)
-            self.assertIn("too few rays hit (0 of 381)", g["reason"])
+            self.assertIn("too few points on the outline: 0 of 381 rays hit", g["reason"])
         p = self._probe("probe_half", flat_poly, start=[0.0, 1.0, 1.0], end=[0.0, 3.0, 1.0],
                         **gates)
         NOTE["7d coverage: missed probe, half probe"] = (0.0, p["coverage"])
         self.assertAlmostEqual(p["coverage"], 0.5, delta=0.01)
         self.assertEqual(gate(self.last, "F.p.coverage")["status"], "fail")
         self.assertEqual(gate(self.last, "F.p.maxima")["status"], "pass")
+        p = self._probe("probe_short", flat_poly, start=[0.0, 0.5, 1.0], end=[0.0, 0.58, 1.0],
+                        **gates)
+        self.assertEqual((p["hits"], p["samples"]), (17, 17))
+        for kind in ("coverage", "maxima", "minima"):
+            self.assertEqual(gate(self.last, f"F.p.{kind}")["status"], "pass", kind)
+        for kind, need in (("kink", 21), ("step", 22)):
+            g = gate(self.last, f"F.p.{kind}")
+            self.assertEqual(g["status"], "not_measured", kind)
+            self.assertIn(f"17 of 17 rays hit, this figure needs at least {need}", g["reason"])
 
     def test_7e_exact_maxima(self):
         """maxima = 1 asks for exactly one maximum: one bump passes, a flat outline (0) and
@@ -973,9 +983,10 @@ class KnownAnswers(unittest.TestCase):
     def test_10_missing_data_is_not_a_pass(self):
         """What cannot be measured never passes. A group whose nodes are all hidden: its A
         and B gates FAIL "not measured". A model node without a reference node, and a
-        reference node the model lacks: FAIL. A group with no node in the model: ABSENT
-        (not a pass, not a fail), or FAIL when it is required. No reference at all: the A
-        and B gates FAIL "not measured"."""
+        reference node the model lacks: FAIL; a group made only of such nodes: its A and B
+        gates FAIL "not measured", naming the node. A group with no node in the model:
+        ABSENT (not a pass, not a fail), or FAIL when it is required. No reference at all:
+        the A and B gates FAIL "not measured"."""
         bv, bt = box((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
         iv, it = box((-0.2, -0.2, -0.2), (0.2, 0.2, 0.2))
         sv, st = box((0.5, -0.1, -0.1), (0.7, 0.1, 0.1))
@@ -983,10 +994,11 @@ class KnownAnswers(unittest.TestCase):
         m = write("missing", [node("body", bv, bt), node("inner", iv, it), node("spare", sv, st)])
         r = write("missing_ref", [node("body", bv, bt), node("inner", iv, it),
                                   node("extra", xv, xt)])
-        cfg = config(nodes=["body", "spare"])
+        cfg = config(nodes=["body"])
         cfg["groups"][0]["required"] = True
         cfg["groups"] += [
             {**am.GROUP_DEFAULTS, "name": "hiddenpart", "nodes": ["inner"]},
+            {**am.GROUP_DEFAULTS, "name": "loose", "nodes": ["spare"]},
             {**am.GROUP_DEFAULTS, "name": "cockpit", "nodes": ["seat"]},
             {**am.GROUP_DEFAULTS, "name": "interior", "nodes": ["tank"], "required": True}]
         _a, res = audit(m, r, cfg)
@@ -1000,6 +1012,9 @@ class KnownAnswers(unittest.TestCase):
             self.assertEqual(st_[gid], "not_measured", gid)
         self.assertIn("hidden", gate(res, "A.hiddenpart.p99")["reason"])
         self.assertEqual(st_["A.node.spare"], "not_measured")
+        loose = gate(res, "A.loose.p99")
+        self.assertEqual(loose["status"], "not_measured")
+        self.assertIn("spare: no reference node of that name", loose["reason"])
         self.assertEqual(st_["A.node.extra"], "fail")
         self.assertEqual(st_["A.cockpit.present"], "absent")
         self.assertFalse(gate(res, "A.cockpit.present")["pass"])
