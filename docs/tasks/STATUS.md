@@ -40,19 +40,14 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   (base `4cc297f`; it switches its worktree to the branch, uses the Blender MCP with the user's
   Blender open, and stops for review). Re-mesh, cockpit and LODs wait for the audit approval.
   2026-10-13: that session is **paused by the user until the audit tool is ready**; its work is
-  uncommitted in worktree `mystifying-shtern-4a5d56` (shape fixes and plumbing done; 0.74
+  WIP committed as `d34e913` in worktree `mystifying-shtern-4a5d56` (shape fixes and plumbing done; 0.74
   vertices/triangle vs target 0.65; detail-shape proof, determinism, previews still to do). Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
-- **T22c** `task/t22c-model-audit` @ `fe91a0a`: deterministic model audit tool **done** (fresh Opus
-  agent after the first hit the usage limit): 19/19 known-answer tests pass (re-run by the planner,
-  9 s); full audit of a 250 k-triangle model 2.8 min with 4 worker processes; wrapper
-  `scripts/audit_models.sh`; method doc `docs/research/04-model-audit.md`. No CP1 baseline (user).
-  Independent Opus review: **merge after fixes** (unmeasured triangles counted as zero error, probes
-  that miss pass silently, step metric blind to drops on a slope, crash exits 0, eyepoint-only
-  reversed faces missed, `hide` ignores children, plus lows/nits). A fresh Opus agent is fixing
-  them (2026-10-13). That agent hit the usage limit too: its uncommitted work is WIP `f5cf1fa`; a
-  second fresh Opus agent took over at 12:50 (told to commit after every fix). Merge into the T22a
-  branch after the fixes and the user's OK;
-  the T22a session does that merge (it has the branch checked out with uncommitted work).
+- **T22c** `task/t22c-model-audit` @ `b3eef14`: deterministic model audit tool, **review fixes done**
+  (all 10 findings + nits; 37/37 tests, re-run by the planner, 11 s; the reviewer's own probe cases
+  re-run against the fixes and now correct). New proposed gates for the user: unmeasured ≤ 2 %, node
+  missing from one file = FAIL, group present (exterior required, cockpit from CP2b), probe coverage
+  ≥ 95 %, canopy exactly one maximum, worker timeout 1200 s. Waiting for the user's OK to merge into
+  the T22a branch (clean worktree `mystifying-shtern-4a5d56`; T22c only adds 7 files, no overlap).
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
