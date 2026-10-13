@@ -189,3 +189,26 @@ for a single- or two-seat aircraft); `.glb` ≤ 10 MB. This replaces the hero ro
 (target 60–100 k, cap 150 k, ≤ 6 MB). The cap is a ceiling, not a target: the audit gates decide
 whether triangles are earned. Commit the `.glb` and previews only at checkpoints, since every
 version stays in git history (about 8 MB each at 250 k).
+
+## Checkpoint log
+
+**2026-10-13 — STOP 1 (CP2a part 1 finished, first real audit).** Branch @ `690be58`.
+- Done: vertices per triangle 0.740 → **0.646** (31 609 / 48 896; largest primitive 23 947):
+  wing and fin each one aerofoil loft (`foil_loft`: shared rings, no hidden internal caps, hinge
+  faces and walls at the flap/aileron/rudder cut-outs); sparser panel tones (`panel_tone`: ~30 %
+  of panels repainted ±10 %, the rest base tone; tunable `share`/`amount`); round tubes and
+  frame bands never creased; access panels one mitred loop; one-triangle fastener heads at
+  0.15–0.18 m pitch; thin vortex-generator vanes; `box()`, `plate()` and the airbrake oriented
+  explicitly (190 → 25 flipped). `tools/models/detail_check.py`: detail 1 vs 4 PASS (worst
+  vertex 0.70 mm; it found and we fixed loose vertices and a detail-dependent fillet tilt).
+  Three headless builds byte-identical (`.glb` and all 8 PNGs; PNG date stamps removed).
+- Audit (full, `scripts/audit_models.sh --images`, 51 s): 62 of 77 gates pass, 14 fail, 1 hard.
+  Hard: 25 flipped (canopy glass strips under the frame hoops, windscreen front tip inside the
+  nose skin, two wing-wall TE slivers). Others: shape p99 5.5 mm / max 10.7 mm (gate 1 / 4),
+  reverse 3.1 / 15.0 mm; shading p95 5.0° (gate 2°); skin headroom 60 % (15 %); hidden
+  fuselage 9.7 %, canopy 7.3 %, gear 5.5 % (2 %); slivers 5.6 % (1 %); spine kink 6.8° (2°).
+  Worst: fin and tailplane tips, lower wing-root fillets, intake lips, wheels, canopy, spine.
+- Next: the user sets the gate values (STOP 1); then CP2a (adaptive re-mesh, hidden faces,
+  junctions, tips, canopy/spine refinement). Open points for CP2a: UVs (none exported yet;
+  seams will cost vertices), opaque materials still `doubleSided` (raylib culls back faces;
+  previews do not), and whether the preview lighting should show the panel tones more.
