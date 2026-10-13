@@ -369,8 +369,12 @@ class Mesh:
         return self.rings(rings, caps=(caps, caps), mat=mat, color=color, smooth=smooth,
                           rounded=smooth)
 
-    def sweep(self, pts, radius, seg=6, mat=None, color=None, smooth=True, closed=False):
-        """Circular tube along a polyline (parallel-transport frame)."""
+    def sweep(self, pts, radius, seg=6, mat=None, color=None, smooth=True, closed=False,
+              tangents=None):
+        """Circular tube along a polyline (parallel-transport frame). With `tangents` (unit
+        tangents of the path the points were sampled from) every ring is square to the path
+        and turned from a fixed axis instead, so the rings do not depend on how finely the
+        path is sampled (the shape stays the same at every detail)."""
         pts = [Vector(p) for p in pts]
         seg = self.n(seg)
         n = len(pts)
@@ -379,11 +383,16 @@ class Mesh:
         ref = Vector((0, 0, 1)) if abs(t0.z) < 0.9 else Vector((1, 0, 0))
         u = t0.cross(ref).normalized()
         for i in range(n):
-            if closed:
-                t = (pts[(i + 1) % n] - pts[i - 1]).normalized()
+            if tangents is not None:
+                t = Vector(tangents[i]).normalized()
+                axis = Vector((1, 0, 0)) if abs(t.x) < 0.9 else Vector((0, 0, 1))
+                u = (axis - t * axis.dot(t)).normalized()
             else:
-                t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
-            u = (u - t * u.dot(t)).normalized()
+                if closed:
+                    t = (pts[(i + 1) % n] - pts[i - 1]).normalized()
+                else:
+                    t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+                u = (u - t * u.dot(t)).normalized()
             v = t.cross(u)
             rings.append([pts[i] + radius * (math.cos(2 * math.pi * k / seg) * u
                                              + math.sin(2 * math.pi * k / seg) * v)
@@ -518,6 +527,11 @@ class Mesh:
     # -- finish
     def finish(self, mats, parent=None, smooth_angle=40.0, ao=None):
         bm = self.bm
+        # vertices no face uses (strip stations between hidden ones, ring points behind a cut
+        # hinge): the exporter would drop them, but the size and island checks would see them
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context="VERTS")
         bm.normal_update()
         bm.verts.index_update()
         limit = math.radians(smooth_angle)

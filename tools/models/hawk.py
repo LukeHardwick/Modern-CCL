@@ -556,14 +556,14 @@ def shape_breaks(m, d):
     k = count(8, d, 4)
     for side in (LEFT, RIGHT):
         for sg in (1.0, -1.0):
-            pts = []
-            for i in range(k + 1):
-                y = lerp(-1.0, 1.4, i / k)
+            def path(y, side=side, sg=sg):
                 le, te = wing_le_te(side, 0.72)
                 v = (y - le.y) / (te.y - le.y)
                 z = wing_z(0.72) + sg * (naca_t(v) * wing_tc(0.72) * (te.y - le.y) + 0.004)
-                pts.append(Vector((skin_x(y, z, side), y, z + sg * 0.012)))
-            m.sweep(pts, 0.042, 6, mat="paint", color=PAINT_WING)
+                return Vector((skin_x(y, z, side), y, z + sg * 0.012))
+            ys = [lerp(-1.0, 1.4, i / k) for i in range(k + 1)]
+            m.sweep([path(y) for y in ys], 0.042, 6, mat="paint", color=PAINT_WING,
+                    tangents=[path(y + 1e-4) - path(y - 1e-4) for y in ys])
     # strakes ahead of the tailplane ("SMURFs"), ventral fins, tail bumper
     for side in (LEFT, RIGHT):
         w = fus_section(3.9)[0]
