@@ -212,3 +212,15 @@ version stays in git history (about 8 MB each at 250 k).
   junctions, tips, canopy/spine refinement). Open points for CP2a: UVs (none exported yet;
   seams will cost vertices), opaque materials still `doubleSided` (raylib culls back faces;
   previews do not), and whether the preview lighting should show the panel tones more.
+
+**Gate decisions (user, 2026-10-13, at STOP 1).** All gates in `tools/models/audit/jet.toml` as
+first proposed: accuracy, headroom, hidden, flipped and kink gates kept; vertices per triangle
+0.65 kept for now; the 10 MB file size is not a hard limit. Slivers: "whatever is best practice".
+Note (research parked at the user's request): sources agree that long thin triangles should be
+avoided because GPUs shade 2 × 2 pixel quads, so thin triangles waste shading and rasterise
+inefficiently, and that fan or strip layouts of round shapes are the classic bad case
+(E. Persson, "Triangulation", <http://www.humus.name/index.php?page=News&ID=228>; Selfshadow,
+"Overdraw in Overdrive", <https://blog.selfshadow.com/publications/overdraw-in-overdrive/>;
+both accessed 2026-10-13). Neither gives a percentage, so the 1 % gate (smallest angle < 2°)
+stays as the target: CP2a avoids needles where it is cheap (fans, strips, poles, short decal
+segments) and reports any that the shape itself forces (long leading-edge strips), with numbers.

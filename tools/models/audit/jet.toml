@@ -2,7 +2,8 @@
 # tools/models/audit_model.py. Method and reasons: docs/research/04-model-audit.md.
 #
 # Coordinates are in the modelling frame of tools/models/hawk.py: metres, x = vehicle left,
-# y = aft (the nose is at -y), z = up. Gate values are PROPOSALS until the user approves them.
+# y = aft (the nose is at -y), z = up. Gate values: set by the user on 2026-10-13 (T22a STOP 1),
+# all as first proposed; the file size stays a soft gate (not in `hard`).
 
 [model]
 name = "jet"
