@@ -16,7 +16,9 @@ default_group = "exterior"
 spacing = 0.05       # no two samples on a triangle further apart than this (m)
 inset = 0.01         # samples pulled 1 % towards the centroid, so none sits exactly on a shared edge
 weld = 1e-6          # vertices closer than this count as one for topology (m)
+kmax = 400           # at most 400 subdivisions per edge: spacing holds on triangles up to 20 m
 vis_spacing = 0.25   # coarser sample grid for the visibility rays (m)
+vis_kmax = 64        # up to 16 m; longer triangles get sparser samples (the report warns)
 vis_inset = 0.001    # visibility samples stay at least 1 mm inside every edge (no leaks at seams)
 
 # Design viewing conditions: the closest a viewer is expected to look at each group.
@@ -30,10 +32,14 @@ directions = 162     # rays per sample, spread evenly over the front hemisphere
 ray_offset = 1e-4    # rays start 0.1 mm off the surface (m)
 parallel_min = 20000 # from this many triangles, worker processes cast the rays (--jobs N);
                      # speed only: the results do not depend on it
+worker_timeout = 1200.0  # a worker still running after this many seconds is stopped and its
+                         # share computed in the main process (same result, only slower)
 
 [headroom]
 ratios = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01]
 min_component = 2000 # only connected pieces with at least this many triangles
+slack = 0.05         # a piece that already misses the shape gate may get at most 5 % worse
+max_reverse_points = 50000  # larger pieces use an even subset of the reference points (speed)
 
 [reference]
 min_density = 4.0    # warn when a reference node has fewer than 4x the model's triangles
@@ -51,6 +57,8 @@ floating_max = 0           # D
 winding_max = 0            # D
 sliver_max = 0.01          # D: at most 1 % of triangles with an angle under 2 degrees
 size_tolerance = 0.02      # E: length, span and height within 2 % of the published figures
+unmeasured_max = 0.02      # A: at most 2 % of a group's visible area "not measured" (coincides
+                           # with the reference on a curve, so its error cannot be measured)
 # Gates that make the audit exit with status 1 (the others are reported as FAIL only):
 hard = ["index_max", "degenerate_max", "duplicate_max", "flipped_max", "floating_max",
         "budget_total"]
@@ -68,10 +76,13 @@ cockpit = 150000
 
 # Node groups: closest design distance and the accuracy gates for checks A and B.
 # Pixel size at distance D: p = 2 D tan(vfov / 2) / height (8 m -> 8.55 mm; 0.6 m -> 0.64 mm).
+# A group none of whose nodes is in the model is reported ABSENT (neither pass nor fail), or
+# FAIL when it is `required`.
 [[groups]]
 name = "exterior"
 nodes = ["fuselage", "canopy", "aileron_l", "aileron_r", "flap_l", "flap_r", "elevator",
          "rudder", "airbrake", "gear"]
+required = true
 distance = 8.0
 shape_p99 = 0.001          # 1 mm
 shape_max = 0.004          # 4 mm
@@ -81,6 +92,7 @@ normal_max_deg = 10.0
 [[groups]]
 name = "cockpit"
 nodes = ["cockpit", "hud_glass"]
+required = false           # the cockpit arrives at T22a CP2b; make it true from then on
 distance = 0.6
 shape_p99 = 0.0003         # 0.3 mm
 shape_max = 0.0012
@@ -123,14 +135,17 @@ hide = ["gear"]
 # Profile probes (check F): rays every `step` metres from `start` to `end`, cast along
 # `direction`; the first hit on the listed nodes and materials gives the outline. Connected
 # parts shorter than `min_feature` along the probe line (canopy frame hoops, circumferential
-# panel lines, fasteners, lights) are ignored.
+# panel lines, fasteners, lights) are ignored. Gates: `maxima` / `minima` = an exact count,
+# `max_maxima` / `max_minima` = at most (give one of each pair); `min_coverage` = the share
+# of the rays that must hit, so a probe that misses the model cannot pass.
 [[probes]]
 name = "canopy_crown_left"
 start = [0.10, -3.55, 3.0]
 end = [0.10, -0.40, 3.0]
 nodes = ["fuselage", "canopy"]
 materials = ["paint", "glass"]
-max_maxima = 1             # one smooth bubble
+min_coverage = 0.95
+maxima = 1                 # exactly one smooth bubble (0 would be a missing canopy)
 max_minima = 0
 
 [[probes]]
@@ -139,7 +154,8 @@ start = [-0.10, -3.55, 3.0]
 end = [-0.10, -0.40, 3.0]
 nodes = ["fuselage", "canopy"]
 materials = ["paint", "glass"]
-max_maxima = 1
+min_coverage = 0.95
+maxima = 1
 max_minima = 0
 
 [[probes]]
@@ -148,6 +164,7 @@ start = [0.10, -0.60, 3.0]
 end = [0.10, 1.20, 3.0]
 nodes = ["fuselage", "canopy"]
 materials = ["paint", "glass"]
+min_coverage = 0.95
 max_minima = 0             # the canopy flows into the spine without a dip
 kink_max_deg = 2.0
 step_max = 0.002
@@ -158,6 +175,7 @@ start = [-0.10, -0.60, 3.0]
 end = [-0.10, 1.20, 3.0]
 nodes = ["fuselage", "canopy"]
 materials = ["paint", "glass"]
+min_coverage = 0.95
 max_minima = 0
 kink_max_deg = 2.0
 step_max = 0.002
@@ -168,6 +186,7 @@ start = [0.0, -5.70, 3.0]
 end = [0.0, -3.70, 3.0]
 nodes = ["fuselage"]
 materials = ["paint"]
+min_coverage = 0.95
 max_maxima = 0             # the nose rises smoothly to the windscreen
 max_minima = 0
 step_max = 0.002
