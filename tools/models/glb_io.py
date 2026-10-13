@@ -7,7 +7,8 @@
 # error): sparse accessors, external buffers, other primitive modes.
 #
 # The writer exists for the known-answer tests: it writes plain meshes (positions, normals,
-# optional colours, u16 or u32 indices) under named nodes.
+# u16 or u32 indices, optionally interleaved in one strided buffer view) under named nodes
+# with TRS or matrix transforms.
 
 import hashlib
 import json
@@ -37,9 +38,11 @@ class GlbError(Exception):
 class Primitive:
     """One (node, material) draw: positions/normals in the node's local glTF frame."""
 
-    def __init__(self, node, material, positions, normals, indices, index_type, has_color):
+    def __init__(self, node, material, positions, normals, indices, index_type, has_color,
+                 index=0):
         self.node = node                  # node name
         self.material = material          # material name
+        self.index = index                # position of this primitive in its glTF mesh
         self.positions = positions        # (V, 3) float64
         self.normals = normals            # (V, 3) float64 or None
         self.indices = indices            # (T, 3) int64
@@ -256,7 +259,7 @@ def read_glb(path):
             mat = p.get("material")
             mname = materials[mat]["name"] if mat is not None else "default"
             model.prims.append(Primitive(node.name, mname, pos, nrm, idx.reshape(-1, 3),
-                                         itype, "COLOR_0" in attrs))
+                                         itype, "COLOR_0" in attrs, k))
     return model
 
 
@@ -264,9 +267,11 @@ def read_glb(path):
 
 
 def write_glb(path, nodes, materials=None):
-    """Write a simple GLB. `nodes`: list of dicts with keys name, translation (optional),
-    parent (optional, name), prims (list of dicts: positions (V,3), normals (V,3) optional,
-    indices (T,3), material (name), index_type 'u16'|'u32' optional). Positions and normals are
+    """Write a simple GLB. `nodes`: list of dicts with keys name, parent (optional, name),
+    translation / rotation (quaternion x, y, z, w) / scale (optional) or matrix (optional, 16
+    numbers, column-major), prims (list of dicts: positions (V,3), normals (V,3) optional,
+    indices (T,3), material (name), index_type 'u16'|'u32' optional, interleave (optional:
+    positions and normals in one buffer view with byteStride 24)). Positions and normals are
     in the glTF frame. `materials`: list of dicts name, alpha_mode, double_sided."""
     materials = materials or [{"name": "paint"}]
     mat_index = {m["name"]: i for i, m in enumerate(materials)}
@@ -289,19 +294,43 @@ def write_glb(path, nodes, materials=None):
         accessors.append(acc)
         return len(accessors) - 1
 
+    def add_interleaved(pos, nrm):
+        """POSITION and NORMAL (float32 VEC3) in one buffer view, 24 bytes per vertex."""
+        data = np.ascontiguousarray(np.concatenate([pos, nrm], axis=1)).astype("<f4").tobytes()
+        while len(blob) % 4:
+            blob.append(0)
+        views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(data),
+                      "byteStride": 24, "target": 34962})
+        blob.extend(data)
+        out = []
+        for offset, arr, minmax in ((0, pos, True), (12, nrm, False)):
+            acc = {"bufferView": len(views) - 1, "byteOffset": offset, "componentType": 5126,
+                   "count": int(arr.shape[0]), "type": "VEC3"}
+            if minmax:
+                acc["min"] = [float(v) for v in arr.min(axis=0)]
+                acc["max"] = [float(v) for v in arr.max(axis=0)]
+            accessors.append(acc)
+            out.append(len(accessors) - 1)
+        return out
+
     meshes, gnodes = [], []
     name_index = {n["name"]: i for i, n in enumerate(nodes)}
     for n in nodes:
         gn = {"name": n["name"]}
-        if n.get("translation") is not None:
-            gn["translation"] = [float(v) for v in n["translation"]]
+        for key in ("translation", "rotation", "scale", "matrix"):
+            if n.get(key) is not None:
+                gn[key] = [float(v) for v in np.asarray(n[key]).reshape(-1)]
         if n.get("prims"):
             prims = []
             for p in n["prims"]:
                 pos = np.asarray(p["positions"], dtype=np.float64)
-                attrs = {"POSITION": add(pos, 5126, "VEC3", 34962, True)}
-                if p.get("normals") is not None:
-                    attrs["NORMAL"] = add(np.asarray(p["normals"]), 5126, "VEC3", 34962)
+                if p.get("interleave") and p.get("normals") is not None:
+                    ip, inn = add_interleaved(pos, np.asarray(p["normals"], dtype=np.float64))
+                    attrs = {"POSITION": ip, "NORMAL": inn}
+                else:
+                    attrs = {"POSITION": add(pos, 5126, "VEC3", 34962, True)}
+                    if p.get("normals") is not None:
+                        attrs["NORMAL"] = add(np.asarray(p["normals"]), 5126, "VEC3", 34962)
                 idx = np.asarray(p["indices"], dtype=np.int64).reshape(-1)
                 ctype = 5125 if p.get("index_type", "u16") == "u32" else 5123
                 prim = {"attributes": attrs, "indices": add(idx, ctype, "SCALAR", 34963),

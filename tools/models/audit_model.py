@@ -1,16 +1,19 @@
 # Deterministic model audit (task T22c): shape accuracy, shading, needless triangles, hygiene,
 # shape plausibility, profile fairness and budgets of a .glb against a denser reference build.
 #
-#   blender --background --factory-startup --python tools/models/audit_model.py -- \
+#   blender --background --factory-startup --python-exit-code 2 \
+#       --python tools/models/audit_model.py -- \
 #       --model M.glb --reference R.glb --config tools/models/audit/jet.toml --out DIR \
 #       [--images] [--fast] [--strict] [--jobs N]
 #
 # Writes DIR/<name>_audit.json (byte-identical for the same inputs), DIR/<name>_audit.md
 # (PASS/FAIL per gate) and, with --images, heat-map PNGs. Exit status 1 when a hard gate fails
-# (any gate with --strict), 2 on bad input. On large models the visibility rays are cast by
-# N worker processes (Blender again, with --visibility-worker); the result does not depend on
-# N. The method is explained in plain language in docs/research/04-model-audit.md;
-# scripts/audit_models.sh builds the reference and runs this.
+# (any gate with --strict), 2 on bad input or an internal error (a traceback is printed;
+# --python-exit-code 2 makes Blender exit 2 too if Python fails before main() runs). On large
+# models the visibility rays are cast by N worker processes (Blender again, with
+# --visibility-worker); the result does not depend on N. The method is explained in plain
+# language in docs/research/04-model-audit.md; scripts/audit_models.sh builds the reference
+# and runs this.
 #
 # Everything is measured on the file's own data (glb_io reads it with struct + numpy) in the
 # modelling frame of tools/models: metres, x = vehicle left, y = aft (nose at -y), z = up.
@@ -22,28 +25,36 @@ import math
 import sys
 import time
 import tomllib
+import traceback
 from pathlib import Path
 
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.dont_write_bytecode = True  # no __pycache__ next to the tools
 
 import glb_io  # noqa: E402
 
-TOOL_VERSION = 1
+TOOL_VERSION = 2
 EPS = 1e-12
+
+
+class ConfigError(ValueError):
+    """A problem in the audit configuration (reported without a traceback, exit 2)."""
 
 # ---------------------------------------------------------------- configuration
 
 DEFAULTS = {
     "model": {"name": None, "published_size": None, "eyepoints": [],
               "glass_materials": ["glass", "hud"], "default_group": None},
-    "sampling": {"spacing": 0.05, "inset": 0.01, "weld": 1e-6, "kmax": 64,
-                 "vis_spacing": 0.25, "vis_kmax": 4, "vis_inset": 0.001},
+    # kmax / vis_kmax cap the sample grid (k subdivisions per edge): 400 x 5 cm = 20 m and
+    # 64 x 25 cm = 16 m; longer triangles are sampled more coarsely, with a warning.
+    "sampling": {"spacing": 0.05, "inset": 0.01, "weld": 1e-6, "kmax": 400,
+                 "vis_spacing": 0.25, "vis_kmax": 64, "vis_inset": 0.001},
     "view": {"width": 1920, "height": 1080, "vfov_deg": 60.0},
     "visibility": {"directions": 162, "ray_offset": 1e-4, "clusters": 10,
-                   "parallel_min": 20000},
+                   "parallel_min": 20000, "worker_timeout": 1200.0},
     "headroom": {"ratios": [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01],
                  "min_component": 2000, "slack": 0.05, "max_reverse_points": 50000},
     "hygiene": {"degenerate_area": 1e-10, "sliver_deg": 2.0, "island_margin": 0.05},
@@ -53,8 +64,8 @@ DEFAULTS = {
     "gates": {"headroom_max": 0.15, "hidden_max": 0.02, "subpixel_max": 0.10,
               "verts_per_tri_max": 0.65, "index_max": 65535, "degenerate_max": 0,
               "duplicate_max": 0, "flipped_max": 0, "floating_max": 0, "winding_max": 0,
-              "sliver_max": 0.01, "size_tolerance": 0.02,
-              "hard": ["index_max", "degenerate_max", "duplicate_max", "flipped_max",
+              "sliver_max": 0.01, "size_tolerance": 0.02, "unmeasured_max": 0.02,
+              "hard":["index_max", "degenerate_max", "duplicate_max", "flipped_max",
                        "floating_max", "budget_total"]},
     "budget": {},
     "groups": [],
@@ -63,12 +74,18 @@ DEFAULTS = {
 }
 
 GROUP_DEFAULTS = {"distance": 8.0, "shape_p99": 0.001, "shape_max": 0.004,
-                  "normal_p95_deg": 2.0, "normal_max_deg": 10.0}
+                  "normal_p95_deg": 2.0, "normal_max_deg": 10.0, "required": False}
 
+# maxima / minima: exact counts; max_maxima / max_minima: upper limits (give one of each pair)
 PROBE_DEFAULTS = {"direction": [0.0, 0.0, -1.0], "step": 0.005, "materials": None,
                   "min_feature": 0.10, "prominence": 0.002, "segment": 0.05, "pose": "rest",
-                  "max_maxima": None, "max_minima": None, "kink_max_deg": None,
-                  "step_max": None}
+                  "maxima": None, "minima": None, "max_maxima": None, "max_minima": None,
+                  "kink_max_deg": None, "step_max": None, "min_coverage": 0.95}
+
+# A model triangle that lies within this distance of the reference at every sample (and
+# within 0.05 deg in normal) coincides with it: on a curved surface its tessellation error
+# cannot be measured against this reference ("not measured").
+IDENTICAL_DIST = 1e-6
 
 
 def load_config(path):
@@ -87,9 +104,21 @@ def load_config(path):
                 cfg[k] = v
     cfg["groups"] = [{**GROUP_DEFAULTS, **g} for g in cfg["groups"]]
     cfg["probes"] = [{**PROBE_DEFAULTS, **p} for p in cfg["probes"]]
-    if not cfg["poses"] or cfg["poses"][0].get("name") != "rest" or cfg["poses"][0].get(
-            "rotate") or cfg["poses"][0].get("hide"):
+    for p in cfg["probes"]:
+        for key in ("maxima", "minima"):
+            if p[key] is not None and p[f"max_{key}"] is not None:
+                raise ConfigError(f"probe {p.get('name')!r}: give {key} (exact count) or "
+                                  f"max_{key} (at most), not both")
+    for p in cfg["poses"]:
+        if p.get("name") == "rest" and (p.get("rotate") or p.get("hide")):
+            raise ConfigError("pose 'rest' is the file's own pose: it cannot rotate or hide "
+                              "nodes (give that pose another name)")
+    if not cfg["poses"] or cfg["poses"][0].get("name") != "rest":
         cfg["poses"] = [{"name": "rest"}] + [p for p in cfg["poses"] if p.get("name") != "rest"]
+    pose_names = [p.get("name") for p in cfg["poses"]]
+    for p in cfg["probes"]:
+        if p["pose"] not in pose_names:
+            raise ConfigError(f"probe {p.get('name')!r}: no pose named {p['pose']!r}")
     return cfg
 
 
@@ -187,13 +216,41 @@ def rodrigues(axis, deg):
 # ---------------------------------------------------------------- geometry in one pose
 
 
+def with_descendants(model, names):
+    """The node names plus the names of all their descendants (a pose that rotates or hides
+    a node moves or hides its whole subtree)."""
+    out = set(names)
+    stack = [n for n in model.nodes if n.name in out]
+    while stack:
+        node = stack.pop()
+        for c in node.children:
+            child = model.nodes[c]
+            if child.name not in out:
+                out.add(child.name)
+                stack.append(child)
+    return out
+
+
+def det3(m):
+    """Determinant of a 3x3 matrix (explicit triple product)."""
+    return float(np.dot(m[:, 0], np.cross(m[:, 1], m[:, 2])))
+
+
 class Geo:
-    """All triangles of a model in one pose, in the modelling frame."""
+    """All triangles of a model in one pose, in the modelling frame.
+
+    Triangles are in file order (primitives in node order, then index order); `src` gives
+    each triangle's index in that order with nothing hidden, so triangles of different poses
+    can be matched exactly (pose_index_map). A primitive under a node whose world matrix has a
+    negative determinant (a mirror) has its winding reversed: glTF 2.0 says front faces are
+    clockwise there, so this keeps "front" = the side the normal of (v1 - v0) x (v2 - v0)
+    points to, for every triangle."""
 
     def __init__(self, model, pose=None, glass=()):
         pose = pose or {}
         rotate = pose.get("rotate", {}) or {}
-        hide = set(pose.get("hide", []) or [])
+        hide = with_descendants(model, pose.get("hide", []) or [])
+        self.hidden_nodes = hide
         C = glb_io.GLTF_TO_MODEL
 
         def override(node):
@@ -213,17 +270,22 @@ class Geo:
         self.empties = {}
         for i in model.scene_nodes:
             node = model.nodes[i]
-            if node.mesh is None:
+            if node.mesh is None and node.name not in hide:
                 self.empties[node.name] = C @ world[node.name][:3, 3]
-        tv, tn, tnode, tmat, tprim = [], [], [], [], []
-        self.prim_info = []
+        tv, tn, tnode, tmat, tprim, tsrc = [], [], [], [], [], []
+        self.mirrored = set()
+        offset = 0
         for pi, p in enumerate(model.prims):
+            first, offset = offset, offset + len(p.indices)
             if p.node in hide:
                 continue
             m = world[p.node]
             lin = C @ m[:3, :3]
             pos = mat3_apply(lin, p.positions) + C @ m[:3, 3]
             tri = p.indices
+            if det3(m[:3, :3]) < 0:
+                self.mirrored.add(p.node)
+                tri = tri[:, [0, 2, 1]]
             v = pos[tri]
             if p.normals is not None:
                 nlin = C @ np.linalg.inv(m[:3, :3]).T
@@ -237,16 +299,19 @@ class Geo:
             tnode.append(np.full(len(tri), node_id[p.node]))
             tmat.append(np.full(len(tri), mat_id[p.material]))
             tprim.append(np.full(len(tri), pi))
+            tsrc.append(np.arange(first, offset))
+        self.total = offset  # triangles in the file (hidden ones included)
         if tv:
             self.v = np.concatenate(tv)
             self.vn = np.concatenate(tn)
             self.node = np.concatenate(tnode).astype(np.int64)
             self.mat = np.concatenate(tmat).astype(np.int64)
             self.prim = np.concatenate(tprim).astype(np.int64)
+            self.src = np.concatenate(tsrc).astype(np.int64)
         else:
             self.v = np.zeros((0, 3, 3))
             self.vn = np.zeros((0, 3, 3))
-            self.node = self.mat = self.prim = np.zeros(0, dtype=np.int64)
+            self.node = self.mat = self.prim = self.src = np.zeros(0, dtype=np.int64)
         e0 = self.v[:, 1] - self.v[:, 0]
         e1 = self.v[:, 2] - self.v[:, 1]
         e2 = self.v[:, 0] - self.v[:, 2]
@@ -260,6 +325,13 @@ class Geo:
 
     def node_index(self, name):
         return self.node_names.index(name) if name in self.node_names else None
+
+    def index_map(self, other):
+        """For each triangle of this geo, its index in `other` (another pose of the same
+        model), or -1 where `other` hides it."""
+        inv = np.full(max(self.total, other.total), -1, dtype=np.int64)
+        inv[other.src] = np.arange(len(other.src))
+        return inv[self.src]
 
     def mask(self, nodes=None, materials=None):
         m = np.ones(len(self.v), dtype=bool)
@@ -567,17 +639,28 @@ class NodeMatch:
         q = bb[:, 0:1] * mv[k, 0] + bb[:, 1:2] * mv[k, 1] + bb[:, 2:3] * mv[k, 2]
         self.rerr = norm(rc - q)
         self.rarea = ref.area[rsel]
-        self.rnear = self.tri[k]  # nearest model triangle (global index) per reference centroid
+        self.rk = k               # nearest model triangle per reference centroid (index in tri)
+        self.rnear = self.tri[k]  # the same as a global triangle index
         self.rcent = rc
         self.rdensity = len(self.rtri) / max(1, len(self.tri))
-        # identical-tessellation diagnostic (completed in Audit with the soft folds): triangles
-        # that coincide with the reference and whose vertex normals spread (smooth-shaded
-        # curve) cannot have their tessellation error measured by this reference.
+        # identical-tessellation diagnostic (completed in Audit.set_unmeasured with the soft
+        # folds): triangles that coincide with the reference and whose vertex normals spread
+        # (smooth-shaded curve) cannot have their tessellation error measured by this reference.
         vn = geo.vn[self.tri]
         self.spread = np.maximum.reduce([angle_deg(vn[:, 0], vn[:, 1]),
                                          angle_deg(vn[:, 1], vn[:, 2]),
                                          angle_deg(vn[:, 2], vn[:, 0])]) if ntri else np.zeros(0)
-        self.identical = (self.err < 1e-6) & (self.nerr < 0.05)
+        self.identical = (self.err < IDENTICAL_DIST) & (self.nerr < 0.05)
+        self.unmeasured = np.zeros(ntri, dtype=bool)
+        self.runmeasured = np.zeros(len(rc), dtype=bool)
+
+    def set_unmeasured(self, unmeasured):
+        """Mark model triangles whose error cannot be measured (see Audit.run), and the
+        reference centroids that coincide with one of them (the same triangle in both files):
+        both are left out of the shape and shading statistics."""
+        self.unmeasured = unmeasured
+        if len(self.rk):
+            self.runmeasured = unmeasured[self.rk] & (self.rerr < IDENTICAL_DIST)
 
 
 def decimate(verts, faces, ratios, name="audit_decimate"):
@@ -612,15 +695,17 @@ def decimate(verts, faces, ratios, name="audit_decimate"):
         bpy.data.meshes.remove(me)
 
 
-def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, thresholds, cfg,
-                     spacing):
+def decimate_measure(name, verts, faces, ratios, tree_ref, ref_v, rc_pts, rc_w, thresholds,
+                     cfg, spacing, region=None):
     """Decimate a welded component at each ratio (largest first) and re-measure shape
-    accuracy; stops at the first ratio that fails. Returns the per-ratio records."""
+    accuracy (measure_patch, with the same reverse points, weights and region as the
+    piece's own measurement); stops at the first ratio that fails. Returns the per-ratio
+    records."""
     records = []
     gen = decimate(verts, faces, ratios, f"audit_{name}")
     try:
         for r, tv in gen:
-            rec = measure_patch(tv, tree_ref, ref_v, rc_pts, cfg, spacing)
+            rec = measure_patch(tv, tree_ref, ref_v, rc_pts, rc_w, cfg, spacing, region=region)
             rec["ratio"] = r
             rec["triangles"] = int(len(tv))
             rec["pass"] = bool(rec["fwd_p99"] <= thresholds[0] and rec["fwd_max"] <= thresholds[1]
@@ -645,10 +730,23 @@ class Patch:
         self.lmax = np.stack([norm(e0), norm(tv[:, 2] - tv[:, 1]), norm(e2)], axis=1).max(axis=1)
 
 
-def measure_patch(tv, tree_ref, ref_v, rc_pts, cfg, spacing):
+def measure_patch(tv, tree_ref, ref_v, rc_pts, rc_w, cfg, spacing, counted=None,
+                  region=None):
+    """Shape accuracy of the triangle soup tv against the reference, computed like the A gate:
+    forward = area-weighted percentiles of the per-triangle error (largest over its samples);
+    reverse = distances of the reference centroids rc_pts to tv, weighted by their triangles'
+    areas rc_w. Only part of tv may count, as in the A gate (visible, not flipped, measured):
+    `counted` (bool per triangle of tv) selects whole triangles (the undecimated piece);
+    `region` = (BVH over the undecimated piece, bool per triangle of it) is used for a
+    decimated piece, whose triangles cross the old ones: a sample counts when its nearest
+    undecimated triangle counts, a triangle's error is the largest over its counted samples
+    and its weight is its area times the share of its samples that count."""
     smp = cfg["sampling"]
     patch = Patch(tv)
-    keep = np.nonzero(patch.area >= cfg["hygiene"]["degenerate_area"])[0]
+    ok = patch.area >= cfg["hygiene"]["degenerate_area"]
+    if counted is not None:
+        ok &= counted
+    keep = np.nonzero(ok)[0]
     if len(keep) == 0:  # nothing left: the piece is gone
         return {"fwd_p99": math.inf, "fwd_max": math.inf, "rev_p99": math.inf,
                 "rev_max": math.inf}
@@ -658,19 +756,31 @@ def measure_patch(tv, tree_ref, ref_v, rc_pts, cfg, spacing):
     rb = closest_bary(pts, a, b, c)
     q = rb[:, 0:1] * a + rb[:, 1:2] * b + rb[:, 2:3] * c
     d = norm(pts - q)
-    err = np.maximum.reduceat(d, starts[:-1]) if len(d) else np.zeros(0)
-    fwd = wstats(err, patch.area[keep])
-    if len(rc_pts) and len(keep):
-        ptree = bvh(tv[keep])
-        k = nearest(ptree, rc_pts)
-        pv = tv[keep]
+    w = patch.area[keep]
+    if region is not None:
+        tree_old, old_counted = region
+        inside = old_counted[nearest(tree_old, pts)]
+        err = np.maximum.reduceat(np.where(inside, d, -1.0), starts[:-1])
+        share = np.add.reduceat(inside.astype(np.float64), starts[:-1]) / np.diff(starts)
+        sel = share > 0
+        fwd = wstats(err[sel], (w * share)[sel])
+    else:
+        err = np.maximum.reduceat(d, starts[:-1])
+        fwd = wstats(err, w)
+    if fwd["count"] == 0:
+        return {"fwd_p99": math.inf, "fwd_max": math.inf, "rev_p99": math.inf,
+                "rev_max": math.inf}
+    if len(rc_pts):
+        live = np.nonzero(patch.area >= cfg["hygiene"]["degenerate_area"])[0]
+        pv = tv[live]
+        k = nearest(bvh(pv), rc_pts)
         bb = closest_bary(rc_pts, pv[k, 0], pv[k, 1], pv[k, 2])
         q = bb[:, 0:1] * pv[k, 0] + bb[:, 1:2] * pv[k, 1] + bb[:, 2:3] * pv[k, 2]
-        rev = wstats(norm(rc_pts - q), np.ones(len(rc_pts)))
+        rev = wstats(norm(rc_pts - q), rc_w)
     else:
         rev = {"p99": 0.0, "max": 0.0}
-    return {"fwd_p99": fwd["p99"] or 0.0, "fwd_max": fwd["max"] or 0.0,
-            "rev_p99": rev["p99"] or 0.0, "rev_max": rev["max"] or 0.0}
+    return {"fwd_p99": fwd["p99"], "fwd_max": fwd["max"],
+            "rev_p99": rev["p99"], "rev_max": rev["max"]}
 
 
 # ---------------------------------------------------------------- visibility (hidden, flipped)
@@ -700,8 +810,14 @@ class Visibility:
     A triangle side is visible when, from any of its samples, a ray in any of the fixed
     hemisphere directions leaves the model's bounding sphere without hitting non-glass
     geometry, or (when they exist) an eyepoint sees it. front/back = that side is visible in
-    some pose. The back side is tested when the front is not visible, and for the triangles
-    in `want_back` (whose normal disagrees with the reference) in any case.
+    some pose. The back side is tested (from far away and from the eyepoints) when the front
+    is not visible, and for the triangles in `want_back` (whose normal disagrees with the
+    reference) in any case.
+
+    Poses: a pose re-tests only the triangles it can change: those of the nodes it moves or
+    hides (with their subtrees) and those whose rays a moved node blocked before. When an
+    eyepoint moves in a pose (it hangs under a moved node), every undecided triangle is
+    re-tested in that pose.
 
     Shortcut (exact, not an approximation): when a blocked ray hits a closed occluder piece
     (every edge shared by an even number of its triangles, no glass) and every sample lies
@@ -749,21 +865,19 @@ class Visibility:
         centre = np.zeros(3)
         for pi, (pose, geo) in enumerate(zip(cfg["poses"], geos)):
             moved = set()
+            eye_moved = False
             if pi > 0:
-                moved_names = set((pose.get("rotate") or {}).keys()) | set(pose.get("hide") or [])
-                # children move with their parents
-                changed = True
-                while changed:
-                    changed = False
-                    for n in model.nodes:
-                        if n.parent is not None and model.nodes[n.parent].name in moved_names \
-                                and n.name not in moved_names:
-                            moved_names.add(n.name)
-                            changed = True
+                # children move (and hide) with their parents
+                moved_names = with_descendants(
+                    model, set((pose.get("rotate") or {}).keys()) | set(pose.get("hide") or []))
                 moved = {rest.node_index(n) for n in moved_names if rest.node_index(n) is not None}
+                for e in eyes:
+                    a, b = rest.empties.get(e), geo.empties.get(e)
+                    if (a is None) != (b is None) or (a is not None and not np.array_equal(a, b)):
+                        eye_moved = True
             # geo for this pose has hidden nodes removed: map rest triangle -> pose triangle
-            pose_map = self._pose_map(rest, geo, pose)
-            rest_of = np.nonzero(pose_map >= 0)[0]  # pose triangle -> rest triangle
+            pose_map = rest.index_map(geo)
+            rest_of = geo.index_map(rest)  # pose triangle -> rest triangle
             occ = np.nonzero(~geo.glass)[0]
             tree = bvh(geo.v[occ]) if len(occ) else None
             occ_node = geo.node[occ].tolist()
@@ -778,12 +892,14 @@ class Visibility:
             else:
                 # Re-test only what this pose can change: triangles of moved or hidden nodes,
                 # and triangles that some moved node blocked in an earlier pose (a ray that
-                # was blocked only by geometry that did not move stays blocked).
+                # was blocked only by geometry that did not move stays blocked). An eyepoint
+                # that moved can see anything new, so then every undecided triangle.
                 cand = np.array(sorted(t for t in mine.tolist()
                                        if (not self.front[t] or (want_back[t] and
                                                                  not self.back[t]))
                                        and pose_map[t] >= 0 and
-                                       (rest.node[t] in moved or (hits.get(t, set()) & moved))),
+                                       (eye_moved or rest.node[t] in moved or
+                                        (hits.get(t, set()) & moved))),
                                 dtype=np.int64)
                 self.pose_retests[pose["name"]] = int(len(cand))
             if len(cand) == 0 or tree is None:
@@ -815,7 +931,9 @@ class Visibility:
                     if r:
                         self.front[t] = True
                 if (not self.front[t] or want_back[t]) and not self.back[t]:
-                    r = self._side(tree, occ_node, occ_comp, pts, -n, -dirs, reach, [],
+                    # the back side faces the eyepoints too (a reversed cockpit face that only
+                    # the pilot can see is flipped, not hidden)
+                    r = self._side(tree, occ_node, occ_comp, pts, -n, -dirs, reach, eye_pos,
                                    enclose)
                     if r == "enclosed":
                         self.enclosed += 1
@@ -861,16 +979,6 @@ class Visibility:
         self.back_only = self.tested & ~self.front & self.back
         self.centre = None
         return self
-
-    def _pose_map(self, rest, geo, pose):
-        """Rest triangle index -> triangle index in the posed geo (-1 when hidden)."""
-        if len(geo.v) == len(rest.v):
-            return np.arange(len(rest.v))
-        keep = ~np.isin(rest.node, [rest.node_index(n) for n in (pose.get("hide") or [])
-                                    if rest.node_index(n) is not None])
-        out = np.full(len(rest.v), -1, dtype=np.int64)
-        out[keep] = np.arange(int(keep.sum()))
-        return out
 
     def _side(self, tree, occ_node, occ_comp, pts, n, dirs, reach, eyes, enclose):
         """True when a ray from some sample escapes (or reaches an eyepoint), "enclosed" when
@@ -982,18 +1090,26 @@ def hygiene(geo, topo, cfg, node_match):
     sliver = ~deg & (ang < h["sliver_deg"])
     out = {"degenerate": int(deg.sum()), "slivers": int(sliver.sum())}
     dup = 0
+    back_to_back = 0
     wind = 0
     nonmanifold = 0
     boundary = 0
     for name, tp in topo.items():
         tris = tp.tris
         ok = (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 2] != tris[:, 0])
-        st = np.sort(tris[ok], axis=1)
-        if len(st):
-            dup += len(st) - len(np.unique(st, axis=0))
         t = tris[ok]
         if len(t) == 0:
             continue
+        # Duplicates: the same three corners in the same cyclic order (same winding) is a
+        # fault (two coincident surfaces facing the same way flicker). The same corners in
+        # the opposite order are back-to-back faces, a valid way to make a thin part seen
+        # from both sides with back-face culling: counted (pairs), not a fault.
+        r = np.argmin(t, axis=1)
+        canon = np.take_along_axis(t, (r[:, None] + np.arange(3)[None, :]) % 3, axis=1)
+        uniq = np.unique(canon, axis=0)
+        dup += len(canon) - len(uniq)
+        both = np.unique(np.concatenate([uniq, uniq[:, [0, 2, 1]]]), axis=0, return_counts=True)
+        back_to_back += int((both[1] == 2).sum()) // 2
         a = np.concatenate([t[:, 0], t[:, 1], t[:, 2]])
         b = np.concatenate([t[:, 1], t[:, 2], t[:, 0]])
         key = np.stack([np.minimum(a, b), np.maximum(a, b)], axis=1)
@@ -1006,6 +1122,7 @@ def hygiene(geo, topo, cfg, node_match):
         nonmanifold += int((cnt > 2).sum())
         boundary += int((cnt == 1).sum())
     out["duplicates"] = int(dup)
+    out["back_to_back_pairs"] = int(back_to_back)
     out["inconsistent_winding_edges"] = wind
     out["nonmanifold_edges"] = nonmanifold
     out["boundary_edges"] = boundary
@@ -1104,15 +1221,18 @@ def zigzag(h, thr):
 
 def analyse_profile(s, h, step, prom, seg):
     """Outline h(s) -> interior extrema (prominence >= prom), the largest kink (change of
-    slope between the two `seg`-long chords meeting at a sample) and the largest step (the
-    jump between neighbouring samples beyond what the steeper adjacent chord explains).
-    Locations are sample indices (a step sits between index i and i + 1)."""
-    out = {"maxima": [], "minima": [], "kink_deg": 0.0, "kink_i": None, "step": 0.0,
+    slope between the two `seg`-long chords meeting at a sample) and the largest step: the
+    change of height between neighbouring samples i and i + 1 that the outline's slope does
+    not explain, min(|dh - ds * slope|) over the chords just left and just right of the pair
+    (signed, so a drop on a rising outline counts in full). Locations are sample indices (a
+    step sits between index i and i + 1). A figure is None when the outline is too short to
+    compute it (fewer than 3 samples for extrema, 2 * seg / step + 1 for the kink, one more
+    for the step)."""
+    out = {"maxima": None, "minima": None, "kink_deg": None, "kink_i": None, "step": None,
            "step_i": None}
     n = len(h)
-    if n < 3:
-        return out
-    out["maxima"], out["minima"] = zigzag(h, prom)
+    if n >= 3:
+        out["maxima"], out["minima"] = zigzag(h, prom)
     w = max(1, int(round(seg / step)))
     if n > 2 * w:
         i = np.arange(w, n - w)
@@ -1124,17 +1244,20 @@ def analyse_profile(s, h, step, prom, seg):
         out["kink_i"] = int(i[j])
     if n > 2 * w + 1:
         i = np.arange(w, n - w - 1)
-        jump = np.abs(h[i + 1] - h[i])
-        sl = np.abs((h[i] - h[i - w]) / (s[i] - s[i - w]))
-        sr = np.abs((h[i + 1 + w] - h[i + 1]) / (s[i + 1 + w] - s[i + 1]))
-        excess = jump - (s[i + 1] - s[i]) * np.maximum(sl, sr)
-        j = int(np.argmax(excess))
-        out["step"] = float(max(0.0, excess[j]))
+        dh = h[i + 1] - h[i]
+        ds = s[i + 1] - s[i]
+        sl = (h[i] - h[i - w]) / (s[i] - s[i - w])
+        sr = (h[i + 1 + w] - h[i + 1]) / (s[i + 1 + w] - s[i + 1])
+        res = np.minimum(np.abs(dh - ds * sl), np.abs(dh - ds * sr))
+        j = int(np.argmax(res))
+        out["step"] = float(res[j])
         out["step_i"] = int(i[j])
     return out
 
 
-def run_probe(probe, geo, topo, cfg):
+def run_probe(probe, geo, topo, cfg, rest=None):
+    """Trace one probe on `geo` (the probe's pose; `rest` = the rest-pose geo that `topo`
+    indexes, needed when they differ)."""
     start = np.array(probe["start"], dtype=np.float64)
     end = np.array(probe["end"], dtype=np.float64)
     d = np.array(probe["direction"], dtype=np.float64)
@@ -1145,17 +1268,26 @@ def run_probe(probe, geo, topo, cfg):
     sel = geo.mask(probe["nodes"], probe["materials"])
     keep = sel.copy()
     excluded = []
+    # topo indexes rest-pose triangles; map them to this pose (-1 = hidden here)
+    pmap = rest.index_map(geo) if rest is not None and rest is not geo else None
+    comp_tris = {}
     for name in probe["nodes"]:
         tp = topo.get(name)
         if tp is None:
             continue
-        v = geo.v[tp.tri_idx]
+        idx = tp.tri_idx if pmap is None else pmap[tp.tri_idx]
+        live = idx >= 0
+        if not live.any():
+            continue  # the node is hidden in this pose
+        v = geo.v[idx[live]]
+        comp = tp.comp[live]
         proj = dot(v, u[None, None, :])
-        for c in range(tp.ncomp):
-            m = tp.comp == c
+        for c in np.unique(comp).tolist():
+            m = comp == c
             ext = float(proj[m].max() - proj[m].min())
+            tris = idx[live][m]
+            comp_tris[(name, c)] = tris
             if ext < probe["min_feature"]:
-                tris = tp.tri_idx[m]
                 if sel[tris].any():
                     keep[tris] = False
                     excluded.append((name, c, tris))
@@ -1194,8 +1326,7 @@ def run_probe(probe, geo, topo, cfg):
     gaps = int((~ok).sum())
     ex = []
     for name, c in sorted(excluded_hit):
-        tp = topo[name]
-        v = geo.v[tp.tri_idx[tp.comp == c]].reshape(-1, 3)
+        v = geo.v[comp_tris[(name, c)]].reshape(-1, 3)
         lo, hi = v.min(axis=0), v.max(axis=0)
         ex.append({"node": name, "centre": vec((lo + hi) / 2), "size": vec(hi - lo)})
 
@@ -1203,13 +1334,18 @@ def run_probe(probe, geo, topo, cfg):
         if i is None:
             return None
         return vec(pv[i] if j is None else (pv[i] + pv[j]) / 2)
+
+    def count(x):
+        return None if x is None else len(x)
     return {
-        "maxima": len(res["maxima"]), "minima": len(res["minima"]),
-        "maxima_at": [at(i) for i in res["maxima"]], "minima_at": [at(i) for i in res["minima"]],
+        "maxima": count(res["maxima"]), "minima": count(res["minima"]),
+        "maxima_at": [at(i) for i in res["maxima"] or []],
+        "minima_at": [at(i) for i in res["minima"] or []],
         "kink_deg": rd(res["kink_deg"]), "kink_at": at(res["kink_i"]),
         "step": rm(res["step"]),
         "step_at": at(res["step_i"], None if res["step_i"] is None else res["step_i"] + 1),
-        "samples": int(nstep), "gaps": gaps, "excluded_parts": ex,
+        "samples": int(nstep), "hits": int(ok.sum()), "gaps": gaps,
+        "coverage": rf(ok.sum() / max(1, nstep)), "excluded_parts": ex,
         "profile": [[rm(a), rm(b)] for a, b in zip(sv, hv)],
     }, (s, h, start, u, d, hitp)
 
@@ -1249,6 +1385,7 @@ class Audit:
         geo = geos[0]
         rgeo = Geo(ref, None, glass) if ref is not None else None
         self.geo, self.rgeo = geo, rgeo
+        self.check_inputs(model, geo)
         self.tick("load", t0)
 
         t0 = time.perf_counter()
@@ -1270,12 +1407,20 @@ class Audit:
         self.has_ref = np.zeros(T, dtype=bool)
         self.unmeasured = np.zeros(T, dtype=bool)
         matches = {}
+        self.no_reference = {}  # model node -> why its shape and shading are not measured
+        self.ref_only = []      # reference nodes the model does not have
+        dmin = cfg["hygiene"]["degenerate_area"]
         if rgeo is not None:
             for name in sorted(topo):
-                if rgeo.node_index(name) is None or not (rgeo.node == rgeo.node_index(name)).any():
-                    self.warnings.append(f"node {name}: no reference node of that name; shape "
-                                         "and shading not measured")
+                ri = rgeo.node_index(name)
+                if ri is None or not (rgeo.node == ri).any():
+                    self.no_reference[name] = "no reference node of that name"
                     continue
+                if not ((rgeo.node == ri) & (rgeo.area >= dmin)).any():
+                    self.no_reference[name] = "the reference node has no usable triangles"
+                    continue
+                if not ((geo.node == geo.node_index(name)) & (geo.area >= dmin)).any():
+                    continue  # only degenerate triangles: check D reports them
                 m = NodeMatch(geo, rgeo, name, cfg, self.fast)
                 matches[name] = m
                 self.err[m.tri] = m.err
@@ -1285,26 +1430,30 @@ class Audit:
                 pos = np.full(len(geo.v), -1, dtype=np.int64)
                 pos[tp.tri_idx] = np.arange(len(tp.tri_idx))
                 fold = tp.soft_folds(geo)[pos[m.tri]]
-                m.unmeasured = m.identical & ((m.spread > 1.0) | fold)
+                m.set_unmeasured(m.identical & ((m.spread > 1.0) | fold))
                 self.unmeasured[m.tri] = m.unmeasured
                 if m.rdensity < cfg["reference"]["min_density"]:
                     self.warnings.append(
                         f"node {name}: reference has only {m.rdensity:.1f}x the model's "
                         f"triangles (want >= {cfg['reference']['min_density']:g}x); its "
                         "errors are underestimated")
-            for name in rgeo.node_names:
-                if rgeo.node_index(name) is not None and (rgeo.node == rgeo.node_index(name)).any() \
-                        and name not in topo:
-                    self.warnings.append(f"reference node {name} is missing from the model")
+            for name in sorted(rgeo.node_names):
+                if (rgeo.node == rgeo.node_index(name)).any() and name not in topo:
+                    self.ref_only.append(name)
+            for name, why in sorted(self.no_reference.items()):
+                self.warnings.append(f"node {name}: {why}; shape and shading not measured")
+            for name in self.ref_only:
+                self.warnings.append(f"reference node {name} is missing from the model")
         else:
-            self.warnings.append("no reference given: checks A, B and the headroom are skipped")
+            self.warnings.append("no reference given: checks A, B and the headroom are not "
+                                 "measured")
         self.matches = matches
         self.tick("shape+shading", t0)
 
-        # C: visibility inputs (the back side is also tested where the normal disagrees with
-        # the reference by more than 90 degrees, to tell which of the two is flipped). On a
-        # large model the rays are cast by worker processes while this one does the headroom.
-        t_vis = time.perf_counter()
+        # C: visibility (the back side is also tested where the normal disagrees with the
+        # reference by more than 90 degrees, to tell which of the two is flipped). On a large
+        # model worker processes cast most of the rays while this one casts a share.
+        t0 = time.perf_counter()
         self.ref_flip = self.has_ref & (self.nerr > 90.0)
         gcomp = np.zeros(len(geo.v), dtype=np.int64)
         closed, offset = [], 0
@@ -1316,25 +1465,8 @@ class Audit:
         closed = np.concatenate(closed) if closed else np.zeros(0, dtype=bool)
         vis_inputs = (model, geos, self.ref_flip, gcomp, closed)
         job = self.start_visibility(*vis_inputs)
-        try:
-            # C: headroom
-            t0 = time.perf_counter()
-            self.headroom = self.run_headroom(geo, rgeo, topo, matches, groups)
-            self.tick("headroom", t0)
-        except BaseException:
-            if job is not None:
-                for proc in job["procs"]:
-                    proc.kill()
-                    proc.wait()
-                import shutil
-                shutil.rmtree(job["dir"], ignore_errors=True)
-            raise
-
-        # C: visibility
-        if job is None:
-            t_vis = time.perf_counter()
         self.vis = self.finish_visibility(job, *vis_inputs)
-        self.tick("visibility", t_vis)
+        self.tick("visibility", t0)
 
         # D
         t0 = time.perf_counter()
@@ -1357,7 +1489,17 @@ class Audit:
                 f"reference (nodes {', '.join(names)}): the reference build is flipped there")
         self.floating = floating_islands(geo, topo, cfg["hygiene"]["island_margin"])
         self.hyg = hyg
+        # What checks A and B (and the headroom) measure: triangles that can be seen, are not
+        # flipped (hidden and flipped ones have their own checks) and whose error this
+        # reference can measure.
+        self.seen = vis.front & ~self.flipped_any
+        self.counted = self.seen & self.has_ref & ~self.unmeasured
         self.tick("hygiene", t0)
+
+        # C: headroom (after the visibility: it measures the same triangles as the A gate)
+        t0 = time.perf_counter()
+        self.headroom = self.run_headroom(geo, rgeo, topo, matches, groups)
+        self.tick("headroom", t0)
 
         # F
         t0 = time.perf_counter()
@@ -1365,7 +1507,7 @@ class Audit:
         self.probe_raw = {}
         for probe in cfg["probes"]:
             pg = geos[[p["name"] for p in cfg["poses"]].index(probe["pose"])]
-            res, raw = run_probe(probe, pg, topo, cfg)
+            res, raw = run_probe(probe, pg, topo, cfg, rest=geo)
             self.probes[probe["name"]] = res
             self.probe_raw[probe["name"]] = raw
         self.tick("profiles", t0)
@@ -1376,11 +1518,42 @@ class Audit:
 
     # -------------------------------------------------------------- visibility workers
 
+    def check_inputs(self, model, geo):
+        """Warnings about input that the audit would otherwise treat silently."""
+        cfg = self.cfg
+        glass = set(cfg["model"]["glass_materials"])
+        used = {p.material for p in model.prims}
+        for mat in model.materials:
+            if mat["name"] in used and mat["alpha_mode"] == "BLEND" and mat["name"] not in glass:
+                self.warnings.append(
+                    f"material {mat['name']}: alphaMode BLEND but not listed in [model] "
+                    "glass_materials, so the audit treats it as opaque (it blocks the "
+                    "visibility rays)")
+        for name in sorted(geo.mirrored):
+            self.warnings.append(
+                f"node {name}: its world matrix mirrors (negative determinant), so by glTF 2.0 "
+                "its front faces are clockwise and the audit reverses its winding; raylib 6.0 "
+                "bakes node transforms into the vertices without reversing the winding "
+                "(rmodels.c, LoadGLTF), so the viewer would show this node inside out: "
+                "mirror the mesh data instead")
+        smp = cfg["sampling"]
+        live = geo.lmax[geo.area >= cfg["hygiene"]["degenerate_area"]]
+        spacing = cfg["fast"]["spacing"] if self.fast else smp["spacing"]
+        for key, sp, kmax, what in (("shape", spacing, smp["kmax"], "shape samples"),
+                                    ("vis", smp["vis_spacing"], smp["vis_kmax"],
+                                     "visibility samples")):
+            n = int((np.ceil(live / sp) > kmax).sum())
+            if n:
+                self.warnings.append(
+                    f"{n} triangles are longer than {kmax * sp:g} m: their {what} are further "
+                    f"apart than {sp:g} m ([sampling] {'kmax' if key == 'shape' else 'vis_kmax'}"
+                    f" = {kmax})")
+
     def start_visibility(self, model, geos, want_back, gcomp, closed):
-        """Start `jobs` Blender processes that each run the visibility check on every
-        jobs-th triangle (Visibility `part`), when jobs > 1 and the model has at least
-        [visibility] parallel_min triangles. They run while this process does the headroom
-        check; finish_visibility() collects them. Returns None to run it in this process."""
+        """Start `jobs` Blender processes for parts 1..jobs of the visibility check split
+        into jobs + 1 parts (Visibility `part`; finish_visibility() computes part 0 in this
+        process meanwhile and collects the others), when jobs > 1 and the model has at least
+        [visibility] parallel_min triangles. Returns None to run it all in this process."""
         cfg = self.cfg
         if self.jobs < 2 or len(geos[0].v) < cfg["visibility"]["parallel_min"]:
             return None
@@ -1398,14 +1571,15 @@ class Audit:
         import tempfile
         tmp = Path(tempfile.mkdtemp(prefix="audit_visibility_"))
         procs = []
+        n = self.jobs + 1  # worker i does part i + 1; this process does part 0
         try:
             np.save(tmp / "want_back.npy", want_back)
             np.save(tmp / "gcomp.npy", gcomp)
             np.save(tmp / "closed.npy", closed)
             spec = {"model": str(self.model_path.resolve()), "sha256": self.model.sha256,
                     "config": {k: v for k, v in cfg.items() if not k.startswith("_")},
-                    "fast": self.fast, "dir": str(tmp), "parts": self.jobs}
-            for i in range(self.jobs):
+                    "fast": self.fast, "dir": str(tmp), "parts": n}
+            for i in range(1, n):
                 (tmp / f"spec{i}.json").write_text(json.dumps({**spec, "part": i}))
                 with open(tmp / f"log{i}.txt", "w") as log:
                     procs.append(subprocess.Popen(
@@ -1419,22 +1593,35 @@ class Audit:
                 proc.wait()
             shutil.rmtree(tmp, ignore_errors=True)
             return None
-        return {"dir": tmp, "procs": procs}
+        return {"dir": tmp, "procs": procs, "parts": n, "start": time.monotonic()}
 
     def finish_visibility(self, job, model, geos, want_back, gcomp, closed):
-        """The visibility result: computed here (job None) or merged from the workers. A
-        part whose worker failed is computed here instead, so the result is the same."""
+        """The visibility result: computed here (job None), or part 0 here and the others
+        merged from the workers. A part whose worker failed, or did not finish within
+        [visibility] worker_timeout seconds of being started, is computed here instead, so
+        the result is the same."""
         cfg = self.cfg
         if job is None:
             return Visibility(model, geos, cfg, self.fast, want_back=want_back, gcomp=gcomp,
                               closed=closed)
         import shutil
-        n = len(job["procs"])
-        parts = []
+        import subprocess
+        n = job["parts"]
         worked = 0
+        deadline = job["start"] + float(cfg["visibility"]["worker_timeout"])
         try:
-            for i, proc in enumerate(job["procs"]):
-                code = proc.wait()
+            parts = [Visibility(model, geos, cfg, self.fast, want_back=want_back, gcomp=gcomp,
+                                closed=closed, part=(0, n)).as_part()]
+            for i, proc in enumerate(job["procs"], start=1):
+                try:
+                    code = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+                    why = f"failed (exit {code})"
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    code = None
+                    why = (f"timed out ({cfg['visibility']['worker_timeout']:g} s, "
+                           "[visibility] worker_timeout)")
                 part = None
                 if code == 0:
                     try:
@@ -1445,8 +1632,8 @@ class Audit:
                         part = None
                 if part is None:
                     tail = (job["dir"] / f"log{i}.txt").read_text(errors="replace")[-1500:]
-                    print(f"[audit] visibility worker {i + 1}/{n} failed (exit {code}); "
-                          f"computing its part here. Its log ends:\n{tail}", file=sys.stderr)
+                    print(f"[audit] visibility worker {i}/{n - 1} {why}; computing its part "
+                          f"here. Its log ends:\n{tail}", file=sys.stderr)
                     part = Visibility(model, geos, cfg, self.fast, want_back=want_back,
                                       gcomp=gcomp, closed=closed, part=(i, n)).as_part()
                 parts.append(part)
@@ -1454,6 +1641,7 @@ class Audit:
             for proc in job["procs"]:
                 if proc.poll() is None:
                     proc.kill()
+                    proc.wait()
             shutil.rmtree(job["dir"], ignore_errors=True)
         self.vis_workers = worked
         return Visibility.merged(parts, geos[0], cfg, self.fast)
@@ -1469,6 +1657,9 @@ class Audit:
             absent = [n for n in g["nodes"] if n not in self.topo]
             groups.append({**g, "present": present, "absent": absent})
             assigned |= set(present)
+            if present and absent:
+                self.warnings.append(f"group {g['name']}: listed nodes not in the model: "
+                                     f"{', '.join(absent)}")
         rest = [n for n in sorted(self.topo) if n not in assigned]
         if rest:
             target = cfg["model"].get("default_group")
@@ -1503,6 +1694,8 @@ class Audit:
             pos_in_node = np.full(len(geo.v), -1, dtype=np.int64)
             pos_in_node[tp.tri_idx] = np.arange(len(tp.tri_idx))
             comp_of_ref = tp.comp[pos_in_node[m.rnear]] if len(m.rnear) else np.zeros(0, int)
+            # the reverse points the A gate uses: nearest model triangle seen, not coincident
+            rok = self.seen[m.rnear] & ~m.runmeasured
             sizes = np.bincount(tp.comp, minlength=tp.ncomp)
             for c in range(tp.ncomp):
                 if sizes[c] < hcfg["min_component"]:
@@ -1519,11 +1712,25 @@ class Audit:
                 good = (faces[:, 0] != faces[:, 1]) & (faces[:, 1] != faces[:, 2]) & \
                        (faces[:, 2] != faces[:, 0])
                 faces = faces[good]
-                rc_pts = m.rcent[comp_of_ref == c]
+                lo, hi = verts.min(axis=0), verts.max(axis=0)
+                rec = {"node": name, "component": int(c), "triangles": int(len(gtris)),
+                       "centre": vec((lo + hi) / 2), "size": vec(hi - lo)}
+                counted = self.counted[gtris]
+                if not counted.any():
+                    out.append({**rec, "skipped": "no triangle of the piece is measured by the A "
+                                                  "gate (all hidden, flipped or not measured)"})
+                    continue
+                sel = (comp_of_ref == c) & rok
+                rc_pts, rc_w = m.rcent[sel], m.rarea[sel]
                 cap = hcfg.get("max_reverse_points", 50000)
                 if len(rc_pts) > cap:  # an even, deterministic subset keeps this fast
-                    rc_pts = rc_pts[::int(math.ceil(len(rc_pts) / cap))]
-                base = measure_patch(geo.v[gtris], m.tree, rgeo.v[m.rtri], rc_pts, cfg, spacing)
+                    stride = int(math.ceil(len(rc_pts) / cap))
+                    rc_pts, rc_w = rc_pts[::stride], rc_w[::stride]
+                # The piece's own error, over the triangles the A gate measures; a decimated
+                # piece is measured over the same part of the surface (region).
+                base = measure_patch(geo.v[gtris], m.tree, rgeo.v[m.rtri], rc_pts, rc_w, cfg,
+                                     spacing, counted=counted)
+                region = None if counted.all() else (bvh(geo.v[gtris]), counted)
                 # Pass mark: the group gate, or (for a piece that already misses it) the
                 # piece's own error plus a 5 % slack, so that removing triangles may not make
                 # a piece noticeably worse than it is.
@@ -1531,14 +1738,15 @@ class Audit:
                 thr = (max(g["shape_p99"], (1 + slack) * max(base["fwd_p99"], base["rev_p99"])),
                        max(g["shape_max"], (1 + slack) * max(base["fwd_max"], base["rev_max"])))
                 recs = decimate_measure(f"{name}_{c}", verts, faces, ratios, m.tree,
-                                        rgeo.v[m.rtri], rc_pts, thr, cfg, spacing)
+                                        rgeo.v[m.rtri], rc_pts, rc_w, thr, cfg, spacing,
+                                        region=region)
                 passing = [r for r in recs if r["pass"]]
                 best = passing[-1] if passing else None
-                lo, hi = verts.min(axis=0), verts.max(axis=0)
                 kept = best["triangles"] if best else len(gtris)
                 out.append({
-                    "node": name, "component": int(c), "triangles": int(len(gtris)),
-                    "centre": vec((lo + hi) / 2), "size": vec(hi - lo),
+                    **rec,
+                    "measured_triangles": int(counted.sum()),
+                    "reverse_points": int(len(rc_pts)),
                     "base": {k: rm(v) for k, v in base.items()},
                     "threshold_p99": rm(thr[0]), "threshold_max": rm(thr[1]),
                     "smallest_passing_ratio": best["ratio"] if best else None,
@@ -1610,7 +1818,6 @@ class Audit:
         nodes = {}
         T = len(geo.v)
         area = geo.area
-        self.seen = vis.front & ~self.flipped_any
         for name in sorted(self.topo):
             tp = self.topo[name]
             ti = tp.tri_idx
@@ -1620,12 +1827,13 @@ class Audit:
             alt = 2.0 * area[ti] / np.maximum(geo.lmax[ti], EPS)
             prims = [pr for pr in model.prims if pr.node == name]
             nv = sum(pr.vertex_count for pr in prims)
+            tested = int(vis.tested[ti].sum())  # degenerate triangles are not tested
             entry = {
                 "group": g["name"], "triangles": int(len(ti)), "vertices": int(nv),
                 "verts_per_tri": rf(nv / max(1, len(ti))), "area": ra(area[ti].sum()),
                 "components": int(tp.ncomp),
                 "hidden": int(vis.hidden[ti].sum()),
-                "hidden_frac": rf(vis.hidden[ti].sum() / max(1, len(ti))),
+                "hidden_frac": rf(vis.hidden[ti].sum() / tested) if tested else None,
                 "hidden_area_frac": rf(area[ti][vis.hidden[ti]].sum() / max(EPS, area[ti].sum())),
                 "flipped": int(self.flipped_any[ti].sum()),
                 "flipped_clusters": self.hidden_clusters(name, self.flipped_any)[
@@ -1638,33 +1846,23 @@ class Audit:
             }
             if name in self.matches:
                 m = self.matches[name]
-                w = area[m.tri]
-                # gates use what can be seen: front-visible, not flipped (hidden and flipped
-                # triangles have their own checks); "_all" keeps every triangle
-                ok = self.seen[m.tri]
-                rok = self.seen[m.rnear]
-                entry["shape"] = round_stats(wstats(m.err[ok], w[ok]), rm)
-                entry["shape_reverse"] = round_stats(wstats(m.rerr[rok], m.rarea[rok]), rm)
-                okb = ok & ~self.ref_wrong[m.tri]  # the reference is the flipped one there
-                entry["shading_deg"] = round_stats(wstats(m.nerr[okb], w[okb]), rd)
-                entry["shape_all"] = round_stats(wstats(m.err, w), rm)
-                entry["shading_deg_all"] = round_stats(wstats(m.nerr, w), rd)
+                entry.update(self.ab_stats([m], g, counts=True))
                 entry["reference_triangles"] = int(len(m.rtri))
                 entry["reference_density"] = round(m.rdensity, 2)
                 entry["samples"] = int(m.samples)
                 entry["reprojected_samples"] = int(m.reprojected)
-                ratio = m.err[ok] / g["shape_p99"]
-                entry["error_buckets_area"] = self.buckets(ratio, w[ok])
-                entry["error_buckets_count"] = self.buckets(ratio, np.ones(len(ratio)))
                 um = m.unmeasured
-                entry["unmeasured_curved"] = int(um.sum())
-                entry["unmeasured_curved_area_frac"] = rf(w[um].sum() / max(EPS, w.sum()))
                 if um.any():
+                    frac = entry["unmeasured_area_frac"]
                     self.warnings.append(
-                        f"node {name}: {int(um.sum())} triangles on curved surfaces "
-                        f"({w[um].sum() / max(EPS, w.sum()) * 100:.1f} % of its area) are "
-                        "tessellated exactly as in the reference, so their shape error is not "
-                        "measured (the generator does not scale them with --detail)")
+                        f"node {name}: {int(um.sum())} triangles on curved surfaces"
+                        + (f" ({frac * 100:.1f} % of its visible area)" if frac is not None
+                           else "")
+                        + " are tessellated exactly as in the reference, so their shape error "
+                        "is not measured and they are left out of checks A and B (the "
+                        "generator does not scale them with --detail)")
+            elif name in self.no_reference:
+                entry["not_measured"] = self.no_reference[name]
             nodes[name] = entry
         res["nodes"] = nodes
 
@@ -1678,7 +1876,7 @@ class Audit:
                 upn = len(np.unique(pn, axis=0))
             else:
                 upn = upos
-            prims.append({"node": pr.node, "material": pr.material,
+            prims.append({"node": pr.node, "material": pr.material, "primitive": int(pr.index),
                           "triangles": int(len(pr.indices)), "vertices": int(pr.vertex_count),
                           "unique_positions": int(upos), "unique_position_normals": int(upn),
                           "max_index": int(pr.max_index),
@@ -1690,33 +1888,29 @@ class Audit:
         grp_out = {}
         for g in self.groups:
             if not g["present"]:
-                grp_out[g["name"]] = {"present": [], "absent": g["absent"]}
+                grp_out[g["name"]] = {"present": [], "absent": g["absent"],
+                                      "required": bool(g["required"])}
                 continue
             ti = np.nonzero(np.isin(geo.node, [geo.node_index(n) for n in g["present"]]))[0]
             p = 2.0 * g["distance"] * math.tan(math.radians(view["vfov_deg"]) / 2) / view[
                 "height"]
             alt = 2.0 * area[ti] / np.maximum(geo.lmax[ti], EPS)
             entry = {"present": g["present"], "absent": g["absent"],
+                     "required": bool(g["required"]),
                      "triangles": int(len(ti)), "pixel_size": rm(p),
                      "design_distance": g["distance"],
                      "subpixel_frac": rf((area[ti] < p * p).sum() / max(1, len(ti))),
                      "thin_frac": rf((alt < 0.5 * p).sum() / max(1, len(ti)))}
             ms = [self.matches[n] for n in g["present"] if n in self.matches]
-            if ms:
-                ok = np.concatenate([self.seen[m.tri] for m in ms])
-                rok = np.concatenate([self.seen[m.rnear] for m in ms])
-                err = np.concatenate([m.err for m in ms])
-                nerr = np.concatenate([m.nerr for m in ms])
-                w = np.concatenate([area[m.tri] for m in ms])
-                rerr = np.concatenate([m.rerr for m in ms])
-                rw = np.concatenate([m.rarea for m in ms])
-                entry["shape"] = round_stats(wstats(err[ok], w[ok]), rm)
-                entry["shape_reverse"] = round_stats(wstats(rerr[rok], rw[rok]), rm)
-                okb = ok & ~np.concatenate([self.ref_wrong[m.tri] for m in ms])
-                entry["shading_deg"] = round_stats(wstats(nerr[okb], w[okb]), rd)
-                entry["shape_all"] = round_stats(wstats(err, w), rm)
-                entry["shading_deg_all"] = round_stats(wstats(nerr, w), rd)
-                entry["error_buckets_area"] = self.buckets(err[ok] / g["shape_p99"], w[ok])
+            if self.rgeo is None:
+                entry["not_measured"] = "no reference given"
+            elif not ms:
+                entry["not_measured"] = "no node of the group has a reference node of its name"
+            else:
+                entry.update(self.ab_stats(ms, g))
+                if entry["shape"]["count"] == 0:
+                    entry["not_measured"] = ("nothing to measure: every triangle is hidden, "
+                                             "flipped or not measured")
             grp_out[g["name"]] = entry
         res["groups"] = grp_out
 
@@ -1737,8 +1931,10 @@ class Audit:
             "max_index": int(max((pr.max_index for pr in model.prims), default=-1)),
             "bbox_min": vec(lo), "bbox_max": vec(hi),
             "length": rm(dims[1]), "span": rm(dims[0]), "height": rm(dims[2]),
-            "hidden": int(vis.hidden.sum()), "hidden_frac": rf(vis.hidden.sum() / max(1, T)),
+            "hidden": int(vis.hidden.sum()),
+            "hidden_frac": rf(vis.hidden.sum() / max(1, int(vis.tested.sum()))),
             "empties": {k: vec(v) for k, v in sorted(geo.empties.items())},
+            "mirrored_nodes": sorted(geo.mirrored),
         }
         res["hygiene"] = {**self.hyg,
                           "flipped": int(self.flipped_any.sum()),
@@ -1752,12 +1948,58 @@ class Audit:
         res["probes"] = self.probes
         res["gates"] = self.gates(res)
         res["warnings"] = sorted(set(self.warnings))
+        failing = [g for g in res["gates"] if g["status"] in ("fail", "not_measured")]
         res["summary"] = {
             "gates": len(res["gates"]),
-            "failed": sum(1 for g in res["gates"] if not g["pass"]),
-            "hard_failed": sum(1 for g in res["gates"] if not g["pass"] and g["hard"]),
+            "passed": sum(1 for g in res["gates"] if g["status"] == "pass"),
+            "failed": len(failing),
+            "hard_failed": sum(1 for g in failing if g["hard"]),
+            "not_measured": sum(1 for g in failing if g["status"] == "not_measured"),
+            "absent": sum(1 for g in res["gates"] if g["status"] == "absent"),
         }
         return res
+
+    def ab_stats(self, ms, g, counts=False):
+        """Checks A and B over the matched nodes `ms` (NodeMatch list) of group `g`.
+
+        The gate figures use only the triangles that are seen (front visible, not flipped:
+        hidden and flipped ones have their own checks) and measured (not coinciding with the
+        reference on a curved surface, see set_unmeasured), and the reverse points whose
+        nearest model triangle is seen and that do not coincide with it. "_all" = every
+        measured triangle, hidden and flipped ones included."""
+        area = self.geo.area
+        tri = np.concatenate([m.tri for m in ms])
+        err = np.concatenate([m.err for m in ms])
+        nerr = np.concatenate([m.nerr for m in ms])
+        unm = np.concatenate([m.unmeasured for m in ms])
+        rerr = np.concatenate([m.rerr for m in ms])
+        rw = np.concatenate([m.rarea for m in ms])
+        rnear = np.concatenate([m.rnear for m in ms])
+        runm = np.concatenate([m.runmeasured for m in ms])
+        w = area[tri]
+        seen = self.seen[tri]
+        ok = seen & ~unm
+        rok = self.seen[rnear] & ~runm
+        okb = ok & ~self.ref_wrong[tri]  # where the reference is the flipped one
+        meas = ~unm
+        vis_area = float(w[seen].sum())
+        out = {
+            "shape": round_stats(wstats(err[ok], w[ok]), rm),
+            "shape_reverse": round_stats(wstats(rerr[rok], rw[rok]), rm),
+            "shading_deg": round_stats(wstats(nerr[okb], w[okb]), rd),
+            "shape_all": round_stats(wstats(err[meas], w[meas]), rm),
+            "shading_deg_all": round_stats(wstats(nerr[meas], w[meas]), rd),
+            "measured_triangles": int(ok.sum()),
+            "unmeasured_triangles": int(unm.sum()),
+            "visible_area": ra(vis_area),
+            "unmeasured_area_frac": rf(w[seen & unm].sum() / vis_area) if vis_area > 0
+            else None,
+            "error_buckets_area": self.buckets(err[ok] / g["shape_p99"], w[ok]),
+        }
+        if counts:
+            out["error_buckets_count"] = self.buckets(err[ok] / g["shape_p99"],
+                                                      np.ones(int(ok.sum())))
+        return out
 
     def examples(self, mask, n=10):
         idx = np.nonzero(mask)[0][:n]
@@ -1767,9 +2009,13 @@ class Audit:
 
     @staticmethod
     def buckets(ratio, w):
+        """Share of the weight w by error / gate: < 0.1, 0.1-0.5, 0.5-1, > 1 (None when
+        nothing was measured)."""
+        if len(ratio) == 0 or float(np.sum(w)) <= 0:
+            return None
         edges = [0.1, 0.5, 1.0]
         b = np.digitize(ratio, edges)
-        tot = max(EPS, float(np.sum(w)))
+        tot = float(np.sum(w))
         names = ["lt_0.1", "0.1_0.5", "0.5_1", "gt_1"]
         return {names[i]: rf(np.sum(w[b == i]) / tot) for i in range(4)}
 
@@ -1779,39 +2025,77 @@ class Audit:
         hard = set(gc.get("hard", []))
         out = []
 
-        def add(gid, check, label, value, limit, op, unit, key):
-            if value is None or limit is None:
-                return
-            ok = value <= limit if op == "<=" else value >= limit if op == ">=" else \
-                value == limit
-            out.append({"id": gid, "check": check, "label": label, "value": value,
-                        "limit": limit, "op": op, "unit": unit, "pass": bool(ok),
-                        "hard": key in hard})
+        def add(gid, check, label, value, limit, op, unit, key, status=None, reason=None):
+            """One gate row. status: "pass" / "fail"; "not_measured" (a FAIL: the value
+            could not be measured, `reason` says why); "absent" (a group that is not in the
+            model and not required: neither a pass nor a fail). Gates without a limit in the
+            config are not checked (no row), unless a status is given."""
+            if status is None:
+                if limit is None:
+                    return
+                if value is None:
+                    status = "not_measured"
+                else:
+                    ok = value <= limit if op == "<=" else value >= limit if op == ">=" else \
+                        value == limit
+                    status = "pass" if ok else "fail"
+            row = {"id": gid, "check": check, "label": label, "value": value, "limit": limit,
+                   "op": op, "unit": unit, "status": status, "pass": status == "pass",
+                   "hard": key in hard}
+            if status in ("not_measured", "absent"):
+                row["reason"] = reason or "nothing to measure"
+            out.append(row)
         for g in self.groups:
-            ge = res["groups"].get(g["name"], {})
-            if "shape" not in ge:
-                continue
             name = g["name"]
+            ge = res["groups"].get(name, {})
+            present = len(g["present"])
+            if present == 0:
+                add(f"A.{name}.present", "A", f"Group {name}: nodes in the model", 0, 1, ">=",
+                    "count", "group_present", status="fail" if g["required"] else "absent",
+                    reason="none of its nodes is in the model" +
+                    ("" if g["required"] else " (the group is not required)"))
+                continue
+            add(f"A.{name}.present", "A", f"Group {name}: nodes in the model", present, 1, ">=",
+                "count", "group_present")
+            why = ge.get("not_measured")
+
+            def val(key, field):
+                return (ge.get(key) or {}).get(field)
             add(f"A.{name}.p99", "A", f"Shape accuracy {name}: model to reference p99",
-                ge["shape"]["p99"], g["shape_p99"], "<=", "m", "shape")
+                val("shape", "p99"), g["shape_p99"], "<=", "m", "shape", reason=why)
             add(f"A.{name}.max", "A", f"Shape accuracy {name}: model to reference max",
-                ge["shape"]["max"], g["shape_max"], "<=", "m", "shape")
+                val("shape", "max"), g["shape_max"], "<=", "m", "shape", reason=why)
             add(f"A.{name}.rev_p99", "A", f"Shape accuracy {name}: reference to model p99",
-                ge["shape_reverse"]["p99"], g["shape_p99"], "<=", "m", "shape")
+                val("shape_reverse", "p99"), g["shape_p99"], "<=", "m", "shape", reason=why)
             add(f"A.{name}.rev_max", "A", f"Shape accuracy {name}: reference to model max",
-                ge["shape_reverse"]["max"], g["shape_max"], "<=", "m", "shape")
+                val("shape_reverse", "max"), g["shape_max"], "<=", "m", "shape", reason=why)
+            add(f"A.{name}.unmeasured", "A",
+                f"Not measured {name}: share of the visible area", ge.get("unmeasured_area_frac"),
+                gc.get("unmeasured_max"), "<=", "frac", "unmeasured_max", reason=why)
             add(f"B.{name}.p95", "B", f"Shading {name}: normal error p95",
-                ge["shading_deg"]["p95"], g["normal_p95_deg"], "<=", "deg", "shading")
+                val("shading_deg", "p95"), g["normal_p95_deg"], "<=", "deg", "shading",
+                reason=why)
             add(f"B.{name}.max", "B", f"Shading {name}: normal error max",
-                ge["shading_deg"]["max"], g["normal_max_deg"], "<=", "deg", "shading")
+                val("shading_deg", "max"), g["normal_max_deg"], "<=", "deg", "shading",
+                reason=why)
+        # nodes that the two files do not both have
+        for name, why in sorted(self.no_reference.items()):
+            add(f"A.node.{name}", "A", f"Node {name}: shape and shading", None, None, "", "",
+                "shape", status="not_measured", reason=why)
+        for name in self.ref_only:
+            add(f"A.node.{name}", "A", f"Node {name}: in the reference, not in the model", None,
+                None, "", "", "shape", status="fail")
         for h in res["headroom"]:
+            if "skipped" in h:
+                continue
             add(f"C.headroom.{h['node']}.{h['component']}", "C",
                 f"Simplification headroom {h['node']} component {h['component']} "
                 f"({h['triangles']} tris)", h["headroom"], gc["headroom_max"], "<=", "frac",
                 "headroom_max")
         for name, n in res["nodes"].items():
             add(f"C.hidden.{name}", "C", f"Hidden triangles {name}", n["hidden_frac"],
-                gc["hidden_max"], "<=", "frac", "hidden_max")
+                gc["hidden_max"], "<=", "frac", "hidden_max",
+                reason="no triangle to test (all degenerate)")
         for g in self.groups:
             ge = res["groups"].get(g["name"], {})
             if "subpixel_frac" in ge:
@@ -1821,10 +2105,18 @@ class Audit:
         mres = res["model"]
         add("C.verts_per_tri", "C", "Vertices per triangle", mres["verts_per_tri"],
             gc["verts_per_tri_max"], "<=", "ratio", "verts_per_tri_max")
-        for i, pr in enumerate(res["primitives"]):
-            add(f"C.index.{pr['node']}.{pr['material']}", "C",
-                f"Index limit {pr['node']} / {pr['material']} ({pr['vertices']} vertices)",
-                pr["max_index"], gc["index_max"], "<=", "count", "index_max")
+        pairs = {}
+        for pr in res["primitives"]:
+            key = (pr["node"], pr["material"])
+            pairs[key] = pairs.get(key, 0) + 1
+        for pr in res["primitives"]:
+            gid = f"C.index.{pr['node']}.{pr['material']}"
+            label = f"Index limit {pr['node']} / {pr['material']}"
+            if pairs[(pr["node"], pr["material"])] > 1:  # same node and material twice
+                gid += f".p{pr['primitive']}"
+                label += f" (primitive {pr['primitive']})"
+            add(gid, "C", f"{label} ({pr['vertices']} vertices)", pr["max_index"],
+                gc["index_max"], "<=", "count", "index_max")
         hy = res["hygiene"]
         add("D.degenerate", "D", "Degenerate triangles", hy["degenerate"], gc["degenerate_max"],
             "<=", "count", "degenerate_max")
@@ -1850,14 +2142,20 @@ class Audit:
         for p in cfg["probes"]:
             r = res["probes"][p["name"]]
             n = p["name"]
-            add(f"F.{n}.maxima", "F", f"Profile {n}: maxima", r["maxima"], p["max_maxima"], "<=",
-                "count", "profile")
-            add(f"F.{n}.minima", "F", f"Profile {n}: minima", r["minima"], p["max_minima"], "<=",
-                "count", "profile")
+            few = f"too few rays hit ({r['hits']} of {r['samples']})"
+            add(f"F.{n}.coverage", "F", f"Profile {n}: share of rays that hit", r["coverage"],
+                p["min_coverage"], ">=", "frac", "profile")
+            for kind in ("maxima", "minima"):
+                if p[kind] is not None:
+                    add(f"F.{n}.{kind}", "F", f"Profile {n}: {kind} (exact count)", r[kind],
+                        p[kind], "==", "count", "profile", reason=few)
+                else:
+                    add(f"F.{n}.{kind}", "F", f"Profile {n}: {kind}", r[kind],
+                        p[f"max_{kind}"], "<=", "count", "profile", reason=few)
             add(f"F.{n}.kink", "F", f"Profile {n}: largest kink", r["kink_deg"],
-                p["kink_max_deg"], "<=", "deg", "profile")
+                p["kink_max_deg"], "<=", "deg", "profile", reason=few)
             add(f"F.{n}.step", "F", f"Profile {n}: largest step", r["step"], p["step_max"], "<=",
-                "m", "profile")
+                "m", "profile", reason=few)
         b = cfg["budget"]
         add("G.total", "G", "Triangles, total", mres["triangles"], b.get("total"), "<=", "count",
             "budget_total")
@@ -1931,15 +2229,26 @@ def write_md(res, name, timing=None, timing_note=None):
     L.append(f"Coordinates: {res['frame']}.")
     L.append("")
     verdict = "PASS" if s["failed"] == 0 else ("FAIL (hard)" if s["hard_failed"] else "FAIL")
-    L.append(f"**{s['gates'] - s['failed']} of {s['gates']} gates pass; {s['failed']} fail "
-             f"({s['hard_failed']} hard).** Overall: **{verdict}**.")
+    extra = []
+    if s["not_measured"]:
+        extra.append(f"{s['not_measured']} of the failures not measured")
+    if s["absent"]:
+        extra.append(f"{s['absent']} absent (group not in the model, not required)")
+    L.append(f"**{s['passed']} of {s['gates']} gates pass; {s['failed']} fail "
+             f"({s['hard_failed']} hard)" + ("; " + "; ".join(extra) if extra else "") +
+             f".** Overall: **{verdict}**.")
     L.append("")
     L.append("| Check | Gate | Value | Limit | Result |")
     L.append("|---|---|---|---|---|")
     for g in res["gates"]:
-        resl = "PASS" if g["pass"] else ("**FAIL (hard)**" if g["hard"] else "**FAIL**")
+        hard = " (hard)" if g["hard"] else ""
+        resl = {"pass": "PASS", "fail": f"**FAIL{hard}**",
+                "not_measured": f"**FAIL{hard}: not measured** ({g.get('reason')})",
+                "absent": f"ABSENT ({g.get('reason')})"}[g["status"]]
+        limit = f"{g['op']} {fmt_value(g['limit'], g['unit'])}" if g["limit"] is not None \
+            else "-"
         L.append(f"| {g['check']} | {g['label']} | {fmt_value(g['value'], g['unit'])} | "
-                 f"{g['op']} {fmt_value(g['limit'], g['unit'])} | {resl} |")
+                 f"{limit} | {resl} |")
     L.append("")
     L.append("## Model")
     L.append("")
@@ -1948,29 +2257,36 @@ def write_md(res, name, timing=None, timing_note=None):
              f"{m['primitives']} primitives (draw calls), {m['materials']} materials; largest "
              f"primitive {num(m['max_vertices_per_primitive'])} vertices. Size "
              f"{m['length']:.3f} × {m['span']:.3f} × {m['height']:.3f} m (length × span × "
-             f"height). Hidden: {num(m['hidden'])} triangles ({m['hidden_frac'] * 100:.2f} %).")
+             f"height). Hidden: {num(m['hidden'])} triangles ({m['hidden_frac'] * 100:.2f} % "
+             "of the non-degenerate ones).")
     L.append("")
     L.append("## Per node")
     L.append("")
-    L.append("Shape and shading over the triangles that can be seen (hidden and flipped ones "
-             "are counted by their own checks; the JSON also has the figures over all "
-             "triangles).")
+    L.append("Shape and shading over the triangles that are measured: seen (hidden and flipped "
+             "ones are counted by their own checks) and not coinciding with the reference on a "
+             "curved surface (\"not measured\", share of the visible area in its own column; "
+             "the JSON also has the figures over all measured triangles).")
     L.append("")
     L.append("| Node | Group | Tris | Verts/tri | Shape p99 / max (mm) | Reverse p99 / max (mm) "
-             "| Normal p95 / max (°) | Hidden | Flipped | Sub-pixel | Thin | Slivers |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+             "| Normal p95 / max (°) | Not measured | Hidden | Flipped | Sub-pixel | Thin "
+             "| Slivers |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 
     def deg2(s):
         return "-" if not s or s["p95"] is None else f"{s['p95']:.2f} / {s['max']:.2f}"
+
+    def pct(v, digits=1):
+        return "-" if v is None else f"{v * 100:.{digits}f} %"
     for name, n in res["nodes"].items():
         sh = n.get("shape")
         rv = n.get("shape_reverse")
         L.append(
             f"| {name} | {n['group']} | {n['triangles']} | {n['verts_per_tri']:.2f} | "
             + (f"{mm(sh['p99'])} / {mm(sh['max'])} | {mm(rv['p99'])} / {mm(rv['max'])} | "
-               f"{deg2(n['shading_deg'])} | " if sh else "- | - | - | ")
-            + f"{n['hidden_frac'] * 100:.1f} % | {n['flipped']} | "
-              f"{n['subpixel_frac'] * 100:.1f} % | {n['thin_frac'] * 100:.1f} % | "
+               f"{deg2(n['shading_deg'])} | {pct(n['unmeasured_area_frac'])} | " if sh
+               else f"- | - | - | {n.get('not_measured', 'no reference')} | ")
+            + f"{pct(n['hidden_frac'])} | {n['flipped']} | "
+              f"{pct(n['subpixel_frac'])} | {pct(n['thin_frac'])} | "
               f"{n['slivers']} |")
     L.append("")
     L.append("Error map (share of each node's area by per-triangle error ÷ the group's p99 "
@@ -1988,16 +2304,21 @@ def write_md(res, name, timing=None, timing_note=None):
         L.append("## Simplification headroom")
         L.append("")
         L.append("Large connected pieces, decimated (Blender Decimate, collapse) until the "
-                 "shape error exceeds the gate or the piece's own error, whichever is larger.")
+                 "shape error exceeds the gate or the piece's own error + 5 %, whichever is "
+                 "larger; measured like the A gate (visible, not flipped, measured triangles, "
+                 "area-weighted both ways).")
         L.append("")
         L.append("| Node | Piece (centre, m) | Tris | Own p99 / max (mm) | Smallest passing ratio "
                  "| Tris kept | Headroom |")
         L.append("|---|---|---|---|---|---|---|")
         for h in res["headroom"]:
-            b = h["base"]
             c = h["centre"]
-            L.append(f"| {h['node']} | ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) | {h['triangles']} | "
-                     f"{mm(max(b['fwd_p99'], b['rev_p99']))} / "
+            head = f"| {h['node']} | ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) | {h['triangles']} | "
+            if "skipped" in h:
+                L.append(head + f"- | - | - | skipped: {h['skipped']} |")
+                continue
+            b = h["base"]
+            L.append(head + f"{mm(max(b['fwd_p99'], b['rev_p99']))} / "
                      f"{mm(max(b['fwd_max'], b['rev_max']))} | "
                      f"{h['smallest_passing_ratio']} | {h['triangles_kept']} | "
                      f"{h['headroom'] * 100:.1f} % |")
@@ -2021,22 +2342,25 @@ def write_md(res, name, timing=None, timing_note=None):
     if res["probes"]:
         L.append("## Profiles")
         L.append("")
-        L.append("| Probe | Maxima | Minima | Largest kink | Largest step | Excluded narrow parts |")
-        L.append("|---|---|---|---|---|---|")
+        L.append("| Probe | Rays that hit | Maxima | Minima | Largest kink | Largest step "
+                 "| Excluded narrow parts |")
+        L.append("|---|---|---|---|---|---|---|")
         for pname, p in res["probes"].items():
             ka = p["kink_at"]
             sa = p["step_at"]
-            L.append(f"| {pname} | {p['maxima']} | {p['minima']} | {p['kink_deg']:.1f}° at y = "
-                     f"{ka[1]:.2f} | {p['step'] * 1000:.1f} mm at y = {sa[1]:.2f} | "
-                     f"{len(p['excluded_parts'])} |" if ka and sa else
-                     f"| {pname} | {p['maxima']} | {p['minima']} | - | - | "
+            kink = f"{p['kink_deg']:.1f}° at y = {ka[1]:.2f}" if ka else "-"
+            step = f"{p['step'] * 1000:.1f} mm at y = {sa[1]:.2f}" if sa else "-"
+            L.append(f"| {pname} | {p['hits']} of {p['samples']} ({pct(p['coverage'])}) | "
+                     f"{'-' if p['maxima'] is None else p['maxima']} | "
+                     f"{'-' if p['minima'] is None else p['minima']} | {kink} | {step} | "
                      f"{len(p['excluded_parts'])} |")
         L.append("")
     hy = res["hygiene"]
     L.append("## Hygiene")
     L.append("")
-    L.append(f"Degenerate {hy['degenerate']}, slivers {hy['slivers']}, duplicate faces "
-             f"{hy['duplicates']}, flipped {hy['flipped']} (back side visible "
+    L.append(f"Degenerate {hy['degenerate']}, slivers {hy['slivers']}, duplicate faces (same "
+             f"winding) {hy['duplicates']}, back-to-back face pairs (not a fault) "
+             f"{hy['back_to_back_pairs']}, flipped {hy['flipped']} (back side visible "
              f"{hy['flipped_back_visible']}, normals against winding "
              f"{hy['flipped_normals_against_winding']}, normal error > 90° "
              f"{hy['flipped_normal_error_over_90']}), floating islands {hy['floating']}, "
@@ -2092,10 +2416,25 @@ def default_jobs():
 
 
 def main(argv=None):
+    """Command line entry point. Returns the exit status: 0, 1 (a hard gate failed, or any
+    gate with --strict) or 2 (bad input, or an internal error: the traceback is printed, so a
+    crash can never look like a pass)."""
     if argv is None:
         argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    if argv[:1] == ["--visibility-worker"]:
-        return visibility_worker(argv[1])
+    try:
+        if argv[:1] == ["--visibility-worker"]:
+            return visibility_worker(argv[1])
+        return run_cli(argv)
+    except (glb_io.GlbError, ConfigError, tomllib.TOMLDecodeError, OSError) as exc:
+        print(f"[audit] error: {exc}", file=sys.stderr)
+        return 2
+    except Exception:  # noqa: BLE001 - anything else is a bug: show it and fail
+        traceback.print_exc()
+        print("[audit] internal error (traceback above)", file=sys.stderr)
+        return 2
+
+
+def run_cli(argv):
     ap = argparse.ArgumentParser(prog="audit_model.py", description=__doc__)
     ap.add_argument("--model", required=True, type=Path)
     ap.add_argument("--reference", type=Path)
@@ -2111,15 +2450,11 @@ def main(argv=None):
                          f"(default {default_jobs()} here; 1 = none). Results do not depend "
                          "on it.")
     args = ap.parse_args(argv)
-    try:
-        cfg = load_config(args.config)
-        name = args.name or cfg["model"].get("name") or args.model.stem
-        jobs = default_jobs() if args.jobs is None else args.jobs
-        audit = Audit(args.model, args.reference, cfg, fast=args.fast, jobs=jobs)
-        res = audit.run()
-    except (glb_io.GlbError, OSError, tomllib.TOMLDecodeError, KeyError, ValueError) as exc:
-        print(f"[audit] error: {exc}", file=sys.stderr)
-        return 2
+    cfg = load_config(args.config)
+    name = args.name or cfg["model"].get("name") or args.model.stem
+    jobs = default_jobs() if args.jobs is None else args.jobs
+    audit = Audit(args.model, args.reference, cfg, fast=args.fast, jobs=jobs)
+    res = audit.run()
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / f"{name}_audit.json").write_text(dump_json(res))
     timing = dict(audit.timing)
@@ -2130,12 +2465,13 @@ def main(argv=None):
         timing["images"] = time.perf_counter() - t0
     note = None
     if audit.vis_workers:
-        note = (f"the visibility check ran in {audit.vis_workers} worker processes alongside "
-                "the headroom check, so the stage times add up to more than the total")
+        note = (f"the visibility check ran in {audit.vis_workers} worker processes and this "
+                "one")
     (args.out / f"{name}_audit.md").write_text(write_md(res, name, timing, note))
     s = res["summary"]
-    print(f"[audit] {name}: {s['gates'] - s['failed']}/{s['gates']} gates pass, "
-          f"{s['failed']} fail ({s['hard_failed']} hard); {timing['total']:.1f} s; "
+    print(f"[audit] {name}: {s['passed']}/{s['gates']} gates pass, "
+          f"{s['failed']} fail ({s['hard_failed']} hard, {s['not_measured']} not measured), "
+          f"{s['absent']} absent; {timing['total']:.1f} s; "
           f"report {args.out / (name + '_audit.md')}")
     if s["hard_failed"] or (args.strict and s["failed"]):
         return 1

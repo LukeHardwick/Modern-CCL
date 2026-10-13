@@ -345,10 +345,15 @@ def render_probe(probe, res, h, hitp, start, u, d, path):
         mark(res["kink_at"], "kink", f"kink {res['kink_deg']:.1f}°")
     if res["step_at"] is not None and res["step"] >= 0.0005:
         mark(res["step_at"], "kink", f"step {res['step'] * 1000:.1f} mm")
+
+    def shown(v, fmt):
+        return "-" if v is None else fmt.format(v)
     overlay_text(cam, f"Profile {probe['name']}: rays every {probe['step'] * 1000:g} mm "
-                 f"along the blue line; {res['maxima']} maxima, {res['minima']} minima, "
-                 f"largest kink {res['kink_deg']:.1f}°, largest step "
-                 f"{res['step'] * 1000:.1f} mm", 0.02, 0.95, 0.0165)
+                 f"along the blue line ({res['hits']} of {res['samples']} hit); "
+                 f"{shown(res['maxima'], '{}')} maxima, {shown(res['minima'], '{}')} minima, "
+                 f"largest kink {shown(res['kink_deg'], '{:.1f}°')}, largest step "
+                 f"{shown(res['step'] if res['step'] is None else res['step'] * 1000, '{:.1f} mm')}",
+                 0.02, 0.95, 0.0165)
     overlay_text(cam, f"{len(res['excluded_parts'])} narrow parts ignored (shorter than "
                  f"{probe['min_feature'] * 100:g} cm along the probe)", 0.02, 0.03, 0.0145,
                  key="ink")
