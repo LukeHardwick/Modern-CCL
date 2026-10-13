@@ -42,14 +42,12 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   2026-10-13: that session is **paused by the user until the audit tool is ready**; its work is
   uncommitted in worktree `mystifying-shtern-4a5d56` (shape fixes and plumbing done; 0.74
   vertices/triangle vs target 0.65; detail-shape proof, determinism, previews still to do). Blender MCP registered with Claude Code at user scope (`claude mcp get blender`).
-- **T22c** `task/t22c-model-audit`: deterministic model audit tool (shape error against a
-  `--detail 4` reference, simplification headroom, hidden/sub-pixel triangles, hygiene, raylib
-  16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
-  (user's choice), based on the T22a branch. Scope changed 2026-10-13: no CP1 baseline (the new
-  model is evaluated instead). First agent stopped by the usage limit at `7a5e2ec` (tool, GLB reader,
-  config, known-answer tests committed); a **fresh Opus agent** took over 2026-10-13 07:30 to run and
-  fix the tests, add `scripts/audit_models.sh`, a two-run CP1 smoke test and the plain-language doc
-  `docs/research/04-model-audit.md`. Then: the planner explains it, Opus review, merge into T22a.
+- **T22c** `task/t22c-model-audit` @ `fe91a0a`: deterministic model audit tool **done** (fresh Opus
+  agent after the first hit the usage limit): 19/19 known-answer tests pass (re-run by the planner,
+  9 s); full audit of a 250 k-triangle model 2.8 min with 4 worker processes; wrapper
+  `scripts/audit_models.sh`; method doc `docs/research/04-model-audit.md`. No CP1 baseline (user).
+  Independent Opus review running. Merge into the T22a branch after the review and the user's OK;
+  the T22a session does that merge (it has the branch checked out with uncommitted work).
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.
