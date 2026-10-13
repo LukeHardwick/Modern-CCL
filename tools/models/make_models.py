@@ -200,6 +200,9 @@ def setup_preview_scene(ground_z):
     scene.render.image_settings.color_mode = "RGB"
     scene.render.image_settings.compression = 100
     scene.render.dither_intensity = 0.0
+    for flag in dir(scene.render):  # no date or render time in the PNG: byte-identical runs
+        if flag.startswith("use_stamp"):
+            setattr(scene.render, flag, False)
     if hasattr(scene.eevee, "taa_render_samples"):
         scene.eevee.taa_render_samples = 24
     scene.view_settings.view_transform = "Standard"
