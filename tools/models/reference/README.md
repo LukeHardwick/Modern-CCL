@@ -3,6 +3,7 @@
 | File | Source | Author | Licence | SHA-256 | Retrieved |
 |---|---|---|---|---|---|
 | `cessna_172_skyhawk_line_drawing.svg` | [Wikimedia Commons: File:Cessna 172 Skyhawk line drawing.svg](https://commons.wikimedia.org/wiki/File:Cessna_172_Skyhawk_line_drawing.svg) | Werneuchen (own work, 2008) | Public domain (PD-self) | `5d14e7351e330ebf75d1712e535d80872cd2154005e2b3427546b92714ba5760` | 2026-10-14, by the planner, with the user's approval |
+| `cessna_172_cel.svg` (reference B) | [Wikimedia Commons: File:Cessna 172.svg](https://commons.wikimedia.org/wiki/File:Cessna_172.svg) | Marek Cel (own work, 2019) | CC0 1.0 | `a69083a129aae0e6bd129520abd3dd99d56db38f20a2b428866af6ccc9e7338d` | 2026-10-14, by the planner, with the user's approval |
 
 Planner's check (2026-10-14): a modern 172 (swept fin with dorsal fin, rear "Omni-Vision" window,
 wheel fairings), so reference B was not needed. Limits: hand-drawn (slightly wavy lines), and the
@@ -42,3 +43,9 @@ shorter in length than the side view), and, scaled to the published span and len
 measures about 1.9 m against the 1.63 m of the T22d model (built from published figures), so the
 top-view wing edges follow the drawing and may not follow the aircraft. The F1 gates therefore
 mean "agrees with drawing A".
+
+Planner's note on B (2026-10-14): precise CAD-style drawing of a modern 172 with panel lines; the
+**side view also omits the wing**; the **top view is drawn nose-left** (rotated 90°) and the
+**front view is rotated 90°** (span vertical) — the mask extraction must rotate them. User decision:
+F1 is hard-gated only where A, B and the published figures agree; where they disagree the
+published figures win and the drawings are advisory (A's inboard chord ≈ 1.9 m vs published 1.63 m).
