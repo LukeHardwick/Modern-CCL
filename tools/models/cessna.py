@@ -28,6 +28,8 @@ PROP_Y = -2.30     # propeller plane
 PROP_Z = 0.03      # thrust line
 PROP_R = 0.955     # 1.91 m diameter
 
+EXTRAS = [True]  # small parts (lights, antennas, handles, pitot, inlets): off for the LODs
+
 # --------------------------------------------------------------------------- colours
 PAINT = srgb(0.93, 0.93, 0.92)
 PAINT_WING = srgb(0.91, 0.91, 0.90)
@@ -530,6 +532,8 @@ def build_wing(side, d):
     y = le.y + 0.12
     m.tube((side * (WING["x_end"] - 0.06), y, le.z), (side * (WING["x_end"] + 0.005), y, le.z),
            0.025, 0.020, 8, mat="light", color=RED if side == LEFT else GREEN)
+    if not EXTRAS[0]:  # lower levels of detail: no small parts
+        return m
     m.tube((side * (WING["x_end"] - 0.06), te.y - 0.25, te.z + 0.01),
            (side * (WING["x_end"] + 0.004), te.y - 0.25, te.z + 0.01), 0.016, 0.014, 8,
            mat="light", color=WHITE_LAMP)  # strobe
@@ -959,7 +963,7 @@ def build_fuselage(d):
     for f in faces:
         if f is not None:
             f.smooth = True
-    m.orient(faces, lambda c: c - Vector((0.0, c.y, fus_section(c.y)[3])))
+    m.orient(faces, fus_param_normal)
     ths, grid_last = rings[-1]
     # tail cone end cap (zipped: no fan of slivers)
     j0 = min(range(len(ths)), key=lambda j: abs(ths[j]))
@@ -976,7 +980,22 @@ def build_fuselage(d):
     nose = m.rings(rings, close_ring=True, solid=False, mat="paint", color=PAINT, smooth=True,
                    ends=(ring0, None))
     m.orient(nose, lambda c: (0.0, -1.0, 0.0))
-    yf = FIREWALL_Y  # firewall: closes the engine compartment off from the cabin
+    if EXTRAS[0]:
+        build_bulkheads(m, d)
+    build_stab(m, d)
+    build_fin(m, d)
+    build_struts(m, d)
+    if EXTRAS[0]:
+        build_details(m, d)
+    else:
+        build_dorsal(m, d)
+    return m
+
+
+def build_bulkheads(m, d):
+    """Firewall (closes the engine compartment off from the cabin) and the rear wall of the
+    baggage area (closes the view down the tail cone through the windows)."""
+    yf = FIREWALL_Y
     thf = ring_stations(yf, d)
     ring = [m.vert(fus_point(yf, th, -0.004)) for th in thf]
     ring_cap(m, ring, min(range(len(thf)), key=lambda j: abs(thf[j])), 0, "dark", INTERIOR,
@@ -986,11 +1005,6 @@ def build_fuselage(d):
     ring = [m.vert(fus_point(yb, th, -0.004)) for th in thb]
     ring_cap(m, ring, min(range(len(thb)), key=lambda j: abs(thb[j])), 0, "dark", INTERIOR,
              lambda c: (0.0, -1.0, 0.0))
-    build_stab(m, d)
-    build_fin(m, d)
-    build_struts(m, d)
-    build_details(m, d)
-    return m
 
 
 def strut(m, a, b, chord, tc, d, color=None):
@@ -1206,7 +1220,7 @@ def build_door(side, d):
 def build_propeller(d):
     m = Mesh("propeller", origin=(0.0, PROP_Y, PROP_Z), detail=d)
     # spinner: profile of revolution about the thrust line
-    ns = count(36, d, 8)
+    ns = count(36, d, 16)  # at least 16: the spinner must cover the nose bowl's opening
     prof = [(Y_NOSE, 0.0)]
     k = count(16, d, 4)
     for i in range(1, k + 1):
@@ -1383,7 +1397,7 @@ def build_gear(d):
         _wheel(m, (side * MAIN_X, MAIN_Y, GROUND + MAIN_R), MAIN_R, 0.15, d)
         _fairing(m, (side * MAIN_X, MAIN_Y, GROUND + MAIN_R), 0.80, 0.26, 0.42, d)
     # nose leg (oleo) from under the firewall to the fork
-    top = Vector((0.0, -1.62, fus_point(-1.62, -0.5 * math.pi).z + 0.012))
+    top = Vector((0.0, -1.62, fus_point(-1.62, -0.5 * math.pi).z + 0.03))
     hub = Vector((0.0, NOSE_Y, GROUND + NOSE_R))
     t_end = (top.z - (hub.z + 0.25)) / (top.z - hub.z)  # 3 cm into the fairing's crown
     axis = (hub - top).normalized()
@@ -1655,9 +1669,10 @@ def build_cockpit(d):
 # --------------------------------------------------------------------------- build
 
 
-def build(d=1.0, cockpit=True):
+def build(d=1.0, cockpit=True, extras=True):
     """Return (root object, expected node names)."""
     mats = make_materials()
+    EXTRAS[0] = extras
     fus_m = build_fuselage(d)
     parts = [build_wing(LEFT, d), build_wing(RIGHT, d),
              control_surface("flap_l", LEFT, *FLAP_X, FLAP_HINGE, d, 0.06),
@@ -1668,10 +1683,13 @@ def build(d=1.0, cockpit=True):
              build_propeller(d), build_gear(d)]
     disc = build_prop_disc(d)
     ao = make_ao([fus_m] + parts) if d >= 0.4 else None
-    fus = fus_m.finish(mats, ao=ao)
+    # coarse levels of detail: neighbouring faces of a smooth surface meet at larger angles,
+    # so the crease threshold opens up with the step size
+    crease = 40.0 if d >= 0.5 else 75.0
+    fus = fus_m.finish(mats, ao=ao, smooth_angle=crease)
     names = ["fuselage"]
     for p in parts:
-        p.finish(mats, parent=fus, ao=ao)
+        p.finish(mats, parent=fus, ao=ao, smooth_angle=crease)
         names.append(p.name)
     disc.finish(mats, parent=fus)
     names.append("prop_disc")

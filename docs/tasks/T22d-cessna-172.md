@@ -176,3 +176,29 @@ required in `cessna.toml`. `cessna.glb` 39 062 triangles, 1.20 MB, 32 primitives
   flat-shaded boxes of the seats and radios). These are recorded rather than forced; the
   0.3 mm cockpit gate needs a finer lining and rounder small parts, which CP3 can trade
   against the cockpit budget (150 k, 6 % used).
+
+**2026-10-14 — CP3 (wrap-up).** Levels of detail, credits, determinism.
+- `make_models.py --lods` writes `cessna_lod1/2/3.glb`: the generator at detail 0.33 / 0.15 /
+  0.08 without the cockpit and the small parts (`build(d, cockpit=False, extras=False)`), node
+  names and pivots as LOD0, a wider crease angle (75°) at low detail. Decimation (Blender
+  collapse) was tried and dropped: it flipped faces, broke the shading and lost length.
+- Audit configs `tools/models/audit/cessna_lod{1,2,3}.toml`: each level against LOD0 at its
+  switch distance (30 / 120 / 400 m; shape p99 ≤ ½ pixel, max ≤ 2 pixels there).
+
+| File | Triangles | Size | Nodes | Audit |
+|---|---|---|---|---|
+| `cessna.glb` (LOD0, with cockpit) | 39 062 (exterior 30 519, cockpit 8 543) | 1.15 MB | 17 (incl. 2 eyepoints) | 92 / 107, no hard failure |
+| `cessna_lod1.glb` | 4 489 | 174 KB | 14 | 55 / 64, 2 hard |
+| `cessna_lod2.glb` | 2 067 | 102 KB | 14 | 54 / 64, 2 hard |
+| `cessna_lod3.glb` | 1 693 | 90 KB | 14 | 56 / 64, 2 hard |
+
+- **Open (LODs):** above the plan's ≈ 1 k / 200 triangles for LOD2/3, because the window,
+  door and cheat-line knots set a floor of about 1.7 k; 1–3 degenerate triangles (wheel-fairing
+  tail caps at very coarse counts) and 37–67 flipped faces (door edges, blade tips, skin near
+  the firewall at coarse counts) are hard failures; shading p95 45–86° (coarse sections against
+  the smooth LOD0), sub-pixel share above 10 % at 120 m and 400 m. Follow-up: an LOD mode in
+  the generator (no window/door knots, minimum counts per part, merged gear) to reach 1 k / 200
+  with clean topology.
+- Checks: detail_check PASS; two full builds (`--lods --preview --deflect`) byte-identical
+  (4 `.glb` + 13 PNG); the jet's `jet.glb` is byte-identical to the committed one after the
+  `make_models.py` changes. `databases/sample/models/CREDITS.md` added (jet and Cessna).

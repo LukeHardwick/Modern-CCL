@@ -41,6 +41,12 @@ then T09b Part 2 (uses T09d's peer hook; serialised because both touch `apps/dem
   16-bit index limit, profile fairness, budgets). Launched 2026-10-12 late as an **Opus** agent
   (user's choice), based on the T22a branch. Stops after the CP1 baseline report; the planner
   explains it to the user, then Opus review, then merge into the T22a branch.
+- **T22d** `task/t22d-cessna` (pushed; based on the T22a branch @ `aec1269`): hero light
+  aircraft modelled on the Cessna 172R/S, run unattended by an Opus session on 2026-10-14
+  (user away; checkpoints = commit + push). CP1–CP3 done: `cessna.glb` 39 k triangles with
+  cockpit and eyepoints, audit 92/107 with no hard failure; `cessna_lod1/2/3.glb` (open hard
+  failures, see the brief's checkpoint log). Independent Opus review + PR to the T22a branch
+  at the end; merges after T22a. Worktree `cessna-aircraft-cigi-ig-ef05a0`.
 - **T09d** `task/t09d-facade-peer` @ `6b36cc8`: **paused at the user's request** (agent stopped mid-task;
   WIP commit, may not build; last note: fix `.remote_address = {}` and rewrite link_test sections).
   Worktree `agent-a3237d5802ea0586d`. Resume with a fresh agent later. Then T09b Part 2.

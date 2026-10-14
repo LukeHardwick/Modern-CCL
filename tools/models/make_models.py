@@ -52,6 +52,38 @@ PREVIEW = {
 }
 CHECKS = {"cessna": cessna.checks}
 
+# Lower levels of detail (--lods): name -> [(level, builder detail, triangle target or None)].
+# Each level is the generator at a lower detail without the cockpit and the small parts; node
+# names and pivots stay as in LOD0. A target (optional) adds Blender's Decimate (collapse) on
+# every node down to it; the Cessna does not use it, because decimation flipped faces and broke
+# the shading (T22d CP3). Written as <name>_lod<level>.glb.
+LODS = {
+    "cessna": [(1, 0.33, None), (2, 0.15, None), (3, 0.08, None)],
+}
+LOD_BUILD = {"cessna": lambda detail: cessna.build(detail, cockpit=False, extras=False)}
+
+
+def decimate_to(target):
+    """Collapse-decimate every mesh by the same ratio so the scene has about `target`
+    triangles (a few passes: small parts cannot shrink below a triangle)."""
+    for _ in range(4):
+        objs = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+        tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in objs)
+        if tris <= target * 1.05:
+            return tris
+        ratio = target / tris
+        for o in sorted(objs, key=lambda o: o.name):
+            mod = o.modifiers.new("lod", "DECIMATE")
+            mod.decimate_type = "COLLAPSE"
+            mod.ratio = ratio
+            mod.use_collapse_triangulate = True
+            bpy.context.view_layer.objects.active = o
+            for x in bpy.context.scene.objects:
+                x.select_set(x is o)
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+    objs = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    return sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in objs)
+
 # raylib 6.0 keeps mesh indices as unsigned short: at most 65 536 vertices per (node, material)
 # primitive (its glTF loader truncates 32-bit indices with only a warning).
 MAX_PRIMITIVE_VERTICES = 65536
@@ -336,6 +368,8 @@ def main():
     parser.add_argument("--no-export", action="store_true", help="skip writing .glb files")
     parser.add_argument("--only", choices=sorted(MODELS), action="append")
     parser.add_argument("--detail", type=float, default=1.0)
+    parser.add_argument("--lods", action="store_true",
+                        help="also write the lower levels of detail (<name>_lod<k>.glb)")
     args = parser.parse_args(argv)
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -375,6 +409,27 @@ def main():
         for p in problems:
             print(f"[make_models] {name}: PROBLEM: {p}")
         failed |= bool(problems)
+        if args.lods and name in LODS and not args.no_export:
+            for level, det, target in LODS[name]:
+                reset_scene()
+                _r, lod_expected = LOD_BUILD[name](det)
+                bpy.context.view_layer.update()
+                tris_before = scene_stats()[0]
+                tris_after = decimate_to(target) if target else tris_before
+                lod = args.out / f"{name}_lod{level}.glb"
+                export_glb(lod)
+                lp, _ln, ldoc = check_glb(lod, lod_expected)
+                ltris = sum(p[3] for p in glb_primitives(ldoc))
+                print(f"[make_models] {name}_lod{level}: detail {det}, {tris_before} -> "
+                      f"{tris_after} tris (glTF {ltris}), {lod.stat().st_size / 1024:.0f} KB, "
+                      f"{len(ldoc.get('nodes', []))} nodes")
+                for p in lp:
+                    print(f"[make_models] {name}_lod{level}: PROBLEM: {p}")
+                failed |= bool(lp)
+            if args.preview:  # LOD0 again for the previews below
+                reset_scene()
+                build(args.detail)
+                bpy.context.view_layer.update()
         if args.preview:
             pv = PREVIEW[name]
             render_previews(name, args.preview, pv["ground"], pv["centre"], pv["size"],
