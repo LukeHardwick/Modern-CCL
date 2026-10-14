@@ -188,3 +188,34 @@ if(_cigi_demos)
         FetchContent_MakeAvailable(CLI11)
     endblock()
 endif()
+
+if(CIGI_BUILD_MOCK_IG OR CIGI_BUILD_VIEWER)
+    # Mock-IG database files (T20; user-approved 2026-10-12). Hand-edited files are TOML (toml++),
+    # machine-written reports are JSON (glaze). Versions are the latest releases at least two
+    # weeks old on 2026-10-14: toml++ 3.4.0 (2023-10-13), glaze 9.0.0 (2026-09-24, tag object
+    # d78832c...). Both are built without exceptions, as SYSTEM includes, outside clang-tidy and
+    # coverage.
+    FetchContent_Declare(tomlplusplus
+        URL https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
+        URL_HASH SHA256=8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    FetchContent_Declare(glaze
+        URL https://github.com/stephenberry/glaze/archive/refs/tags/v9.0.0.tar.gz
+        URL_HASH SHA256=dd7b033c5bf6e4308615bb7834c541291d5b20f64121d9a68222a39414635517
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    # Normal variables inside block() so a parent project's settings are never overridden.
+    block()
+        set(tomlplusplus_BUILD_TESTS OFF)
+        set(tomlplusplus_BUILD_EXAMPLES OFF)
+        set(tomlplusplus_BUILD_INSTALL OFF)
+        set(glaze_DEVELOPER_MODE OFF)
+        set(glaze_BUILD_EXAMPLES OFF)
+        set(glaze_ENABLE_FUZZING OFF)
+        set(glaze_INSTALL_CMAKEDIR "")
+        FetchContent_MakeAvailable(tomlplusplus glaze)
+    endblock()
+endif()
