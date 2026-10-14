@@ -1,0 +1,53 @@
+# The default mock-IG database (number 1): synthetic terrain and the entity-type convention the
+# mock IG always had. It is the same as the built-in default_database(); a test keeps them equal.
+# Field reference: docs/guide/databases.md.
+
+[database]
+number = 1
+name = "Default (synthetic)"
+origin = { lat = 51.5, lon = -0.12, alt = 0.0 }
+bounds = { lat_min = 51.25, lat_max = 51.75, lon_min = -0.37, lon_max = 0.13 }
+load_frames = 30
+
+[terrain]
+kind = "synthetic"
+
+# HAT/HOT material codes (ICD 4.2.3): the three height bands of the synthetic terrain.
+[[material]]
+code = 0
+name = "water"
+colour = "#295c99"
+
+[[material]]
+code = 1
+name = "grass"
+colour = "#4d8f42"
+
+[[material]]
+code = 2
+name = "rock"
+colour = "#948575"
+
+# Entity Type values the Host may use. Anything not listed gets the [default] category.
+[default]
+category = "other"
+
+[[entity]]
+types = 0
+name = "null entity"
+category = "none"
+
+[[entity]]
+types = [1, 99]
+name = "other"
+category = "other"
+
+[[entity]]
+types = [100, 199]
+name = "generic aircraft"
+category = "aircraft"
+
+[[entity]]
+types = [200, 299]
+name = "generic ground vehicle"
+category = "ground_vehicle"
