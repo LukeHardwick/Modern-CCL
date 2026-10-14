@@ -144,10 +144,10 @@ if(TARGET cigi_demo_common)
         LINK cigi::demo_common LABELS network)
     cigi_add_test(cigi_demo_network_test SOURCES demo/pair_test.cpp
         LINK cigi::demo_common LABELS network)
-    # The real executables against each other (fixed high ports, so never in parallel).
+    # The real executables against each other (random high ports, retried).
     add_test(NAME demo_binaries_smoke
         COMMAND ${CMAKE_COMMAND} -DDEMO_IG=$<TARGET_FILE:demo_ig>
-                -DDEMO_HOST=$<TARGET_FILE:demo_host> -DIG_PORT=38004 -DHOST_PORT=38005
+                -DDEMO_HOST=$<TARGET_FILE:demo_host>
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/demo/smoke.cmake)
     set_tests_properties(demo_binaries_smoke PROPERTIES LABELS network RESOURCE_LOCK demo_ports)
 endif()

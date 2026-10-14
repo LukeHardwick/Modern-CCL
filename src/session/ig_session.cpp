@@ -130,6 +130,21 @@ bool IgSession::track_control(const IgControl& control, ReceiveReport& report) {
     return true;
 }
 
+Result<IgControl> IgSession::host_control(const MessageView& view) {
+    if (view.direction() != Direction::HostToIg) {
+        return std::unexpected(
+            Error{.code = ErrorCode::WrongDirection, .offset = 0, .opcode = start_of_frame_opcode});
+    }
+    return (*view.begin()).and_then([](const RawPacket& raw) {
+        return raw.decode_as<IgControl>();
+    });
+}
+
+bool IgSession::is_host_message(std::span<const std::byte> datagram) {
+    const auto view = MessageView::parse(datagram);
+    return view && host_control(*view).has_value();
+}
+
 Result<ReceiveReport> IgSession::receive(std::span<const std::byte> datagram) {
     const auto view = MessageView::parse(datagram);
     if (!view) {
@@ -137,17 +152,14 @@ Result<ReceiveReport> IgSession::receive(std::span<const std::byte> datagram) {
         log_->warn("dropped datagram: {}", to_string(view.error().code));
         return std::unexpected(view.error());
     }
-    if (view->direction() != Direction::HostToIg) {
-        ++stats_.decode_errors;
-        log_->warn("dropped IG-to-Host message received by an IG");
-        return std::unexpected(
-            Error{.code = ErrorCode::WrongDirection, .offset = 0, .opcode = start_of_frame_opcode});
-    }
-    const auto control =
-        (*view->begin()).and_then([](const RawPacket& raw) { return raw.decode_as<IgControl>(); });
+    const auto control = host_control(*view);
     if (!control) {
         ++stats_.decode_errors;
-        log_->warn("dropped IG Control: {}", to_string(control.error().code));
+        if (control.error().code == ErrorCode::WrongDirection) {
+            log_->warn("dropped IG-to-Host message received by an IG");
+        } else {
+            log_->warn("dropped IG Control: {}", to_string(control.error().code));
+        }
         return std::unexpected(control.error());
     }
 

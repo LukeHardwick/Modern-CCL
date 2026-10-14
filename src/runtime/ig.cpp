@@ -1,6 +1,5 @@
 #include "cigi/ig.hpp"
 
-#include "cigi/message/view.hpp"
 #include "cigi/udp_datagram_transport.hpp"
 #include "internal.hpp"
 
@@ -22,17 +21,6 @@ Result<void> validate(const IgConfig& c) {
         return std::unexpected(invalid_config());
     }
     return {};
-}
-
-/// Would the IG session accept this datagram as a Host message (ICD 4.1.1: Host -> IG, first
-/// packet a decodable IG Control)? The same test IgSession::receive applies first, so the
-/// facade can adopt the sender before anything is delivered to a handler.
-bool is_host_message(std::span<const std::byte> datagram) {
-    const auto view = MessageView::parse(datagram);
-    return view && view->direction() == Direction::HostToIg &&
-           (*view->begin())
-               .and_then([](const RawPacket& raw) { return raw.decode_as<IgControl>(); })
-               .has_value();
 }
 
 } // namespace
@@ -125,6 +113,8 @@ private:
     std::vector<std::byte> rx_;
     bool connected_ = false;
     bool paused_ = false;
+    bool latch_warned_ = false;
+    bool foreign_warned_ = false;
     TimePoint last_rx_;
     std::uint64_t closed_foreign_ = 0; ///< foreign_datagrams of the transport when it was closed.
     IgStats stats_;
@@ -165,11 +155,16 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         // valid message) adopts the sender BEFORE anything is delivered: a message whose sender
         // cannot be adopted reaches no handler. Anything that is not a Host message goes to the
         // session as usual, which counts and reports it, and never redirects the IG.
-        if (!transport_->has_peer() && is_host_message(datagram) && !transport_->latch_peer()) {
+        if (!transport_->has_peer() && IgSession::is_host_message(datagram) &&
+            !transport_->latch_peer()) {
             ++stats_.receive_errors;
-            log_->warn("cannot adopt the sender of the Host message as the Host");
+            if (!latch_warned_) {
+                latch_warned_ = true; // once, until a latch succeeds
+                log_->warn("cannot adopt the sender of the Host message as the Host");
+            }
             continue; // stay unknown: the next message tries again
         }
+        latch_warned_ = false;
         const auto handled = session_.receive(datagram);
         if (!handled) {
             ++stats_.receive_errors;
@@ -187,7 +182,9 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         }
         connected_ = true;
         last_rx_ = clock_.now();
-        if (control_cb_ && !handled->duplicate && !handled->stale) {
+        // Offline Maintenance: the IG ignores all Host data, IG Control included (ICD 4.2.1).
+        if (control_cb_ && !handled->duplicate && !handled->stale &&
+            session_.mode() != IgMode::OfflineMaintenance) {
             // NOLINTNEXTLINE(bugprone-unchecked-optional-access): set by a successful receive().
             control_cb_(*session_.last_ig_control());
             if (!transport_) {
@@ -196,6 +193,11 @@ Result<PollStatus> IgCore::poll(milliseconds timeout) {
         }
     }
 
+    if (!foreign_warned_ && transport_->foreign_datagrams() != 0) {
+        foreign_warned_ = true;
+        log_->warn("dropping datagrams from a sender other than the Host; see "
+                   "IgConfig::filter_senders");
+    }
     now = clock_.now();
     if (connected_ && now - last_rx_ > config_.peer_timeout) {
         connected_ = false;

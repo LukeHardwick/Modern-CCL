@@ -5,6 +5,9 @@
 #include "support.hpp"
 
 #include <gtest/gtest.h>
+#include <spdlog/sinks/ostream_sink.h>
+#include <spdlog/spdlog.h>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -68,13 +71,32 @@ TEST(PeerLearning, OnlyAHostMessageNominatesAPeer) {
     EXPECT_EQ(f.peer.received().size(), 1U); // the Start of Frame of that tick now goes out
 }
 
+/// A logger that writes into `out`.
+std::shared_ptr<spdlog::logger> capture_logger(std::ostringstream& out) {
+    const auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(out);
+    auto logger = std::make_shared<spdlog::logger>("peer_test", sink);
+    logger->set_level(spdlog::level::info);
+    return logger;
+}
+
+std::size_t count_of(const std::string& text, const std::string& needle) {
+    std::size_t n = 0;
+    for (auto at = text.find(needle); at != std::string::npos; at = text.find(needle, at + 1)) {
+        ++n;
+    }
+    return n;
+}
+
 TEST(PeerLearning, AMessageWhoseSenderCannotBeAdoptedReachesNoHandler) {
-    LearnerFixture f;
+    std::ostringstream log;
+    IgConfig config;
+    config.logger = capture_logger(log);
+    LearnerFixture f{config};
     int entities = 0;
     f.ig.on<EntityControl>([&](const EntityControl&) { ++entities; });
     int controls = 0;
     f.ig.on_ig_control([&](const IgControl&) { ++controls; });
-    f.transport->latch_failures = 1;
+    f.transport->latch_failures = 2;
 
     f.peer.send(operate_with_entity(1));
     f.tick();
@@ -86,14 +108,24 @@ TEST(PeerLearning, AMessageWhoseSenderCannotBeAdoptedReachesNoHandler) {
     EXPECT_FALSE(f.ig.host_connected());
     EXPECT_FALSE(f.transport->has_peer());
 
-    // The next valid message tries again, succeeds, and is delivered.
+    // The next one fails again (logged once only); the one after that succeeds and is delivered.
     f.peer.send(operate_with_entity(2));
     f.tick();
     EXPECT_EQ(f.transport->latch_calls, 2);
+    EXPECT_EQ(f.ig.stats().receive_errors, 2U);
+    EXPECT_EQ(count_of(log.str(), "cannot adopt"), 1U);
+    EXPECT_EQ(count_of(log.str(), "Host connected"), 0U);
+    f.peer.send(operate_with_entity(3));
+    f.tick();
+    EXPECT_EQ(f.transport->latch_calls, 3);
     EXPECT_EQ(entities, 1);
     EXPECT_EQ(controls, 1);
     EXPECT_EQ(f.ig.mode(), IgMode::Operate);
     EXPECT_TRUE(f.ig.host_connected());
+    f.peer.send(operate_with_entity(4));
+    f.tick();
+    EXPECT_EQ(count_of(log.str(), "Host connected"), 1U); // once, on the first successful latch
+    EXPECT_EQ(count_of(log.str(), "cannot adopt"), 1U);
 }
 
 TEST(PeerLearning, AHostThatWentQuietIsForgottenSoANewOneCanBeLearnt) {
@@ -196,6 +228,25 @@ TEST(PeerLearning, TheHostCountsForeignDatagramsAndKnowsItsPort) {
     EXPECT_EQ(host.stats().foreign_datagrams, 5U);
 }
 
+TEST(PeerLearning, TheHostWarnsOnceAboutDroppedSenders) {
+    std::ostringstream log;
+    RawPeer peer;
+    const FakeClock clock;
+    auto transport = std::make_unique<LearningTransport>(peer.take_other());
+    auto* raw = transport.get();
+    HostConfig config;
+    config.session.clock = clock.fn();
+    config.logger = capture_logger(log);
+    auto host = Host::over(config, std::move(transport)).value();
+    EXPECT_TRUE(host.poll(0ms).has_value());
+    EXPECT_EQ(count_of(log.str(), "filter_senders"), 0U);
+    raw->foreign = 2;
+    EXPECT_TRUE(host.poll(0ms).has_value());
+    raw->foreign = 4;
+    EXPECT_TRUE(host.poll(0ms).has_value());
+    EXPECT_EQ(count_of(log.str(), "filter_senders"), 1U);
+}
+
 TEST(OnIgControl, FiresOncePerCurrentIgControlAfterTheOtherPackets) {
     RawPeer peer;
     FakeClock clock;
@@ -247,6 +298,37 @@ TEST(OnIgControl, AHandlerThatClosesTheIgEndsThePoll) {
     ASSERT_TRUE(polled.has_value());
     EXPECT_FALSE(polled->frame_sent);
     EXPECT_EQ(calls, 1);
+}
+
+TEST(PeerLearning, TheFirstDroppedSenderIsWarnedAboutOnce) {
+    std::ostringstream log;
+    IgConfig config;
+    config.logger = capture_logger(log);
+    LearnerFixture f{config};
+    f.transport->foreign = 0;
+    f.tick();
+    EXPECT_EQ(count_of(log.str(), "filter_senders"), 0U);
+    f.transport->foreign = 1;
+    f.tick();
+    f.transport->foreign = 3;
+    f.tick();
+    EXPECT_EQ(count_of(log.str(), "filter_senders"), 1U);
+}
+
+TEST(OnIgControl, IsNotCalledInOfflineMaintenance) {
+    RawPeer peer;
+    const FakeClock clock;
+    IgConfig config;
+    config.session.clock = clock.fn();
+    auto ig = Ig::over(config, peer.take_other()).value();
+    int calls = 0;
+    ig.on_ig_control([&](const IgControl&) { ++calls; });
+    ig.set_mode(IgMode::OfflineMaintenance); // the IG ignores all Host data (ICD 4.2.1)
+    peer.send(control_message(1, IgMode::Operate));
+    clock.advance(frame_ticks);
+    EXPECT_TRUE(ig.poll(0ms).has_value());
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(ig.mode(), IgMode::OfflineMaintenance);
 }
 
 } // namespace

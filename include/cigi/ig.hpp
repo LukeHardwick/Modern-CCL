@@ -146,7 +146,8 @@ public:
     void on_error(std::function<void(const Error&)> handler);
     /// Called once for every IG Control that changes the Host's state, i.e. each message whose
     /// IG Control is current (not a duplicate or reordered one; see IgSession::receive), in
-    /// every IG mode, after the message's other packets were delivered. Replaces polling
+    /// Reset/Standby, Operate and Debug (not in Offline Maintenance, where the IG ignores all
+    /// Host data, ICD 4.2.1), after the message's other packets were delivered. Replaces polling
     /// session().last_ig_control() every frame. It is called only for a message from the
     /// accepted Host.
     void on_ig_control(std::function<void(const IgControl&)> handler);

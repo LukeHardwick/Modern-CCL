@@ -77,13 +77,13 @@ TEST(UdpLink, DatagramsFromOtherSendersAreDroppedOnceThePeerIsKnown) {
     EXPECT_TRUE(stray->send(host_message()));
     EXPECT_TRUE(host->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
-    EXPECT_EQ(ig->foreign_datagrams(), 1U);
     EXPECT_EQ(ig->datagrams_received(), 2U);
     // Only strays: a timeout, and still the same peer.
     EXPECT_TRUE(stray->send(host_message()));
     const auto none = ig->receive(buffer(), 100ms);
     ASSERT_FALSE(none);
     EXPECT_EQ(none.error().code, ErrorCode::Timeout);
+    // Both strays were dropped, whichever order they arrived in.
     EXPECT_EQ(ig->foreign_datagrams(), 2U);
 }
 

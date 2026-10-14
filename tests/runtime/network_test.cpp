@@ -228,4 +228,57 @@ TEST(Network, AnAsynchronousHostSendsAtItsOwnRate) {
     EXPECT_GE(exchange.entities.load(), 10);
 }
 
+/// A plain loopback socket aimed at `port`.
+transport::UdpEndpoint socket_to(std::uint16_t port) {
+    return transport::UdpEndpoint::open({
+                                            .local_address = "127.0.0.1",
+                                            .remote_address = "127.0.0.1",
+                                            .remote_port = port,
+                                        })
+        .value();
+}
+
+TEST(Network, ARestartedHostOnANewPortIsLearntAfterTheTimeout) {
+    const std::uint16_t ig_port = free_port();
+    IgConfig config;
+    config.listen_address = "127.0.0.1";
+    config.listen_port = ig_port; // no host_address: the IG learns its Host
+    config.peer_timeout = 300ms;
+    auto ig = Ig::connect(config).value();
+    std::array<std::byte, 2048> buffer{};
+
+    auto host_a = socket_to(ig_port);
+    ASSERT_TRUE(host_a.send(test::control_message(1, IgMode::Operate)));
+    ASSERT_TRUE(wait_for([&] { return ig.poll(20ms).has_value() && ig.stats().frames_sent > 0; }));
+    EXPECT_TRUE(host_a.receive(buffer, 1s).has_value());
+
+    // Host B, on another port, is a stranger while Host A is alive.
+    auto host_b = socket_to(ig_port);
+    ASSERT_TRUE(host_b.send(test::control_message(1, IgMode::Operate)));
+    ASSERT_TRUE(
+        wait_for([&] { return ig.poll(20ms).has_value() && ig.stats().foreign_datagrams == 1; }));
+    EXPECT_EQ(host_b.receive(buffer, 50ms).error().code, ErrorCode::Timeout);
+
+    // Host A goes quiet: after the timeout the IG forgets it and learns B from its next message.
+    ASSERT_TRUE(wait_for([&] { return ig.poll(20ms).has_value() && !ig.host_connected(); }));
+    ASSERT_TRUE(host_b.send(test::control_message(2, IgMode::Operate)));
+    ASSERT_TRUE(wait_for(
+        [&] { return ig.poll(20ms).has_value() && host_b.receive(buffer, 0ms).has_value(); }));
+    EXPECT_TRUE(ig.host_connected());
+}
+
+TEST(Network, AStrayDatagramOnTheHostsPortIsCountedNotAProtocolError) {
+    HostConfig config;
+    config.ig_address = "127.0.0.1";
+    config.ig_port = free_port();
+    config.local_address = "127.0.0.1";
+    auto host = Host::connect(config).value();
+    auto stray = socket_to(host.local_port());
+    ASSERT_TRUE(stray.send(test::Bytes(8, std::byte{0xFF})));
+    ASSERT_TRUE(wait_for(
+        [&] { return host.poll(20ms).has_value() && host.stats().foreign_datagrams == 1; }));
+    EXPECT_EQ(host.stats().receive_errors, 0U);
+    EXPECT_EQ(host.stats().datagrams_received, 0U);
+}
+
 } // namespace

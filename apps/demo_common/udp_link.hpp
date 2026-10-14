@@ -2,8 +2,11 @@
 
 // The UDP link of the demo apps: the library's UdpDatagramTransport (which learns the peer and
 // drops foreign senders, see cigi/udp_datagram_transport.hpp) wrapped to
-//  - write every sent and received datagram to a pcap file (Wireshark), and
-//  - hand every datagram to a tap (the debug log).
+//  - write every sent datagram and every received datagram that the transport delivers to a pcap
+//    file (Wireshark), and
+//  - hand those datagrams to a tap (the debug log).
+// Datagrams from a sender other than the peer are dropped inside the transport (counted in
+// foreign_datagrams()), so they reach neither the pcap nor the tap.
 // The peer hooks are forwarded to the wrapped transport. The facades (cigi::Host / cigi::Ig)
 // accept it through Host::over / Ig::over, which is how the demos record traffic and inject
 // faults; Host::connect / Ig::connect cannot do either.
@@ -30,9 +33,10 @@ struct UdpLinkConfig {
     /// learnt through the hooks of DatagramTransport; nothing is sent until it is latched.
     std::string remote_address;
     std::uint16_t remote_port = 0;
-    /// Every datagram sent or received is appended (IPv4 peers only). May be null.
+    /// Every datagram sent, and every one received from the peer, is appended (IPv4 peers only).
+    /// May be null.
     std::shared_ptr<tools::PcapWriter> pcap;
-    /// Called for every datagram: (true = sent, bytes). May be empty.
+    /// Called for every such datagram: (true = sent, bytes). May be empty.
     std::function<void(bool, std::span<const std::byte>)> tap;
 };
 

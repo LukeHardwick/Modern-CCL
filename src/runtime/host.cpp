@@ -154,6 +154,7 @@ private:
     bool check_database_ = false; ///< After Lost: re-request the database if the IG forgot it.
     std::optional<int> database_; ///< Last database asked for, replayed after a restart.
     bool warned_fragmentation_ = false;
+    bool foreign_warned_ = false;
     std::uint64_t closed_foreign_ = 0; ///< foreign_datagrams of the transport when it was closed.
     HostStats stats_;
 
@@ -325,6 +326,11 @@ Result<PollStatus> HostCore::poll(milliseconds timeout) {
     }
     if (state_ == LinkState::Closed) {
         return status;
+    }
+    if (!foreign_warned_ && transport_->foreign_datagrams() != 0) {
+        foreign_warned_ = true;
+        log_->warn("dropping datagrams from a sender other than the IG; see "
+                   "HostConfig::filter_senders");
     }
     const TimePoint now = clock_.now();
     check_timeout(now);

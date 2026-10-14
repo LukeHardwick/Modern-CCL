@@ -15,6 +15,7 @@
 
 #include "cigi/dispatch.hpp"
 #include "cigi/message/builder.hpp"
+#include "cigi/message/view.hpp"
 #include "cigi/packets.hpp"
 #include "cigi/session/detail.hpp"
 #include "cigi/session/session.hpp"
@@ -57,6 +58,11 @@ public:
     /// Errors (nothing is delivered): the parse errors of MessageView::parse, WrongDirection, and
     /// the IG Control decode errors.
     Result<ReceiveReport> receive(std::span<const std::byte> datagram);
+
+    /// Would receive() accept this datagram as a Host message: it parses, runs Host -> IG and its
+    /// first packet decodes as an IG Control (ICD 4.1.1)? receive() applies the same test first,
+    /// so a facade can adopt the sender before anything reaches a handler.
+    [[nodiscard]] static bool is_host_message(std::span<const std::byte> datagram);
 
     /// Handlers for the Host -> IG packets. Version masking is applied before a handler runs. A
     /// `UnknownPacket` (its data points into the receive buffer) is valid during the call only.
@@ -172,6 +178,9 @@ private:
         return peer_ ? peer_->version : protocol_version;
     }
     Result<void> reject(const Error& error);
+    /// The IG Control a Host message starts with: WrongDirection unless Host -> IG, else the
+    /// decode error of the IG Control.
+    static Result<IgControl> host_control(const MessageView& view);
     bool track_control(const IgControl& control, ReceiveReport& report);
     void apply_requests(const IgControl& control, ReceiveReport& report);
 

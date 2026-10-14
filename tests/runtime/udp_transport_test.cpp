@@ -92,12 +92,12 @@ TEST(UdpDatagramTransport, LatchingAdoptsTheSenderAndOthersAreDroppedAndCounted)
     EXPECT_EQ(learner->receive(buffer, 1000ms).value(), payload.size()); // the Host's
     ASSERT_TRUE(learner->last_sender().has_value());
     EXPECT_EQ(learner->last_sender()->port, host.local_port());
-    EXPECT_EQ(learner->foreign_datagrams(), 1U);
     // Only strangers waiting: the call times out within its time, having dropped them.
     ASSERT_TRUE(stranger.send(payload).has_value());
     const auto idle = learner->receive(buffer, 50ms);
     ASSERT_FALSE(idle.has_value());
     EXPECT_EQ(idle.error().code, ErrorCode::Timeout);
+    // Both strangers' datagrams were dropped, whichever of them arrived first.
     EXPECT_EQ(learner->foreign_datagrams(), 2U);
 }
 
@@ -150,6 +150,20 @@ TEST(UdpEndpoint, KnowsItsRemoteAndWhetherTheLastSenderWasIt) {
     EXPECT_FALSE(a.last_sender_is_remote()); // a's remote is port 1, b is someone else
     ASSERT_TRUE(a.set_remote("127.0.0.1", b.local_port()).has_value());
     EXPECT_TRUE(a.last_sender_is_remote());
+}
+
+TEST(UdpDatagramTransport, AHugeTimeoutDoesNotOverflow) {
+    std::array<std::byte, 64> buffer{};
+    auto learner = open_on_loopback();
+    auto host = talker_to(learner->local_port());
+    ASSERT_TRUE(host.send(payload).has_value());
+    EXPECT_EQ(learner->receive(buffer, std::chrono::milliseconds::max()).value(),
+              payload.size()); // returns at once: data is waiting
+    auto stranger_free = open_on_loopback();
+    auto lone = talker_to(stranger_free->local_port());
+    ASSERT_TRUE(lone.send(payload).has_value());
+    EXPECT_EQ(stranger_free->receive(buffer, std::chrono::milliseconds::max()).value(),
+              payload.size());
 }
 
 } // namespace

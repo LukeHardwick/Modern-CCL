@@ -203,7 +203,9 @@ Result<std::size_t> UdpEndpoint::receive(std::span<std::byte> buffer,
     }
     using Clock = std::chrono::steady_clock;
     Impl& s = *impl_;
-    const auto deadline = Clock::now() + std::max(timeout, std::chrono::milliseconds{0});
+    // Capped at a year, so that a huge timeout (milliseconds::max()) cannot overflow the clock.
+    constexpr std::chrono::milliseconds longest = std::chrono::hours{24 * 365};
+    const auto deadline = Clock::now() + std::clamp(timeout, std::chrono::milliseconds{0}, longest);
 
     // Scatter receive into the caller's buffer plus one spare byte: if the spare byte is written
     // (or the OS reports message_size) the datagram did not fit. No copy, no large scratch buffer.

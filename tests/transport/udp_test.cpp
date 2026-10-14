@@ -162,6 +162,19 @@ TEST(Udp, TimeoutWhenNothingArrives) {
     EXPECT_LT(dt, 1500ms);
 }
 
+TEST(Udp, AHugeTimeoutIsCappedNotOverflowed) {
+    Pair p;
+    std::array<std::byte, 16> buf{};
+    std::thread sender([&] {
+        std::this_thread::sleep_for(50ms);
+        EXPECT_TRUE(p.b.send(pattern(8)));
+    });
+    const auto n = p.a.receive(buf, std::chrono::milliseconds::max());
+    sender.join();
+    ASSERT_TRUE(n);
+    EXPECT_EQ(*n, 8U);
+}
+
 TEST(Udp, ZeroAndNegativeTimeoutPoll) {
     Pair p;
     std::array<std::byte, 16> buf{};

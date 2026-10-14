@@ -27,7 +27,9 @@ Result<void> UdpDatagramTransport::send(std::span<const std::byte> datagram) {
 Result<std::size_t> UdpDatagramTransport::receive(std::span<std::byte> buffer,
                                                   std::chrono::milliseconds timeout) {
     using Clock = std::chrono::steady_clock;
-    const auto deadline = Clock::now() + std::max(timeout, std::chrono::milliseconds{0});
+    // Capped at a year, so that a huge timeout (milliseconds::max()) cannot overflow the clock.
+    constexpr std::chrono::milliseconds longest = std::chrono::hours{24 * 365};
+    const auto deadline = Clock::now() + std::clamp(timeout, std::chrono::milliseconds{0}, longest);
     for (;;) {
         const auto received = endpoint_.receive(buffer, timeout);
         // Unknown peer (learning): any sender is a candidate. Otherwise only the peer is heard.
