@@ -38,6 +38,7 @@ Options:
 | `--ui none\|map\|all` | panels shown at start |
 | `--select ID` | entity selected at start |
 | `--start-hour H` | scripted UTC time of day at start (default 10) |
+| `--db-root DIR`, `--database N` | serve the mock-IG databases under DIR and start with number N (default 1); without `--db-root` the built-in default database is used ([databases](databases.md)) |
 | `--screenshot FILE.png --frames N` | render N frames, save a PNG, exit 0 |
 | `--stress N` | add N extra scripted entities, 0..1000 (the Host message must fit one UDP datagram) |
 | `--bench N` | render N frames unthrottled and print the frame rate |
