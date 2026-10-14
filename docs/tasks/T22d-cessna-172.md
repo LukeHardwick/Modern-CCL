@@ -152,3 +152,27 @@ headless builds byte-identical (`.glb` and all 9 PNGs).
     where they show, with hub discs; streamlined struts; firewall and rear bulkheads.
 - Added: dorsal fin, cowl inlets seated on the nose bowl, exhaust, beacon, strobes, landing
   light, pitot, fuel caps, VHF and belly antennas, door handles, tail tie-down.
+
+**2026-10-14 — CP2b (cockpit).** New node `cockpit` (8 543 triangles) and empties
+`eyepoint_left` (0.25, −0.22, 0.62) / `eyepoint_right` (mirrored); the cockpit group is now
+required in `cessna.toml`. `cessna.glb` 39 062 triangles, 1.20 MB, 32 primitives (largest
+6 875 vertices). detail_check PASS; two builds byte-identical (`.glb` and all 13 PNGs).
+- Interior: cabin lining 2 cm inside the skin on the skin's own per-ring stations (0.2 mm
+  chordal target), with exact holes at the windows and doors, stopping exactly at the floor
+  line (a station knot); a headliner tray under the wing centre section (the roof is cut out
+  there and the wing's lower surface is only 1–3 cm below the roof line), its walls facing
+  outwards; carpeted floor with a riser to the raised baggage floor (the belly rises behind
+  the rear seat); instrument panel with a glareshield hood running forward to the windscreen
+  base; six-pack, engine and right-seat dials (bezel, face, needle; each part with a short
+  skirt into the panel so no gap shows), radio stack with displays, two yokes, throttle and
+  mixture, trim wheel, rudder pedals, two front seats and a rear bench. Firewall and rear
+  bulkheads close the cabin.
+- Full audit (`docs/guide/img/models/audit/cessna/cp2b_cessna_audit.md`): **92 of 107 gates
+  pass, no hard failure.** Exterior unchanged from CP2a (shape p99 0.99 mm). Cockpit: shading
+  p95 0.53°, no sub-pixel triangles at 0.6 m; **failing** shape p99 0.70 mm / max 2.43 mm
+  (gates 0.3 / 1.2 mm), shading max 28.7°, headroom 40 % on the largest cockpit piece, hidden
+  14.5 % (the forward-facing halves of the yoke tubes and the bezel skirts: closed parts that
+  no eyepoint or window sees from that side), vertices per triangle 0.669 overall (0.65: the
+  flat-shaded boxes of the seats and radios). These are recorded rather than forced; the
+  0.3 mm cockpit gate needs a finer lining and rounder small parts, which CP3 can trade
+  against the cockpit budget (150 k, 6 % used).

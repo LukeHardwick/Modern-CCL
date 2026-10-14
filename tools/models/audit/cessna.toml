@@ -93,7 +93,7 @@ normal_max_deg = 10.0
 [[groups]]
 name = "cockpit"
 nodes = ["cockpit", "cockpit_panel"]
-required = false           # the cockpit arrives at CP2b; make it true from then on
+required = true            # the cockpit (CP2b)
 distance = 0.6
 shape_p99 = 0.0003         # 0.3 mm
 shape_max = 0.0012

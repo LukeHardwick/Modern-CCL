@@ -13,7 +13,9 @@
 import bisect
 import math
 
-from mathutils import Vector
+import bmesh
+
+from mathutils import Matrix, Vector
 
 from mm_common import (LEFT, RIGHT, Mesh, count, empty, hash01, lerp, make_ao, make_materials,
                        mix, naca_t, pchip, smoothstep, srgb, station_counts, stations,
@@ -126,6 +128,20 @@ def skin_top(y, x):
     w, top, bot, zw, nt, nb = fus_section(y)
     r = min(1.0, abs(x) / w)
     return zw + (top - zw) * (1.0 - r ** nt) ** (1.0 / nt)
+
+
+def fus_param_normal(c):
+    """Analytic outward skin normal at the section angle of the point c (on or near a
+    surface parallel to the skin)."""
+    w, top, bot, zw, nt, nb = fus_section(c.y)
+    if c.z >= zw:
+        n, sz = nt, (c.z - zw) / max(top - zw, 1e-6)
+    else:
+        n, sz = nb, (c.z - zw) / max(zw - bot, 1e-6)
+    sx = c.x / max(w, 1e-6)
+    th = math.atan2(math.copysign(min(1.0, abs(sz)) ** (n / 2.0), sz),
+                    math.copysign(min(1.0, abs(sx)) ** (n / 2.0), sx))
+    return fus_normal(c.y, th)
 
 
 def side_th(z):
@@ -855,7 +871,7 @@ def fus_stations():
     return _FUS_ST[0]
 
 
-def _fus_stations():
+def _fus_stations(err=None):
     """Curvature-adaptive y stations of the skin (the largest need over th lines sampled on
     TH_GRID, so the flat sides are seen) and, for the doors, th stations of the cabin."""
     ny = 200
@@ -863,15 +879,16 @@ def _fus_stations():
     lines = TH_GRID[::40]
     secs = [section_fn(y) for y in ysmp]
     y_d = [0.0] * (ny + 1)
+    err = err or FUS_ERR
     for t in lines:
         pts = [f(t) for f in secs]
-        dens = _turn_density(pts, FUS_ERR)
+        dens = _turn_density(pts, err)
         for i in range(ny + 1):
             seg = (pts[i] - pts[i - 1]).length if i else 0.0
             y_d[i] = max(y_d[i], dens[i], seg / FUS_MIN_STEP)
     f = section_fn(0.0)
     cab = [f(t) for t in TH_GRID]
-    dens = _turn_density(cab, FUS_ERR)
+    dens = _turn_density(cab, err)
     th_inc = [0.0] + [max(0.5 * (dens[j] + dens[j - 1]), (cab[j] - cab[j - 1]).length /
                           FUS_MIN_STEP) for j in range(1, len(cab))]
 
@@ -883,17 +900,17 @@ def _fus_stations():
     return y_den, th_inc
 
 
-def ring_stations(y, d):
+def ring_stations(y, d, err=None, knots=None):
     """The th stations of the ring at y: from this section's own curvature (a small tail-cone
     section needs fewer than the cabin), every knot included, so neighbouring rings can be
     zipped between knots."""
     f = section_fn(y)
     pts = [f(t) for t in TH_GRID]
-    dens = _turn_density(pts, FUS_ERR)
+    dens = _turn_density(pts, err or FUS_ERR)
     inc = [0.0] + [max(0.5 * (dens[j] + dens[j - 1]),
                        (pts[j] - pts[j - 1]).length / FUS_MIN_STEP)
                    for j in range(1, len(pts))]
-    return adaptive_grid(TH_GRID, inc, fus_th_knots(), d)[:-1]
+    return adaptive_grid(TH_GRID, inc, knots or fus_th_knots(), d)[:-1]
 
 
 def build_fuselage(d):
@@ -1384,10 +1401,261 @@ def build_gear(d):
     return m
 
 
+# --------------------------------------------------------------------------- cockpit
+# Four-seat cabin: lining 2 cm inside the skin (holes at the windows and doors; the headliner
+# closes the roof under the wing), carpeted floor, instrument panel with glareshield, six-pack
+# and engine dials, radio stack, two yokes, rudder pedals, throttle and mixture, trim wheel,
+# two front seats and a rear bench. Eyepoints at a seated pilot's eye height.
+COCKPIT_ERR = 0.0002    # the cockpit is seen from 0.6 m: chordal target of its curved parts
+LINING = 0.02
+FLOOR_Z = -0.37
+RISER_Y = 1.62      # the floor steps up to the baggage floor here
+BAGGAGE_Z = -0.32
+PANEL_Y = -1.22
+PANEL_TOP = 0.40
+EYE = (0.25, -0.22, 0.62)  # pilot's eye (left seat); the right seat mirrors it
+SEAT_X = 0.25
+LINING_COL = srgb(0.52, 0.50, 0.47)
+HEADLINER = srgb(0.78, 0.76, 0.72)
+CARPET = srgb(0.20, 0.20, 0.21)
+SEAT_COL = srgb(0.33, 0.31, 0.29)
+PANEL_COL = srgb(0.14, 0.14, 0.15)
+DIAL = srgb(0.03, 0.03, 0.035)
+NEEDLE = srgb(0.92, 0.92, 0.88)
+_COCKPIT_ST = []
+
+
+def badge(m, centre, rx, rz, seg, mat, color, depth=0.0005, lift=0.0015,
+          normal=(0.0, -1.0, 0.0)):
+    """A flat elliptical part standing `lift` proud of a flat surface whose outward normal is
+    `normal`, with a skirt running `depth` back through it (no gap shows behind it)."""
+    n = Vector(normal).normalized()
+    up = Vector((0.0, 0.0, 1.0)) if abs(n.z) < 0.9 else Vector((0.0, 1.0, 0.0))
+    u = (up - n * up.dot(n)).normalized()
+    v = n.cross(u)
+    c = Vector(centre)
+    front, back = [], []
+    for k in range(seg):
+        a = 2 * math.pi * k / seg
+        q = c + v * (rx * math.cos(a)) + u * (rz * math.sin(a))
+        front.append(m.vert(q + n * lift))
+        back.append(m.vert(q - n * depth))
+    ring_cap(m, front, 0, seg // 2, mat, color, lambda _c: n)
+    skirt = [m.face([front[k], front[(k + 1) % seg], back[(k + 1) % seg], back[k]], mat, color,
+                    smooth=True) for k in range(seg)]
+    m.round.update(f for f in skirt if f is not None)
+    m.orient(skirt, lambda q: (q - c) - n * (q - c).dot(n))
+
+
+def build_lining(m, d):
+    if not _COCKPIT_ST:
+        _COCKPIT_ST.append(_fus_stations(COCKPIT_ERR))
+    y_den, _ = _COCKPIT_ST[0]
+    knots = [k for k in FUS_Y_KNOTS if PANEL_Y < k < BULKHEAD_Y]
+    ys = adaptive(PANEL_Y, BULKHEAD_Y, knots, y_den, d)
+    # the floor line is a knot too, so the lining stops exactly at the floor
+    fl = side_th(FLOOR_Z)
+    th_knots = tuple(sorted(set(fus_th_knots()) | {round(fl, 9), round(_mirror_th(fl), 9)}))
+    rings = []
+    for y in ys:
+        ths = ring_stations(y, d, COCKPIT_ERR, th_knots)
+        rings.append((ths, [m.vert(fus_point(y, th, -LINING)) for th in ths]))
+
+    def segments(ths):
+        cut = [j for j, t in enumerate(ths) if any(abs(t - k) < 1e-9 for k in th_knots)
+               or j == 0]
+        return [list(range(a_, b_ + 1)) for a_, b_ in zip(cut, cut[1:] + [len(ths)])]
+    faces = []
+    for i in range(len(ys) - 1):
+        (ta, va), (tb, vb) = rings[i], rings[i + 1]
+        yc = (ys[i] + ys[i + 1]) / 2
+        for ra, rb in zip(segments(ta), segments(tb)):
+            n_a, n_b = len(ta), len(tb)
+            th_a = [ta[j % n_a] + (2 * math.pi if j >= n_a else 0.0) for j in ra]
+            th_b = [tb[j % n_b] + (2 * math.pi if j >= n_b else 0.0) for j in rb]
+            A = [va[j % n_a] for j in ra]
+            B = [vb[j % n_b] for j in rb]
+            tc = 0.25 * (th_a[0] + th_a[-1] + th_b[0] + th_b[-1])
+            if tc > math.pi:
+                tc -= 2 * math.pi
+            if door_region(yc, tc) or fus_material(yc, tc) == "glass":
+                continue
+            if _in(yc, ROOF_CUT_Y) and ROOF_CUT_TH < tc < math.pi - ROOF_CUT_TH:
+                continue  # the headliner tray closes the roof under the wing
+            if side_of(tc)[1] < fl:
+                continue  # under the floor
+            col = HEADLINER if WS_TH < tc < math.pi - WS_TH else LINING_COL
+            if len(A) == len(B):
+                new = [m.face([A[k], B[k], B[k + 1], A[k + 1]], "dark", col, smooth=True)
+                       for k in range(len(A) - 1)]
+            else:
+                new = zip_chains(m, A, B, "dark", col, lambda c: Vector((0.0, 0.0, 0.0)))
+            for f in new:
+                if f is not None:
+                    f.smooth = True
+            faces += new
+    faces = [f for f in faces if f is not None and f.is_valid]
+    m.orient(faces, lambda c: -fus_param_normal(c))
+
+
+HEADLINER_Z = 0.915  # the headliner under the wing centre section (below the wing's skin)
+
+
+def build_headliner(m, d):
+    """The cabin ceiling where the roof is cut out under the wing: a flat panel below the
+    wing's lower surface with short walls up into the wing, so no gap shows round it."""
+    y0, y1 = ROOF_CUT_Y[0] - 0.02, ROOF_CUT_Y[1] + 0.02
+    x1 = max(fus_point(y, ROOF_CUT_TH).x for y in (y0, 0.0, y1)) + 0.03
+    nx, ny = count(6, d, 2), count(10, d, 2)
+    xs = [lerp(-x1, x1, i / nx) for i in range(nx + 1)]
+    ys = [lerp(y0, y1, j / ny) for j in range(ny + 1)]
+    grid = [[m.vert((x, y, HEADLINER_Z)) for x in xs] for y in ys]
+    faces = [m.face([grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]], "dark",
+                    HEADLINER) for j in range(ny) for i in range(nx)]
+    m.orient(faces, lambda c: (0.0, 0.0, -1.0))
+    # the walls stand above the plate, so only their outer sides can be seen (from outside,
+    # through the windows): they face outwards
+    for y, out in ((y0, -1.0), (y1, 1.0)):  # front and rear walls, up to the lining
+        rows = [[Vector((x, y, HEADLINER_Z)) for x in xs],
+                [Vector((x, y, skin_top(y, x) - LINING + 0.003)) for x in xs]]
+        f = m.rings(rows, close_ring=False, mat="dark", color=HEADLINER, solid=False)
+        m.orient(f, lambda c, o=out: (0.0, o, 0.0))
+    for x, out in ((-x1, -1.0), (x1, 1.0)):  # side walls, up to the lining
+        rows = [[Vector((x, y, HEADLINER_Z)) for y in ys],
+                [Vector((x, y, skin_top(y, x) - LINING + 0.003)) for y in ys]]
+        f = m.rings(rows, close_ring=False, mat="dark", color=HEADLINER, solid=False)
+        m.orient(f, lambda c, o=out: (o, 0.0, 0.0))
+
+
+def cabin_half(y, z):
+    return skin_x(y, z) - LINING
+
+
+def build_floor_panel(m, d):
+    # carpeted floor (edges tucked under the lining), a riser and the raised baggage floor
+    # (the belly rises behind the rear seat)
+    for y0, y1, z in ((PANEL_Y, RISER_Y, FLOOR_Z), (RISER_Y, BULKHEAD_Y, BAGGAGE_Z)):
+        ys = stations(y0, y1, count(10, d, 2), cosine=False)
+        rows = [[Vector((-cabin_half(y, z) - 0.005, y, z)),
+                 Vector((cabin_half(y, z) + 0.005, y, z))] for y in ys]
+        f = m.rings(rows, close_ring=False, mat="dark", color=CARPET, solid=False)
+        m.orient(f, lambda c: (0.0, 0.0, 1.0))
+    zs = stations(FLOOR_Z, BAGGAGE_Z, count(3, d, 1), cosine=False)
+    rows = [[Vector((-cabin_half(RISER_Y, z) - 0.005, RISER_Y, z)),
+             Vector((cabin_half(RISER_Y, z) + 0.005, RISER_Y, z))] for z in zs]
+    f = m.rings(rows, close_ring=False, mat="dark", color=CARPET, solid=False)
+    m.orient(f, lambda c: (0.0, -1.0, 0.0))
+    # instrument panel: a flat face across the cabin, its edges tucked into the lining
+    zs = stations(FLOOR_Z - 0.01, PANEL_TOP, count(14, d, 3), cosine=False)
+    rows = [[Vector((-cabin_half(PANEL_Y, z) - 0.005, PANEL_Y, z)),
+             Vector((cabin_half(PANEL_Y, z) + 0.005, PANEL_Y, z))] for z in zs]
+    f = m.rings(rows, close_ring=False, mat="dark", color=PANEL_COL, solid=False)
+    m.orient(f, lambda c: (0.0, 1.0, 0.0))
+    # glareshield: from a lip over the panel, a rounded hood running forward up to the
+    # windscreen base (closing the gap above the panel)
+    k = count(8, d, 3)
+    y_front = WS_Y[0] - 0.02
+    z_front = skin_top(y_front, 0.0) - LINING
+    rows = [[Vector((-cabin_half(PANEL_Y + 0.10, PANEL_TOP - 0.03) - 0.01, PANEL_Y + 0.10,
+                     PANEL_TOP - 0.03)),
+             Vector((cabin_half(PANEL_Y + 0.10, PANEL_TOP - 0.03) + 0.01, PANEL_Y + 0.10,
+                     PANEL_TOP - 0.03))]]
+    for j in range(k + 1):
+        t = j / k
+        y = lerp(PANEL_Y + 0.10, y_front, smoothstep(t))
+        z = PANEL_TOP + 0.03 + (z_front - PANEL_TOP - 0.03) * t * t
+        hw = cabin_half(y, z) + 0.005
+        rows.append([Vector((-hw, y, z)), Vector((hw, y, z))])
+    f = m.rings(rows, close_ring=False, mat="dark", color=PANEL_COL, solid=False)
+    m.orient(f, lambda c: (0.0, 0.6, 0.8))
+
+
+def dial(m, x, z, r, d, needle_deg=40.0):
+    """A round instrument: bezel ring, black face and a light needle, standing proud of the
+    panel (each with a skirt into the panel)."""
+    seg = count(32, d, 12)
+    aft = (0.0, 1.0, 0.0)  # the panel faces aft, towards the pilots
+    badge(m, (x, PANEL_Y, z), r + 0.006, r + 0.006, seg, "metal", STEEL, lift=0.003,
+          normal=aft)
+    badge(m, (x, PANEL_Y + 0.003, z), r, r, seg, "dark", DIAL, lift=0.0025, depth=0.0005,
+          normal=aft)
+    a = math.radians(needle_deg)
+    tip = Vector((x + 0.8 * r * math.sin(a), PANEL_Y + 0.0065, z + 0.8 * r * math.cos(a)))
+    base = Vector((x, PANEL_Y + 0.0065, z))
+    side = Vector((math.cos(a), 0.0, -math.sin(a))) * 0.003
+    f = m.poly([base - side, base + side, tip], "light", NEEDLE)
+    m.orient([f], lambda c: (0.0, 1.0, 0.0))
+
+
+def yoke(m, x, d):
+    hub = Vector((x, PANEL_Y + 0.28, 0.13))
+    m.tube((x, PANEL_Y - 0.01, 0.13), hub, 0.012, 0.012, count(16, d, 6), mat="metal",
+           color=STEEL)
+    path = [hub + Vector(p) for p in ((-0.16, 0.0, 0.07), (-0.155, 0.0, 0.0), (-0.13, 0.0, -0.04),
+                                      (-0.06, 0.0, -0.055), (0.06, 0.0, -0.055),
+                                      (0.13, 0.0, -0.04), (0.155, 0.0, 0.0), (0.16, 0.0, 0.07))]
+    pts = []
+    for a, b in zip(path, path[1:]):
+        for t in (0.0, 0.25, 0.5, 0.75):
+            pts.append(a.lerp(b, t))
+    pts.append(path[-1])
+    m.sweep(pts, 0.016, count(20, d, 6), mat="dark", color=BLACK)
+    m.box(hub + Vector((0.0, 0.0, -0.03)), (0.10, 0.04, 0.06), mat="dark", color=BLACK)
+
+
+def seat(m, x, y, width, d):
+    rot = Matrix.Rotation(math.radians(-12.0), 3, "X")  # backrest leans back
+    m.box((x, y + 0.24, FLOOR_Z + 0.20), (width, 0.48, 0.10), mat="dark", color=SEAT_COL)
+    m.box((x, y + 0.50, FLOOR_Z + 0.55), (width, 0.09, 0.62), matrix=rot, mat="dark",
+          color=SEAT_COL)
+    for sx in (-1, 1):  # seat legs
+        m.box((x + sx * (width / 2 - 0.04), y + 0.24, FLOOR_Z + 0.077), (0.03, 0.40, 0.15),
+              mat="metal", color=STEEL)
+
+
+def build_cockpit(d):
+    m = Mesh("cockpit", detail=d)
+    build_lining(m, d)
+    build_headliner(m, d)
+    build_floor_panel(m, d)
+    # pilot's six-pack and engine dials, right-seat dials, radio stack
+    for col, x in enumerate((0.38, 0.27, 0.16)):
+        for row, z in enumerate((0.30, 0.18)):
+            dial(m, x, z, 0.038, d, 25.0 + 40.0 * (col + 2 * row))
+    for i, x in enumerate((0.43, 0.35, 0.27, 0.19)):
+        dial(m, x, 0.06, 0.018, d, 70.0 * i)
+    for x in (-0.20, -0.30, -0.40):
+        dial(m, x, 0.26, 0.030, d, 120.0)
+    for i, z in enumerate((0.31, 0.24, 0.17, 0.10, 0.03)):
+        m.box((0.02, PANEL_Y + 0.004, z), (0.16, 0.012, 0.055), mat="dark", color=BLACK)
+        m.box((0.02, PANEL_Y + 0.0105, z + 0.01), (0.07, 0.002, 0.016), mat="light",
+              color=srgb(0.15, 0.55, 0.25))
+    # yokes, throttle and mixture, trim wheel, rudder pedals
+    for x in (SEAT_X, -SEAT_X):
+        yoke(m, x, d)
+    for x, col in ((0.06, BLACK), (0.11, RED)):
+        m.tube((x, PANEL_Y - 0.005, -0.02), (x, PANEL_Y + 0.07, -0.02), 0.005, 0.005, 8,
+               mat="metal", color=STEEL)
+        m.tube((x, PANEL_Y + 0.07, -0.02), (x, PANEL_Y + 0.10, -0.02), 0.015, 0.015,
+               count(18, d, 8), mat="dark", color=col)
+    m.tube((-0.02, -0.55, FLOOR_Z + 0.072), (0.02, -0.55, FLOOR_Z + 0.072), 0.07, 0.07,
+           count(40, d, 12), mat="dark", color=BLACK)
+    rot = Matrix.Rotation(math.radians(30.0), 3, "X")
+    for x in (SEAT_X, -SEAT_X):
+        for dx in (-0.09, 0.09):
+            m.box((x + dx, PANEL_Y + 0.12, FLOOR_Z + 0.13), (0.08, 0.012, 0.14), matrix=rot,
+                  mat="metal", color=STEEL)
+    # seats: two in front, a bench behind
+    for x in (SEAT_X, -SEAT_X):
+        seat(m, x, -0.50, 0.44, d)
+    seat(m, 0.0, 0.45, 0.92, d)
+    return m
+
+
 # --------------------------------------------------------------------------- build
 
 
-def build(d=1.0):
+def build(d=1.0, cockpit=True):
     """Return (root object, expected node names)."""
     mats = make_materials()
     fus_m = build_fuselage(d)
@@ -1407,6 +1675,13 @@ def build(d=1.0):
         names.append(p.name)
     disc.finish(mats, parent=fus)
     names.append("prop_disc")
+    if d >= 0.0 and cockpit:
+        cock = build_cockpit(d)
+        cock.finish(mats, parent=fus)
+        names.append("cockpit")
+        empty("eyepoint_left", EYE, parent=fus)
+        empty("eyepoint_right", (-EYE[0], EYE[1], EYE[2]), parent=fus)
+        names += ["eyepoint_left", "eyepoint_right"]
     return fus, names
 
 
@@ -1442,4 +1717,8 @@ PREVIEW_VIEWS = {
     "cabin": dict(loc=(4.6, -0.3, 0.6), target=(0.4, -0.3, 0.35), lens=35),
     "tail": dict(loc=(3.4, 7.6, 1.6), target=(0.0, 4.6, 0.6), lens=40),
     "front": dict(loc=(0.0, -14.0, 0.5), target=(0.0, 0.0, 0.3), lens=55),
+    "eyepoint_left": dict(loc=EYE, target=(0.18, -2.5, 0.25), lens=20),
+    "eyepoint_right": dict(loc=(-EYE[0], EYE[1], EYE[2]), target=(-0.10, -2.5, 0.25), lens=20),
+    "windscreen": dict(loc=(0.9, -3.4, 1.15), target=(0.05, -0.9, 0.25), lens=35),
+    "cabin_rear": dict(loc=(0.0, 0.98, 0.80), target=(0.05, -1.2, 0.15), lens=22),
 }
