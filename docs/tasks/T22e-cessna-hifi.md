@@ -117,3 +117,16 @@ gate, fidelity gate table (value vs gate), image list (paths), determinism resul
 for the user. Append a dated entry to the "Checkpoint log" below.
 
 ## Checkpoint log
+
+**2026-10-14 — Phase 0 (research, gap analysis, gate proposal; no modelling).** Research doc
+[docs/research/05-cessna-fidelity.md](../research/05-cessna-fidelity.md) and proposed gates
+`tools/models/audit/cessna_fidelity.toml` (PROPOSED, not approved). Gap analysis (11 cues; measured:
+no UVs and 6 flat materials, 0 mm trailing-edge thickness, hard creases 3-4 % of edge length,
+dome-like nose section); sources (MSFS 2024 SDK, X-Plane developer pages); reference candidates
+(Commons: Werneuchen PD SVG, Marek Cel CC0 SVG; a 1956 manual drawing is rejected); F1-F5 methods
+and values; texture budget (3 sheets x 3 maps at 2048, about 200 MB GPU, textured `.glb` cap
+proposed 24 MB hard / 16 MB aim); colour decision (`cessna.glb` textured without COLOR_0 plus
+`cessna_vc*.glb` vertex-colour family); CP1-CP3 plan (about 40 k, 55 k, 60 k exterior triangles).
+Determinism finding: Cycles AO bakes byte-identical (also 1 thread vs auto); `uv.smart_project` and
+Displace-modifier meshes are NOT deterministic, so the generator must build bake meshes and UVs
+itself. Waiting for the user: reference choice, file cap, texture plan, colour scheme, gate values.

@@ -1,0 +1,361 @@
+# PROPOSED fidelity gates for cessna.glb (task T22e, Phase 0, 2026-10-14). NOT APPROVED.
+# Method and reasons: docs/research/05-cessna-fidelity.md, section (d). Read by
+# tools/models/fidelity_audit.py (built in Phase 1). Values are proposals calibrated by
+# reasoning, not data: Phase 1 measures the T22d baseline and the noise floor, then the user
+# fixes them before CP1. Frame: metres, x = vehicle left, y = aft (nose at -y), z = up.
+
+[meta]
+status = "PROPOSED"
+model = "cessna"
+reference = "TBD: user-approved three-view (see research doc section c)"
+
+[F1_outline]
+views = ["side", "top", "front"]
+exclude_nodes = ["cockpit", "prop_disc"]
+raster_px_per_cm = 2
+scaling = "published length/span/height + two named landmarks (no best fit)"
+iou_min = { side = 0.94, top = 0.94, front = 0.90 }
+outline_p95_mm = 30
+outline_max_mm = 80
+station_tol_mm = 40
+stations = ["cowl_front", "windscreen_base", "wing_le_root", "wing_le_tip", "fin_top",
+            "rudder_te", "tailplane_tip", "spinner_tip", "nose_wheel_centre", "belly_line"]
+
+[F2_features]
+required_fraction = 1.0
+optional_fraction = 0.75
+# kind = geometry: probe box (model frame) must hold >= tris triangles of `material` with relief >= relief_mm
+# kind = texture : normal map in the probe's UV region has >= pixels groove pixels (|tilt| > 0.1) or a distinct colour
+# Probe boxes are filled when the feature exists (CP2); count_min applies from then on.
+[[features]]
+name = "window_frames"
+kind = "geometry"
+required = true
+count_min = 12
+relief_mm = 3
+[[features]]
+name = "window_seals"
+kind = "geometry"
+required = false
+count_min = 12
+relief_mm = 2
+[[features]]
+name = "door_gaps"
+kind = "geometry"
+required = true
+count_min = 2
+relief_mm = 3
+[[features]]
+name = "door_handles"
+kind = "geometry"
+required = true
+count_min = 2
+relief_mm = 5
+[[features]]
+name = "cowl_lip_and_inlets"
+kind = "geometry"
+required = true
+count_min = 3
+relief_mm = 10
+[[features]]
+name = "cowl_flap_outlines"
+kind = "texture"
+required = false
+count_min = 2
+[[features]]
+name = "oil_door"
+kind = "geometry"
+required = false
+count_min = 1
+relief_mm = 2
+[[features]]
+name = "panel_lines_fuselage"
+kind = "texture"
+required = true
+count_min = 20
+[[features]]
+name = "panel_lines_wing"
+kind = "texture"
+required = true
+count_min = 12
+[[features]]
+name = "rivet_rows"
+kind = "texture"
+required = true
+count_min = 30
+[[features]]
+name = "wing_root_fairings"
+kind = "geometry"
+required = true
+count_min = 2
+relief_mm = 8
+[[features]]
+name = "cabin_steps"
+kind = "geometry"
+required = true
+count_min = 2
+relief_mm = 20
+[[features]]
+name = "stall_warning_vent"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 3
+[[features]]
+name = "fuel_cap_and_vents"
+kind = "geometry"
+required = true
+count_min = 4
+relief_mm = 3
+[[features]]
+name = "elevator_trim_tab"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 2
+[[features]]
+name = "landing_light_lens"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 2
+[[features]]
+name = "nav_strobe_lenses"
+kind = "geometry"
+required = true
+count_min = 6
+relief_mm = 2
+[[features]]
+name = "beacon"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 20
+[[features]]
+name = "pitot_and_static"
+kind = "geometry"
+required = true
+count_min = 2
+relief_mm = 5
+[[features]]
+name = "antennas"
+kind = "geometry"
+required = true
+count_min = 3
+relief_mm = 20
+[[features]]
+name = "hinge_lines_control_surfaces"
+kind = "geometry"
+required = true
+count_min = 8
+relief_mm = 2
+[[features]]
+name = "prop_tip_paint"
+kind = "texture"
+required = true
+count_min = 2
+[[features]]
+name = "prop_blade_decals_neutral"
+kind = "texture"
+required = false
+count_min = 2
+[[features]]
+name = "spinner_backplate_and_screws"
+kind = "geometry"
+required = true
+count_min = 6
+relief_mm = 2
+[[features]]
+name = "cheat_line_two_colours"
+kind = "texture"
+required = true
+count_min = 2
+[[features]]
+name = "exhaust_stain"
+kind = "texture"
+required = false
+count_min = 1
+[[features]]
+name = "hinge_grime"
+kind = "texture"
+required = false
+count_min = 4
+[[features]]
+name = "wheel_fairing_split_lines"
+kind = "texture"
+required = true
+count_min = 3
+[[features]]
+name = "brake_lines_and_hubs"
+kind = "geometry"
+required = false
+count_min = 3
+relief_mm = 3
+[[features]]
+name = "strut_fairings_and_attach_plates"
+kind = "geometry"
+required = true
+count_min = 4
+relief_mm = 3
+[[features]]
+name = "tie_down_rings"
+kind = "geometry"
+required = false
+count_min = 3
+relief_mm = 5
+[[features]]
+name = "gauge_faces_legible"
+kind = "texture"
+required = true
+count_min = 6
+[[features]]
+name = "radio_stack_faces"
+kind = "texture"
+required = true
+count_min = 4
+[[features]]
+name = "placards_generic"
+kind = "texture"
+required = false
+count_min = 4
+[[features]]
+name = "seat_stitching_and_belts"
+kind = "texture"
+required = false
+count_min = 4
+[[features]]
+name = "yoke_buttons_and_grips"
+kind = "geometry"
+required = false
+count_min = 2
+relief_mm = 3
+[[features]]
+name = "rudder_pedal_brakes"
+kind = "geometry"
+required = true
+count_min = 4
+relief_mm = 5
+[[features]]
+name = "door_seals_and_latches_interior"
+kind = "geometry"
+required = false
+count_min = 2
+relief_mm = 3
+[[features]]
+name = "tail_navigation_light"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 2
+[[features]]
+name = "static_wicks"
+kind = "geometry"
+required = false
+count_min = 4
+relief_mm = 10
+[[features]]
+name = "fin_dorsal_and_rudder_balance"
+kind = "geometry"
+required = true
+count_min = 1
+relief_mm = 3
+
+[F3_sections]
+# plane y (m); ratio = width / height; fill = outline area / bounding rectangle;
+# flat_mm = largest deviation of the side from a straight line over flat_height_m;
+# radius_mm = [min, max] of the tightest outline corner. ESTIMATES: refine in Phase 1.
+[[sections]]
+name = "cowl_lip"
+y = -2.0
+ratio = [1.00, 1.20]
+fill_min = 0.76
+radius_mm = [15, 90]
+[[sections]]
+name = "firewall"
+y = -1.55
+ratio = [0.90, 1.05]
+fill_min = 0.80
+flat_mm_max = 25
+flat_height_m = 0.4
+radius_mm = [50, 250]
+[[sections]]
+name = "cabin_door"
+y = -0.2
+ratio = [0.62, 0.72]
+fill_min = 0.84
+flat_mm_max = 12
+flat_height_m = 0.7
+radius_mm = [60, 250]
+[[sections]]
+name = "cabin_rear"
+y = 1.15
+ratio = [0.68, 0.80]
+fill_min = 0.82
+flat_mm_max = 15
+flat_height_m = 0.6
+radius_mm = [60, 250]
+[[sections]]
+name = "tail_cone"
+y = 3.0
+ratio = [0.80, 1.00]
+fill_min = 0.76
+radius_mm = [80, 300]
+
+[F4_textures]
+required_maps = ["baseColor", "normal", "occlusionRoughnessMetallic"]
+texel_density_px_per_m = { airframe = 400, small_parts = 250, panel_faces = 1500 }
+density_spread_max = 2.0          # p95 / p5 per sheet
+uv_overlap_px_max = 0             # except exact x -> -x mirrors
+padding_px_min = 8
+bleed_px = 8
+sizes = "power of two, <= 2048"
+normal_unit_length_tol = 0.02
+metallic_binary_fraction_min = 0.95
+base_colour_srgb_range = [30, 240]
+sheets = ["ext_fuselage", "ext_aero", "cockpit"]
+gpu_bytes_max = 268435456         # 256 MB uncompressed RGBA8 with mips
+glb_bytes_max = 25165824          # 24 MB hard for the textured file (aim 16 MB)
+glb_bytes_max_vertex_colour = 10000000   # cessna_vc*.glb keeps the old 10 MB
+primitive_vertices_max = 65535
+
+[F5_edges]
+# radius_mm = [min, max] from a section perpendicular to the edge; needs >= 3 mesh segments
+# across the bevel to count (radii under 2 mm may live in the normal map instead).
+[[edges]]
+name = "wing_trailing_edge"
+radius_mm = [1.0, 3.0]
+thickness_mm = [1.5, 5.0]
+[[edges]]
+name = "control_surface_edges"
+radius_mm = [2.0, 6.0]
+[[edges]]
+name = "door_frame"
+radius_mm = [2.0, 6.0]
+[[edges]]
+name = "window_frames"
+radius_mm = [3.0, 8.0]
+[[edges]]
+name = "cowl_lip"
+radius_mm = [8.0, 20.0]
+[[edges]]
+name = "tailplane_and_fin_tips"
+radius_mm = [3.0, 10.0]
+[[edges]]
+name = "fin_leading_edge"
+radius_mm = [4.0, 15.0]
+[edges_global]
+no_named_edge_radius_over_mm = 40
+hard_crease_fraction = [0.03, 0.08]   # share of surface edge length with > 30 degrees
+
+[visual_review]   # subjective, not a gate
+engine = "CYCLES"
+device = "CPU"
+seed = 1
+samples = 96
+denoise = false
+sky = "Nishita"
+ground = "shadow catcher"
+width = 1600
+png_max_kb = 300
+cameras = ["34front", "34rear", "side", "top", "front", "tail", "cabin", "eyepoint_left", "eyepoint_right",
+           "closeup_nose", "closeup_wing_root", "closeup_door", "closeup_tail"]
