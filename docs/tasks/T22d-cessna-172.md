@@ -90,3 +90,40 @@ dials with light needles as geometry.
   and previews only at checkpoints.
 - Merge order: this branch depends on T22a; it merges after T22a reaches `main` (or into the
   T22a branch if the user prefers).
+
+## Checkpoint log
+
+**2026-10-14 — STOP 0 approved.** The user accepted the plan and every proposed gate unchanged,
+and asked that the branch be pushed to GitHub after every checkpoint. Later the same day the
+user went away for about an hour: checkpoints run unattended (commit + push, no stop), ending
+with a PR whose description shows images of the aircraft.
+
+**2026-10-14 — CP1 (exterior blockout).** `tools/models/cessna.py` + registration in
+`make_models.py` (model table, per-model preview framing and checks; `view_layer.update()`
+before the size check so parented parts are measured in place — the jet's numbers do not
+change). `cessna.glb`: 22 617 triangles, 0.624 vertices per triangle, 649 KB, 14 nodes,
+25 primitives (largest 6 318 vertices). Size 8.28 × 11.01 × 2.72 m. Propeller ground
+clearance 0.275 m; all three tyres on the ground. `detail_check.py --only cessna` PASS (every
+detail-1 vertex on the detail-4 surface). Two headless builds byte-identical (`.glb` and all
+9 PNGs).
+- Construction: fuselage skin = one loft of a two-exponent superellipse section (upper and
+  lower halves, widest line at its own height) with **curvature-adaptive stations** in both
+  directions (chordal target 0.4 mm at detail 1, longest edge 0.30 m); doors, windows, the
+  windscreen, the rear window, the cheat line and the roof cut-out are station knots, so
+  materials and colours change on vertex rings. Wings: NACA 2412 with washout and dihedral
+  (`foil_loft`, copied from hawk.py so the two models stay independent), flaps hinged below
+  the wing (offset pivot) and ailerons; tailplane and fin roots follow the tail-cone skin;
+  doors are hinged at the front edge, double-skinned with window reveals; propeller node with
+  spinner and two twisted blades; `prop_disc` translucent; closed wheel fairings with only the
+  visible arc of each tyre.
+- Audit (`--fast`, `docs/guide/img/models/audit/cessna/cp1_cessna_audit.md`): 76 of 89 gates
+  pass, 12 fail, 1 hard (5 flipped: near-zero-area slivers at a rib end, the spinner and a
+  control-surface corner). Shape p99 2.42 mm (gate 1), shading p95 2.55° (2°), fuselage
+  headroom 20 % (15 %), hidden fuselage 2.14 % / gear 3.67 % (2 %), slivers 5.6 % (1 %),
+  belly kink 2.19° (2°). Fixed on the way: 294 → 5 flipped (chord-based orientation of foil
+  skins, fairing orientation, rear cabin bulkhead closing the view down the tail cone through
+  the windows), detail-dependent skips removed (they broke the reference).
+- Next, CP2a: tessellation of wings, struts, doors, propeller and fairings to the shape and
+  shading gates; slivers (poles, the fan caps of the tips and the nose bowl); dorsal fin,
+  rounded fin and rudder tops, cowl inlets and exhaust, window frames, wing-root fairings,
+  lights, antennas, steps, panel lines.

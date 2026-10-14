@@ -34,13 +34,23 @@ sys.path.insert(0, str(HERE))
 import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
+import cessna  # noqa: E402
 import hawk  # noqa: E402
 from mm_common import reset_scene  # noqa: E402
 
 # name -> (builder, expected size (length, span, height) in metres or None)
 MODELS = {
     "jet": (lambda detail: hawk.build(detail), (12.43, 9.94, 3.98)),
+    "cessna": (lambda detail: cessna.build(detail), (8.28, 11.00, 2.72)),
 }
+
+# name -> preview framing (ground z, model centre, reference length, extra views) and
+# model-specific checks run after the build (returning problem strings)
+PREVIEW = {
+    "jet": dict(ground=hawk.GROUND, centre=(0.0, 0.3, 0.3), size=12.43, extra="jet"),
+    "cessna": dict(ground=cessna.GROUND, centre=(0.0, 1.55, 0.15), size=11.0, extra="cessna"),
+}
+CHECKS = {"cessna": cessna.checks}
 
 # raylib 6.0 keeps mesh indices as unsigned short: at most 65 536 vertices per (node, material)
 # primitive (its glTF loader truncates 32-bit indices with only a warning).
@@ -51,6 +61,7 @@ DEFLECT = {
     "aileron_l": (0, 22.0), "aileron_r": (0, -22.0), "flap_l": (0, -28.0),
     "flap_r": (0, -28.0), "elevator": (0, -14.0), "rudder": (2, 22.0),
     "airbrake": (0, -50.0), "canopy": (1, -65.0), "turret": (2, 40.0), "barrel": (0, 15.0),
+    "door_l": (2, 70.0), "door_r": (2, -70.0), "propeller": (1, 35.0),
 }
 
 # ---------------------------------------------------------------- export and checks
@@ -266,8 +277,9 @@ def pose(deflect):
                 obj.rotation_euler[axis] = math.radians(deg)
 
 
-def render_previews(name, outdir, ground_z, c, size, deflect=False):
-    """c = centre of the model, size = reference length; `deflect` adds the deflected pose."""
+def render_previews(name, outdir, ground_z, c, size, deflect=False, extra="jet"):
+    """c = centre of the model, size = reference length; `deflect` adds the deflected pose;
+    `extra` picks the model's close-up views."""
     scene = setup_preview_scene(ground_z)
     outdir.mkdir(parents=True, exist_ok=True)
     pose(False)
@@ -285,6 +297,16 @@ def render_previews(name, outdir, ground_z, c, size, deflect=False):
     for vname, v in views.items():
         render_view((outdir / f"{name}_{vname}.png").resolve(), **v)
     scene.render.resolution_x, scene.render.resolution_y = 960, 600
+    if extra == "cessna":
+        for vname, v in cessna.PREVIEW_VIEWS.items():
+            render_view((outdir / f"{name}_{vname}.png").resolve(), **v)
+        scene.render.resolution_x, scene.render.resolution_y = 1100, 700
+        if deflect:
+            pose(True)
+            render_view((outdir / f"{name}_deflected.png").resolve(),
+                        loc=(cx - 9 * k, cy + 10 * k, cz + 5 * k), target=(cx, cy, cz), lens=42)
+            pose(False)
+        return
     render_view((outdir / f"{name}_closeup.png").resolve(), loc=(cx + 3.4, cy - 8.6, cz + 1.8),
                 target=(cx + 0.1, cy - 3.0, cz + 0.2), lens=48)
     # canopy and spine side profile, intake close-up (left side)
@@ -322,6 +344,7 @@ def main():
         reset_scene()
         build, want = MODELS[name]
         _root, expected = build(args.detail)
+        bpy.context.view_layer.update()  # world matrices of the parented parts
         tris, length, span, height = scene_stats()
         floating = check_islands()
         glb = args.out / f"{name}.glb"
@@ -345,14 +368,17 @@ def main():
         if max(dim_err) > 0.04:
             problems.append(f"dimensions off by {max(dim_err) * 100:.1f} %")
         problems += floating
+        if name in CHECKS:
+            problems += CHECKS[name]()
         for n in notes:
             print(f"[make_models] {name}: note: {n}")
         for p in problems:
             print(f"[make_models] {name}: PROBLEM: {p}")
         failed |= bool(problems)
         if args.preview:
-            render_previews(name, args.preview, hawk.GROUND, (0.0, 0.3, 0.3), 12.43,
-                            args.deflect)
+            pv = PREVIEW[name]
+            render_previews(name, args.preview, pv["ground"], pv["centre"], pv["size"],
+                            args.deflect, pv["extra"])
     sys.exit(1 if failed else 0)
 
 
