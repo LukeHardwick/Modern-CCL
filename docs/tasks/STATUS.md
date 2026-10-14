@@ -1,6 +1,6 @@
 # Work status / session hand-off
 
-Last updated: **2026-10-13 (T22a budget: 250 k cap; T22c running)** (Opus planner). Read this first when starting a new session,
+Last updated: **2026-10-14 (T22e Cessna hi-fi, T09d, T09e, T20 launched; T11 discarded)** (Opus planner). Read this first when starting a new session,
 then [README.md](README.md) (task index + shared rules) and the task brief you are continuing.
 
 ## Process (unchanged)
@@ -21,6 +21,23 @@ then [README.md](README.md) (task index + shared rules) and the task brief you a
 `main` contains T00–T08, T09a, T09b Part 1, T10, T12, T17 and the viewer resize fix (see
 README.md). All checks green on the release candidate: macOS 658/658 (98.3 % lines), Linux GCC
 debug + ASan 655/655.
+
+## Wave launched 2026-10-14 (Sonnet 5.5 agents, Opus reviews; user request)
+User decisions: **T11 discarded** (T18 depended on it: re-plan before starting T18). Parallel:
+- **T22e** `task/t22e-cessna-hifi` (from `task/t22d-cessna` @ `2c4e0f5`; worktree `t22e-cessna-hifi`):
+  high-fidelity Cessna, **geometry + PBR textures** (vertex colours kept as raylib fallback). Fidelity
+  gates (outline vs a reference three-view, feature checklist, sections, textures, edge crispness)
+  proposed in Phase 0 -> user approves -> checker by a separate agent (Phase 1) -> CP1 shape -> CP2 detail
+  + UVs -> CP3 bake/wrap-up. Each phase a fresh Sonnet agent; STOP + report to the planner at each.
+  Agents never download: the user approves one reference drawing, the planner downloads it.
+  Headless Blender only (the live MCP Blender is shared with the T22a session). Brief on the branch.
+- **T09d** resumed by a fresh agent in its worktree (`agent-a3237d5802ea0586d`); also takes the
+  T09a follow-ups on the IG latch path (IgCore latch-retry test, "Host connected" log per failed
+  latch). Then **T09b Part 2**.
+- **T09e** `task/t09e-facade-followups` (worktree `t09e-facade-followups`): the other T09a follow-ups.
+  Merges after T09d (rebases onto it).
+- **T20** `task/t20-ig-database` (worktree `t20-ig-database`): brief as written.
+- These docs are on branch `claude/cessna-high-fidelity-t22-050083` (not yet on `main`).
 
 ## Open task branches
 Phase A wave 1 launched 2026-10-12 from `567bee8` (Sonnet agents, parallel). **T09 merged `47775ef`**

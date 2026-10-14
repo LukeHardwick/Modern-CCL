@@ -30,9 +30,10 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T09b](T09b-ig-viewer.md) | Mock-IG core + visual `ig_viewer` (raylib + Dear ImGui) | A (MVP) | P1: T06 · P2: T09a | P1 ✅ · P2 ⏳ |
 | [T09c](T09c-facade-examples.md) | `on_user<P>` in the facade; `user_packet` + `cigi_frames` examples on the facade | A (after v0.2.0) | T09a, T17 | ✅ `d348d73` |
 | [T09d](T09d-facade-peer-hardening.md) | Facade: peer learning hook, sender filtering, `on_ig_control`, `local_port()` | A (follow-up) | T09, T09c | ⏳ |
+| [T09e](T09e-facade-followups.md) | T09a follow-ups: Standby false positive, fault-transport docs, example comment, tests | A (follow-up) | T09a | ⏳ |
 | [T09](T09-demo-apps.md) | `demo_host` + mock `demo_ig` (+ fault flags) | A (MVP) | T09a, T09b P1, T10 | ✅ `47775ef` |
 | [T10](T10-wireshark-verification.md) | Wireshark/tshark verification | A (MVP) | T06 | ✅ `2781a3a` |
-| [T11](T11-ccl-interop.md) | CCL interoperability & differential tests | A (MVP) | T09 | ⏳ |
+| [T11](T11-ccl-interop.md) | CCL interoperability & differential tests | A (MVP) | T09 | ❌ discarded by the user 2026-10-14 |
 | [T12](T12-fuzzing.md) | libFuzzer + hardening | A (MVP) | T06 | ✅ |
 | **M1** | **MVP milestone: user trial + Windows/MSVC build** | | T03–T12 (incl. T09a, T09b) | |
 | [T13](T13-host-packets-environment.md) | Remaining entity/environment packets (3,5,7,10–15) | B | M1 | ⏳ |
@@ -40,12 +41,14 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T15](T15-ig-responses.md) | Remaining IG→Host packets (104–117) | B | M1 | ⏳ |
 | [T16](T16-symbology.md) | Symbology (29–35), variable-length packets | B | M1 | ⏳ |
 | [T17](T17-user-defined-packets.md) | User-defined packets (201–255) | B | T06 | ✅ `a57c7f4` |
-| [T18](T18-benchmarks.md) | Benchmarks vs CCL + real-network performance test | B | T11 | ⏳ |
+| [T18](T18-benchmarks.md) | Benchmarks vs CCL + real-network performance test | B | T11 (discarded: re-plan before starting) | ⏳ |
 | [T19](T19-docs.md) | Doxygen site, README, coming-from-CCL guide | B | all | ⏳ |
 | **M2** | **Full CIGI 3.3 milestone** | | T13–T19 | |
 | [T20](T20-ig-database.md) | Mock-IG database: TOML manifest, loader, Database Number protocol, `cigi_db` | Tools | T09b P1 | 📝 |
 | [T21](T21-heightmap-terrain.md) | Heightmap terrain per database (rendering + HAT/HOT) | Tools | T20 | 📝 |
 | [T22a](T22a-sample-models-blender.md) | Sample models (tank, helicopter, jet, truck) from a Blender script + format/fidelity research | Tools | T20 (database.toml only) | ⏳ |
+| T22d | Hero Cessna 172-class aircraft (brief on branch `task/t22d-cessna`) | Tools | T22a, T22c | 🔍 PR open |
+| T22e | High-fidelity Cessna: geometry + PBR textures, fidelity gates (brief on branch `task/t22e-cessna-hifi`) | Tools | T22d | ⏳ |
 | [T22](T22-gltf-models.md) | glTF models, articulated part nodes, primitive fallback, Database panel | Tools | T20 | 📝 |
 | [T22b](T22b-viewer-render-upgrades.md) | Viewer render upgrades: cockpit pass, instancing, textures/PBR (later) | Tools | T22 | 📝 |
 | [T22c](T22c-model-audit.md) | Deterministic model audit: shape fidelity, needless triangles, hygiene, budgets (Opus) | Tools | T22a CP1 | ✅ into T22a branch `f7b47a8` |
