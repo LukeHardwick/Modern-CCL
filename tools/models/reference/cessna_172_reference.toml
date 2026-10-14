@@ -1,0 +1,45 @@
+# Provenance of the F1 reference masks. Written by make_reference_masks.py.
+[source]
+svg = "cessna_172_skyhawk_line_drawing.svg"
+svg_sha256 = "5d14e7351e330ebf75d1712e535d80872cd2154005e2b3427546b92714ba5760"
+tool = "rsvg-convert version 2.63.2"
+command = "rsvg-convert -z 2 -b white cessna_172_skyhawk_line_drawing.svg -o drawing.png"
+scale = 2
+close_px = 5
+half_stroke_px = 3
+threshold = 128
+min_stroke_px = 60
+
+[source.see_through_seeds_1x]
+front = [[440, 215], [597, 215]]
+side = []
+top = []
+
+[source.erase_boxes_1x]
+front = [[372, 175, 463, 193], [573, 175, 662, 191]]
+side = []
+top = []
+
+[views.front]
+file = "cessna_172_front_mask.png"
+sha256 = "386ae3fe91aec31295cf2bb054e11ea26f32c231ce3ee0b4dc3d129fcb2c6eac"
+crop_1x = [0, 0, 1050, 380]
+size_px = [2100, 760]
+area_px = 147631
+extent_px = { left = 88, right = 1992, top = 106, bottom = 675 }
+
+[views.side]
+file = "cessna_172_side_mask.png"
+sha256 = "526b570ff045fd1e12f33346f16f435ff3a14fd610324babe7faba4beecc3015"
+crop_1x = [1030, 0, 1800, 380]
+size_px = [1540, 760]
+area_px = 303035
+extent_px = { left = 45, right = 1499, top = 128, bottom = 672 }
+
+[views.top]
+file = "cessna_172_top_mask.png"
+sha256 = "c10bb34477166ab7aedf0636818a339f433306bda4049fe125227b2998e41fd3"
+crop_1x = [0, 450, 1050, 1200]
+size_px = [2100, 1500]
+area_px = 757337
+extent_px = { left = 75, right = 2003, top = 57, bottom = 1437 }

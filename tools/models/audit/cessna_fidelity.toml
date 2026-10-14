@@ -1,351 +1,671 @@
-# PROPOSED fidelity gates for cessna.glb (task T22e, Phase 0, 2026-10-14). NOT APPROVED.
-# Method and reasons: docs/research/05-cessna-fidelity.md, section (d). Read by
-# tools/models/fidelity_audit.py (built in Phase 1). Values are proposals calibrated by
-# reasoning, not data: Phase 1 measures the T22d baseline and the noise floor, then the user
-# fixes them before CP1. Frame: metres, x = vehicle left, y = aft (nose at -y), z = up.
+# Fidelity gates for cessna.glb (task T22e). STATUS: CALIBRATED in Phase 1 (2026-10-14), PENDING
+# USER APPROVAL: the values below are the Phase 0 proposal except the ones marked "CALIBRATED",
+# each with its reason (measured noise floor, known-answer tests or the T22d baseline); the
+# list of changes is in docs/tasks/T22e-cessna-hifi.md (Phase 1 entry). Read by
+# tools/models/fidelity_audit.py; method in docs/research/05-cessna-fidelity.md section (d).
+# Frame: metres, x = vehicle left, y = aft (nose at -y), z = up.
 
 [meta]
-status = "PROPOSED"
+status = "CALIBRATED, pending user approval"
 model = "cessna"
-reference = "TBD: user-approved three-view (see research doc section c)"
+reference = "tools/models/reference/cessna_172_skyhawk_line_drawing.svg (public domain, Werneuchen; drawing A, approved 2026-10-14)"
 
+[model]
+published_size = { length = 8.28, span = 11.00, height = 2.72 }   # Cessna 172R/S, as the T22c config
+exterior_exclude_nodes = ["cockpit", "prop_disc"]                # interior and the translucent prop disc
+interior_nodes = ["cockpit"]                                     # not judged against the airframe sheets
+
+# A gate id is "hard" when it equals one of these or starts with one followed by a dot: a hard
+# gate that fails (or cannot be measured) makes the checker exit 1.
+[gates]
+hard = ["F1", "F2.required", "F3", "F4", "F5"]
+
+# ---------------------------------------------------------------- F1 outline
 [F1_outline]
-views = ["side", "top", "front"]
-exclude_nodes = ["cockpit", "prop_disc"]
-raster_px_per_cm = 2
-scaling = "published length/span/height + two named landmarks (no best fit)"
+reference = "tools/models/reference/cessna_172_reference.toml"   # masks + provenance (repo relative)
+raster_px_per_cm = 2             # 5 mm grid
+# scaling: the reference is scaled to the published length / span / height on each axis and
+# anchored at the model's spinner tip, lowest point and x = 0: no best fit.
 iou_min = { side = 0.94, top = 0.94, front = 0.90 }
 outline_p95_mm = 30
 outline_max_mm = 80
 station_tol_mm = 40
-stations = ["cowl_front", "windscreen_base", "wing_le_root", "wing_le_tip", "fin_top",
-            "rudder_te", "tailplane_tip", "spinner_tip", "nose_wheel_centre", "belly_line"]
 
+# The side view of the reference omits the wing (only the strut is drawn): the wing, flaps and
+# ailerons are left out of the model's side silhouette. The propeller blades are not in the
+# drawing; the spinner (propeller:paint) is.
+[F1_outline.views.side]
+exclude_nodes = ["wing_l", "wing_r", "aileron_l", "aileron_r", "flap_l", "flap_r"]
+exclude_prims = ["propeller:metal"]
+[F1_outline.views.top]
+exclude_nodes = []
+exclude_prims = ["propeller:metal"]
+[F1_outline.views.front]
+exclude_nodes = []
+exclude_prims = ["propeller:metal"]
+
+[[F1_stations]]
+name = "spinner_tip"
+view = "side"
+kind = "extreme"
+edge = "min_h"
+
+[[F1_stations]]
+name = "rudder_te"
+view = "side"
+kind = "extreme"
+edge = "max_h"
+
+[[F1_stations]]
+name = "fin_top"
+view = "side"
+kind = "extreme"
+edge = "max_v"
+
+[[F1_stations]]
+name = "belly_line"
+view = "side"
+kind = "scan"
+scan = "v"
+at = 2.0
+take = "min"
+
+[[F1_stations]]
+name = "cowl_front"
+view = "side"
+kind = "scan"
+scan = "h"
+at = -0.2
+take = "min"
+
+[[F1_stations]]
+name = "cowl_top"
+view = "side"
+kind = "scan"
+scan = "v"
+at = -1.7
+take = "max"
+
+[[F1_stations]]
+name = "windscreen_base"
+view = "side"
+kind = "scan"
+scan = "h"
+at = 0.5
+take = "min"
+window = [-2.0, 1.0]
+
+[[F1_stations]]
+name = "cabin_roof"
+view = "side"
+kind = "scan"
+scan = "v"
+at = 0.2
+take = "max"
+
+[[F1_stations]]
+name = "fin_leading_edge"
+view = "side"
+kind = "scan"
+scan = "h"
+at = 1.2
+take = "min"
+window = [1.5, 6.0]
+
+[[F1_stations]]
+name = "nose_wheel_centre"
+view = "side"
+kind = "contact"
+window = [-2.3, -0.8]
+tol_mm = 15
+
+[[F1_stations]]
+name = "main_wheel_centre"
+view = "side"
+kind = "contact"
+window = [-0.6, 1.6]
+tol_mm = 15
+
+[[F1_stations]]
+name = "wing_le_root"
+view = "top"
+kind = "scan"
+scan = "v"
+at = 0.9
+take = "min"
+sym = true
+
+[[F1_stations]]
+name = "wing_le_tip"
+view = "top"
+kind = "scan"
+scan = "v"
+at = 5.0
+take = "min"
+sym = true
+
+[[F1_stations]]
+name = "wing_te_root"
+view = "top"
+kind = "scan"
+scan = "v"
+at = 0.9
+take = "max"
+sym = true
+window = [-1.5, 2.0]
+
+[[F1_stations]]
+name = "wing_te_tip"
+view = "top"
+kind = "scan"
+scan = "v"
+at = 5.0
+take = "max"
+sym = true
+
+[[F1_stations]]
+name = "tailplane_tip"
+view = "top"
+kind = "scan"
+scan = "h"
+at = 5.0
+take = "max"
+
+[[F1_stations]]
+name = "tailplane_te"
+view = "top"
+kind = "scan"
+scan = "v"
+at = 1.0
+take = "max"
+sym = true
+window = [3.5, 6.5]
+
+[[F1_stations]]
+name = "wing_tip_x"
+view = "front"
+kind = "extreme"
+edge = "max_h"
+
+[[F1_stations]]
+name = "wing_top_mid"
+view = "front"
+kind = "scan"
+scan = "v"
+at = 2.0
+take = "max"
+sym = true
+
+[[F1_stations]]
+name = "main_wheel_x"
+view = "front"
+kind = "contact"
+window = [0.6, 2.0]
+tol_mm = 15
+
+# ---------------------------------------------------------------- F2 features
+# Probe boxes ("box = [x0, y0, z0, x1, y1, z1]", model frame, metres) are filled by the modelling
+# phases once a feature exists (CP2); a feature without a box counts as absent. count_min =
+# triangles (geometry) or separate marks in the normal map / colour map (texture).
 [F2_features]
 required_fraction = 1.0
 optional_fraction = 0.75
-# kind = geometry: probe box (model frame) must hold >= tris triangles of `material` with relief >= relief_mm
-# kind = texture : normal map in the probe's UV region has >= pixels groove pixels (|tilt| > 0.1) or a distinct colour
-# Probe boxes are filled when the feature exists (CP2); count_min applies from then on.
-[[features]]
+groove_tilt = 0.1               # normal tilt above which a texel is a groove
+colour_delta = 40               # sRGB distance from the median colour for mode = "colour"
+min_mark_px = 4                 # smaller marks are noise
+
+
+[[F2_feature]]
 name = "window_frames"
 kind = "geometry"
 required = true
 count_min = 12
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "window_seals"
 kind = "geometry"
 required = false
 count_min = 12
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "door_gaps"
 kind = "geometry"
 required = true
 count_min = 2
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "door_handles"
 kind = "geometry"
 required = true
 count_min = 2
 relief_mm = 5
-[[features]]
+
+[[F2_feature]]
 name = "cowl_lip_and_inlets"
 kind = "geometry"
 required = true
 count_min = 3
 relief_mm = 10
-[[features]]
+
+[[F2_feature]]
 name = "cowl_flap_outlines"
 kind = "texture"
 required = false
 count_min = 2
-[[features]]
+
+[[F2_feature]]
 name = "oil_door"
 kind = "geometry"
 required = false
 count_min = 1
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "panel_lines_fuselage"
 kind = "texture"
 required = true
 count_min = 20
-[[features]]
+
+[[F2_feature]]
 name = "panel_lines_wing"
 kind = "texture"
 required = true
 count_min = 12
-[[features]]
+
+[[F2_feature]]
 name = "rivet_rows"
 kind = "texture"
 required = true
 count_min = 30
-[[features]]
+
+[[F2_feature]]
 name = "wing_root_fairings"
 kind = "geometry"
 required = true
 count_min = 2
 relief_mm = 8
-[[features]]
+
+[[F2_feature]]
 name = "cabin_steps"
 kind = "geometry"
 required = true
 count_min = 2
 relief_mm = 20
-[[features]]
+
+[[F2_feature]]
 name = "stall_warning_vent"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "fuel_cap_and_vents"
 kind = "geometry"
 required = true
 count_min = 4
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "elevator_trim_tab"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "landing_light_lens"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "nav_strobe_lenses"
 kind = "geometry"
 required = true
 count_min = 6
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "beacon"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 20
-[[features]]
+
+[[F2_feature]]
 name = "pitot_and_static"
 kind = "geometry"
 required = true
 count_min = 2
 relief_mm = 5
-[[features]]
+
+[[F2_feature]]
 name = "antennas"
 kind = "geometry"
 required = true
 count_min = 3
 relief_mm = 20
-[[features]]
+
+[[F2_feature]]
 name = "hinge_lines_control_surfaces"
 kind = "geometry"
 required = true
 count_min = 8
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "prop_tip_paint"
 kind = "texture"
+mode = "colour"
 required = true
 count_min = 2
-[[features]]
+
+[[F2_feature]]
 name = "prop_blade_decals_neutral"
 kind = "texture"
+mode = "colour"
 required = false
 count_min = 2
-[[features]]
+
+[[F2_feature]]
 name = "spinner_backplate_and_screws"
 kind = "geometry"
 required = true
 count_min = 6
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "cheat_line_two_colours"
 kind = "texture"
+mode = "colour"
 required = true
 count_min = 2
-[[features]]
+
+[[F2_feature]]
 name = "exhaust_stain"
 kind = "texture"
+mode = "colour"
 required = false
 count_min = 1
-[[features]]
+
+[[F2_feature]]
 name = "hinge_grime"
 kind = "texture"
+mode = "colour"
 required = false
 count_min = 4
-[[features]]
+
+[[F2_feature]]
 name = "wheel_fairing_split_lines"
 kind = "texture"
 required = true
 count_min = 3
-[[features]]
+
+[[F2_feature]]
 name = "brake_lines_and_hubs"
 kind = "geometry"
 required = false
 count_min = 3
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "strut_fairings_and_attach_plates"
 kind = "geometry"
 required = true
 count_min = 4
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "tie_down_rings"
 kind = "geometry"
 required = false
 count_min = 3
 relief_mm = 5
-[[features]]
+
+[[F2_feature]]
 name = "gauge_faces_legible"
 kind = "texture"
 required = true
 count_min = 6
-[[features]]
+
+[[F2_feature]]
 name = "radio_stack_faces"
 kind = "texture"
 required = true
 count_min = 4
-[[features]]
+
+[[F2_feature]]
 name = "placards_generic"
 kind = "texture"
 required = false
 count_min = 4
-[[features]]
+
+[[F2_feature]]
 name = "seat_stitching_and_belts"
 kind = "texture"
 required = false
 count_min = 4
-[[features]]
+
+[[F2_feature]]
 name = "yoke_buttons_and_grips"
 kind = "geometry"
 required = false
 count_min = 2
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "rudder_pedal_brakes"
 kind = "geometry"
 required = true
 count_min = 4
 relief_mm = 5
-[[features]]
+
+[[F2_feature]]
 name = "door_seals_and_latches_interior"
 kind = "geometry"
 required = false
 count_min = 2
 relief_mm = 3
-[[features]]
+
+[[F2_feature]]
 name = "tail_navigation_light"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 2
-[[features]]
+
+[[F2_feature]]
 name = "static_wicks"
 kind = "geometry"
 required = false
 count_min = 4
 relief_mm = 10
-[[features]]
+
+[[F2_feature]]
 name = "fin_dorsal_and_rudder_balance"
 kind = "geometry"
 required = true
 count_min = 1
 relief_mm = 3
 
+# ---------------------------------------------------------------- F3 sections
+# plane at (axis, at) metres; ratio = width / height; fill = area / bounding rectangle; flat_mm_max =
+# largest deviation of either side from a straight line over flat_height_m about the widest
+# height; radius_mm = [min, max] of the tightest outline corner (not resolved below about 15 mm:
+# a 24 mm arc is sampled, see fidelity_section.min_radius). x_clip_m drops anything wider (wing
+# struts attached to the cabin).
 [F3_sections]
-# plane y (m); ratio = width / height; fill = outline area / bounding rectangle;
-# flat_mm = largest deviation of the side from a straight line over flat_height_m;
-# radius_mm = [min, max] of the tightest outline corner. ESTIMATES: refine in Phase 1.
-[[sections]]
+nodes = ["fuselage", "door_l", "door_r"]
+
+
+[[F3_section]]
 name = "cowl_lip"
-y = -2.0
-ratio = [1.00, 1.20]
+axis = "y"
+at = -2.0
+ratio = [1.17, 1.43]   # CALIBRATED: reference 1.30 +- 10 % (proposal 1.00-1.20)
 fill_min = 0.76
 radius_mm = [15, 90]
-[[sections]]
+
+[[F3_section]]
 name = "firewall"
-y = -1.55
+axis = "y"
+at = -1.55
 ratio = [0.90, 1.05]
 fill_min = 0.80
 flat_mm_max = 25
 flat_height_m = 0.4
 radius_mm = [50, 250]
-[[sections]]
+
+[[F3_section]]
 name = "cabin_door"
-y = -0.2
+axis = "y"
+at = -0.2
 ratio = [0.62, 0.72]
 fill_min = 0.84
 flat_mm_max = 12
 flat_height_m = 0.7
 radius_mm = [60, 250]
-[[sections]]
+
+[[F3_section]]
 name = "cabin_rear"
-y = 1.15
+axis = "y"
+at = 1.15
 ratio = [0.68, 0.80]
 fill_min = 0.82
 flat_mm_max = 15
 flat_height_m = 0.6
 radius_mm = [60, 250]
-[[sections]]
+
+[[F3_section]]
 name = "tail_cone"
-y = 3.0
-ratio = [0.80, 1.00]
+axis = "y"
+at = 3.0
+ratio = [0.79, 0.97]   # CALIBRATED: reference 0.88 +- 10 % (proposal 0.80-1.00)
 fill_min = 0.76
 radius_mm = [80, 300]
 
+# ---------------------------------------------------------------- F4 textures and UVs
 [F4_textures]
-required_maps = ["baseColor", "normal", "occlusionRoughnessMetallic"]
-texel_density_px_per_m = { airframe = 400, small_parts = 250, panel_faces = 1500 }
-density_spread_max = 2.0          # p95 / p5 per sheet
-uv_overlap_px_max = 0             # except exact x -> -x mirrors
+family = "textured"             # "vertex_colour" for the cessna_vc*.glb family (command line --family)
+exempt_materials = ["glass", "hud"]   # translucent: no texture sheets needed
+max_texture_px = 2048
+assumed_sheet_px = 2048         # UV layout is judged on this size while a sheet has no image yet
+density_spread_max = 2.0        # p95 / p5 per sheet
+uv_overlap_px_max = 0           # except exact x -> -x mirrors sharing texture space
 padding_px_min = 8
 bleed_px = 8
-sizes = "power of two, <= 2048"
+bleed_diff_max = 12             # 8-bit levels: a bleed texel may differ this much from the nearest island texel
+bleed_bad_max = 0.05            # at most this share of bleed texels may be off
 normal_unit_length_tol = 0.02
 metallic_binary_fraction_min = 0.95
 base_colour_srgb_range = [30, 240]
-sheets = ["ext_fuselage", "ext_aero", "cockpit"]
-gpu_bytes_max = 268435456         # 256 MB uncompressed RGBA8 with mips
-glb_bytes_max = 25165824          # 24 MB hard for the textured file (aim 16 MB)
+base_colour_outside_max = 0.01  # at most 1 % of covered texels outside the range
+gpu_bytes_max = 268435456       # 256 MB uncompressed RGBA8 with mips
+glb_bytes_max = 25165824        # 24 MB hard for the textured file (aim 16 MB)
 glb_bytes_max_vertex_colour = 10000000   # cessna_vc*.glb keeps the old 10 MB
 primitive_vertices_max = 65535
 
+[[F4_textures.sheet]]
+name = "ext_fuselage"
+nodes = ["fuselage", "door_l", "door_r", "gear"]
+[[F4_textures.sheet]]
+name = "ext_aero"
+nodes = ["wing_l", "wing_r", "aileron_l", "aileron_r", "flap_l", "flap_r", "elevator", "rudder", "propeller"]
+[[F4_textures.sheet]]
+name = "cockpit"
+nodes = ["cockpit"]
+
+# texel density floors (p5, area weighted) by group; a primitive joins the first group that lists
+# its node or material, else "airframe"
+[[F4_textures.density_group]]
+name = "small_parts"
+min_px_per_m = 250
+nodes = ["gear", "propeller", "elevator", "rudder"]
+[[F4_textures.density_group]]
+name = "panel_faces"
+min_px_per_m = 1500
+materials = ["panel"]
+[[F4_textures.density_group]]
+name = "airframe"
+min_px_per_m = 400
+default = true
+
+# ---------------------------------------------------------------- F5 edges
 [F5_edges]
-# radius_mm = [min, max] from a section perpendicular to the edge; needs >= 3 mesh segments
-# across the bevel to count (radii under 2 mm may live in the normal map instead).
-[[edges]]
+min_segments = 3                # a bevel needs this many mesh segments ...
+resolved_radius_mm = 2.0        # ... unless it is below this (then the normal map must carry it)
+no_named_edge_radius_over_mm = 40
+hard_crease_fraction = [0.03, 0.08]   # share of two-face edge length with a > 30 degree crease
+
+# probe: cut the nodes with the plane (axis, at), take the polyline that reaches farthest in dir
+# (axis letter and sign), optionally only among points whose in-plane perpendicular coordinate is in
+# window. radius = bevel radius of that edge; thickness = width 1 mm behind the tip.
+
+[[F5_edge]]
 name = "wing_trailing_edge"
 radius_mm = [1.0, 3.0]
 thickness_mm = [1.5, 5.0]
-[[edges]]
+[[F5_edge.probe]]
+nodes = ["flap_l"]
+plane = { axis = "x", at = 2.0 }
+dir = "+y"
+[[F5_edge.probe]]
+nodes = ["aileron_l"]
+plane = { axis = "x", at = 4.3 }
+dir = "+y"
+
+[[F5_edge]]
 name = "control_surface_edges"
 radius_mm = [2.0, 6.0]
-[[edges]]
+[[F5_edge.probe]]
+nodes = ["elevator"]
+plane = { axis = "x", at = 0.8 }
+dir = "+y"
+[[F5_edge.probe]]
+nodes = ["rudder"]
+plane = { axis = "z", at = 0.8 }
+dir = "+y"
+
+[[F5_edge]]
 name = "door_frame"
 radius_mm = [2.0, 6.0]
-[[edges]]
+[[F5_edge.probe]]
+nodes = ["door_l"]
+plane = { axis = "z", at = 0.2 }
+dir = "+y"
+
+[[F5_edge]]
 name = "window_frames"
 radius_mm = [3.0, 8.0]
-[[edges]]
+
+[[F5_edge]]
 name = "cowl_lip"
 radius_mm = [8.0, 20.0]
-[[edges]]
+[[F5_edge.probe]]
+nodes = ["fuselage"]
+plane = { axis = "x", at = 0.0 }
+dir = "-y"
+
+[[F5_edge]]
 name = "tailplane_and_fin_tips"
 radius_mm = [3.0, 10.0]
-[[edges]]
+[[F5_edge.probe]]
+nodes = ["elevator"]
+plane = { axis = "y", at = 5.3 }
+dir = "+x"
+
+[[F5_edge]]
 name = "fin_leading_edge"
 radius_mm = [4.0, 15.0]
-[edges_global]
-no_named_edge_radius_over_mm = 40
-hard_crease_fraction = [0.03, 0.08]   # share of surface edge length with > 30 degrees
+[[F5_edge.probe]]
+nodes = ["fuselage"]
+plane = { axis = "z", at = 1.2 }
+dir = "-y"
 
 [visual_review]   # subjective, not a gate
 engine = "CYCLES"

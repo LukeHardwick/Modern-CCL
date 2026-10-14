@@ -39,7 +39,7 @@ class Primitive:
     """One (node, material) draw: positions/normals in the node's local glTF frame."""
 
     def __init__(self, node, material, positions, normals, indices, index_type, has_color,
-                 index=0):
+                 index=0, uvs=None, material_index=None):
         self.node = node                  # node name
         self.material = material          # material name
         self.index = index                # position of this primitive in its glTF mesh
@@ -48,6 +48,8 @@ class Primitive:
         self.indices = indices            # (T, 3) int64
         self.index_type = index_type      # glTF componentType of the index accessor (or None)
         self.has_color = has_color
+        self.uvs = uvs                    # (V, 2) float64 TEXCOORD_0 or None (T22e)
+        self.material_index = material_index  # index into the file's materials (T22e)
 
     @property
     def vertex_count(self):
@@ -80,6 +82,7 @@ class GlbModel:
         self.prims = prims                # list of Primitive (node order, then file order)
         self.scene_nodes = scene_nodes    # node indices reachable from the default scene
         self.warnings = warnings
+        self.binary = None                # the BIN chunk (images are read from it, T22e)
 
     def node(self, name):
         for n in self.nodes:
@@ -213,6 +216,7 @@ def read_glb(path):
 
     model = GlbModel(path, len(data), doc, nodes, materials, [], [], warnings,
                      hashlib.sha256(data).hexdigest())
+    model.binary = binary
     reach = []
 
     def visit(i):
@@ -258,21 +262,27 @@ def read_glb(path):
                 raise GlbError(f"{node.name}: primitive {k} has indices outside its vertices")
             mat = p.get("material")
             mname = materials[mat]["name"] if mat is not None else "default"
+            uv = None
+            if "TEXCOORD_0" in attrs:
+                uv = _read_accessor(doc, binary, attrs["TEXCOORD_0"])[:, :2].astype(np.float64)
             model.prims.append(Primitive(node.name, mname, pos, nrm, idx.reshape(-1, 3),
-                                         itype, "COLOR_0" in attrs, k))
+                                         itype, "COLOR_0" in attrs, k, uv, mat))
     return model
 
 
 # ---------------------------------------------------------------- writer (tests)
 
 
-def write_glb(path, nodes, materials=None):
+def write_glb(path, nodes, materials=None, images=None):
     """Write a simple GLB. `nodes`: list of dicts with keys name, parent (optional, name),
     translation / rotation (quaternion x, y, z, w) / scale (optional) or matrix (optional, 16
     numbers, column-major), prims (list of dicts: positions (V,3), normals (V,3) optional,
     indices (T,3), material (name), index_type 'u16'|'u32' optional, interleave (optional:
     positions and normals in one buffer view with byteStride 24)). Positions and normals are
-    in the glTF frame. `materials`: list of dicts name, alpha_mode, double_sided."""
+    in the glTF frame; optional per primitive: uvs (V,2), colors (V,3|4, writes COLOR_0).
+    `materials`: list of dicts name, alpha_mode, double_sided and optional base_image,
+    normal_image, orm_image (indices into `images`, a list of PNG byte strings, embedded in the
+    BIN chunk; the ORM image serves as occlusion and metallicRoughness texture)."""
     materials = materials or [{"name": "paint"}]
     mat_index = {m["name"]: i for i, m in enumerate(materials)}
     blob = bytearray()
@@ -333,6 +343,12 @@ def write_glb(path, nodes, materials=None):
                         attrs["NORMAL"] = add(np.asarray(p["normals"]), 5126, "VEC3", 34962)
                 idx = np.asarray(p["indices"], dtype=np.int64).reshape(-1)
                 ctype = 5125 if p.get("index_type", "u16") == "u32" else 5123
+                if p.get("uvs") is not None:
+                    attrs["TEXCOORD_0"] = add(np.asarray(p["uvs"]), 5126, "VEC2", 34962)
+                if p.get("colors") is not None:
+                    col = np.asarray(p["colors"])
+                    attrs["COLOR_0"] = add(col, 5126, "VEC4" if col.shape[1] == 4 else "VEC3",
+                                           34962)
                 prim = {"attributes": attrs, "indices": add(idx, ctype, "SCALAR", 34963),
                         "material": mat_index[p.get("material", materials[0]["name"])]}
                 prims.append(prim)
@@ -346,13 +362,36 @@ def write_glb(path, nodes, materials=None):
                 name_index[n["name"]])
         else:
             roots.append(name_index[n["name"]])
+    gimages, textures = [], []
+    for img in images or []:
+        while len(blob) % 4:
+            blob.append(0)
+        views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(img)})
+        blob.extend(img)
+        gimages.append({"bufferView": len(views) - 1, "mimeType": "image/png"})
+        textures.append({"source": len(gimages) - 1})
+    gmaterials = []
+    for m in materials:
+        gm = {"name": m["name"], "alphaMode": m.get("alpha_mode", "OPAQUE"),
+              "doubleSided": bool(m.get("double_sided", False))}
+        pbr = {}
+        if m.get("base_image") is not None:
+            pbr["baseColorTexture"] = {"index": m["base_image"]}
+        if m.get("orm_image") is not None:
+            pbr["metallicRoughnessTexture"] = {"index": m["orm_image"]}
+            gm["occlusionTexture"] = {"index": m["orm_image"]}
+        if pbr:
+            gm["pbrMetallicRoughness"] = pbr
+        if m.get("normal_image") is not None:
+            gm["normalTexture"] = {"index": m["normal_image"]}
+        gmaterials.append(gm)
     doc = {"asset": {"version": "2.0", "generator": "tools/models/glb_io.py"},
            "scene": 0, "scenes": [{"nodes": roots}], "nodes": gnodes, "meshes": meshes,
-           "materials": [{"name": m["name"], "alphaMode": m.get("alpha_mode", "OPAQUE"),
-                          "doubleSided": bool(m.get("double_sided", False))}
-                         for m in materials],
+           "materials": gmaterials,
            "accessors": accessors, "bufferViews": views,
            "buffers": [{"byteLength": len(blob)}]}
+    if gimages:
+        doc["images"], doc["textures"] = gimages, textures
     js = json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
     js += b" " * (-len(js) % 4)
     while len(blob) % 4:
