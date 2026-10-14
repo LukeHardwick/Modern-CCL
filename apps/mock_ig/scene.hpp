@@ -11,6 +11,7 @@
 // (called by advance()) turns it into world poses. Call resolve() before reading `world` data
 // after applying packets without advancing.
 
+#include "mock_ig/database.hpp"
 #include "mock_ig/geo.hpp"
 #include "mock_ig/terrain.hpp"
 
@@ -23,6 +24,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -34,17 +36,6 @@
 namespace cigi::mock {
 
 class HatHotResponder;
-
-/// How the viewer draws an entity. Entity Type values are database-specific in CIGI (ICD 4.1.2);
-/// this mock IG has no database, so it uses its own convention: 0 none, 1-99 other, 100-199
-/// aircraft, 200-299 ground vehicle, anything else other.
-enum class ShapeClass : std::uint8_t {
-    None,
-    Aircraft,
-    GroundVehicle,
-    Other,
-};
-[[nodiscard]] ShapeClass classify_entity_type(std::uint16_t entity_type) noexcept;
 
 /// Pose and rates of one articulated part (ICD 4.1.6, 4.1.8). The submodel frame is taken to be
 /// the entity's body frame (the ICD leaves it model-defined, 3.4.3): `offset` is metres from the
@@ -181,6 +172,9 @@ struct SceneStats {
     std::uint64_t component_controls = 0;
     std::uint64_t unknown_packets = 0; ///< Opcodes the model does not know (dispatcher hook).
     std::uint64_t decode_errors = 0;   ///< Body / header errors (dispatcher hook).
+    /// Entity Types the Host used that the active database does not map (they are drawn with the
+    /// database's `[default]` category). Cleared when the database changes.
+    std::set<std::uint16_t> unmapped_entity_types;
 };
 
 struct SceneConfig {
@@ -190,6 +184,9 @@ struct SceneConfig {
     double trail_step_m = 2.0;      ///< A trail point is added after moving this far.
     std::size_t probe_history = 64;
     std::size_t log_history = 200;
+    /// The database in force. Null: the built-in default_database(), with `origin` and `bounds`
+    /// above. A database given here replaces both with its own.
+    std::shared_ptr<const Database> database;
 };
 
 class SceneModel {
@@ -220,6 +217,28 @@ public:
     /// Count (and log) a packet with an unknown opcode / a decode error.
     void note_unknown(const UnknownPacket& u);
     void note_error(const Error& e);
+
+    // ---- database ----
+    /// The database in force: entity categories, models, materials (never null).
+    [[nodiscard]] const Database& database() const noexcept { return *database_; }
+    [[nodiscard]] const std::shared_ptr<const Database>& database_ptr() const noexcept {
+        return database_;
+    }
+    /// Make `db` the database in force (a completed load, ICD 4.2.1). Entities are kept; the
+    /// scene's origin and the HAT/HOT bounds become the database's, so poses are recomputed and
+    /// trails restart. A null pointer is ignored.
+    void set_database(std::shared_ptr<const Database> db);
+    /// How the viewer draws an entity of `type` (the database's mapping or its default).
+    [[nodiscard]] EntityCategory category_of(std::uint16_t type) const noexcept {
+        return database_->category_of(type);
+    }
+    /// Called after every IG Control packet is applied (the Database Number protocol needs each
+    /// one, not just the latest per frame).
+    void set_ig_control_hook(std::function<void(const IgControl&)> hook) {
+        ig_control_hook_ = std::move(hook);
+    }
+    /// Add a line to the log (and the log sink), e.g. a database load message.
+    void add_log(std::string text) { log_line(std::move(text)); }
 
     // ---- time ----
     /// Integrate Rate Control over `dt` seconds (entities and parts that are Active), resolve
@@ -279,6 +298,7 @@ private:
     ViewState& view_for(std::uint16_t id);
 
     SceneConfig config_;
+    std::shared_ptr<const Database> database_;
     LocalFrame frame_;
     std::map<std::uint16_t, Entity> entities_;
     std::map<std::uint16_t, ViewState> views_;
@@ -290,6 +310,7 @@ private:
     std::deque<HatHotRequest> recent_requests_;
     std::deque<std::string> log_;
     std::function<void(std::string_view)> log_sink_;
+    std::function<void(const IgControl&)> ig_control_hook_;
     std::uint64_t resolve_epoch_ = 0;
     std::set<std::uint8_t> seen_unknown_opcodes_;
     std::uint64_t frame_count_ = 0;

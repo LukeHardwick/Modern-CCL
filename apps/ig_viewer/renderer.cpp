@@ -441,31 +441,35 @@ void Renderer::draw_mesh(const Mesh& mesh, const Vec3d& base_position, const Mat
     DrawMesh(mesh, material_, pose_matrix(p.position_enu, p.body_to_enu, scale));
 }
 
-void Renderer::draw_entity(const Entity& e, const DrawOptions& options, bool selected) {
+void Renderer::draw_entity(const Entity& e, mock::EntityCategory category,
+                           const DrawOptions& options, bool selected) {
     Color c = id_color(e.id);
     c.a = e.apparent_alpha;
     const float s = options.shape_scale;
     const Attitude none{};
-    switch (mock::classify_entity_type(e.entity_type)) {
-    case mock::ShapeClass::Aircraft:
+    switch (category) {
+    case mock::EntityCategory::Aircraft:
         draw_mesh(fuselage_, e.enu, e.body_to_enu, {}, none, c, s);
         draw_mesh(wing_, e.enu, e.body_to_enu, {-0.4, 0.0, 0.0}, none, ColorBrightness(c, -0.15F),
                   s);
         draw_mesh(fin_, e.enu, e.body_to_enu, {-3.3, 0.0, -1.0}, none, ColorBrightness(c, -0.15F),
                   s);
         break;
-    case mock::ShapeClass::GroundVehicle:
+    case mock::EntityCategory::GroundVehicle:
         draw_mesh(body_, e.enu, e.body_to_enu, {0.0, 0.0, -0.7}, none, c, s);
         draw_mesh(cab_, e.enu, e.body_to_enu, {-0.5, 0.0, -1.65}, none, ColorBrightness(c, -0.2F),
                   s);
         draw_mesh(nose_, e.enu, e.body_to_enu, {2.6, 0.0, -0.7}, none, Color{245, 245, 245, c.a},
                   s);
         break;
-    case mock::ShapeClass::Other:
+    case mock::EntityCategory::Sea:
+    case mock::EntityCategory::Lifeform:
+    case mock::EntityCategory::Munition:
+    case mock::EntityCategory::Other:
         draw_mesh(sphere_, e.enu, e.body_to_enu, {}, none, c, s);
         draw_mesh(nose_, e.enu, e.body_to_enu, {1.6, 0.0, 0.0}, none, Color{245, 245, 245, c.a}, s);
         break;
-    case mock::ShapeClass::None: {
+    case mock::EntityCategory::None: {
         // "Null" entities have no geometry: show their axes (forward red, right green, down blue).
         const float len = 6.0F * s;
         const Vector3 p = to_gl(e.enu);
@@ -556,7 +560,7 @@ void Renderer::draw_world(const mock::SceneModel& scene, const SkyState& sky,
             const Vec3d ground{e.enu.x, e.enu.y, e.terrain_m - scene.frame().origin().alt_m};
             DrawLine3D(to_gl(e.enu), to_gl(ground), Fade(c, 0.5F));
         }
-        draw_entity(e, options, id == selected);
+        draw_entity(e, scene.category_of(e.entity_type), options, id == selected);
         labels_.push_back(
             {e.enu + Vec3d{0.0, 0.0, 5.0 * static_cast<double>(options.shape_scale)}, id});
     }

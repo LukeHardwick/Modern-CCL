@@ -51,18 +51,19 @@ void expect_vec(const Vec3d& a, const Vec3d& b, double eps = 1e-6) {
     EXPECT_NEAR(a.z, b.z, eps);
 }
 
-// ---- entity classification ---------------------------------------------------------------------
+// ---- entity categories (the default database keeps the old convention) -------------------------
 
-TEST(Classify, EntityTypeRanges) {
-    EXPECT_EQ(classify_entity_type(0), ShapeClass::None);
-    EXPECT_EQ(classify_entity_type(1), ShapeClass::Other);
-    EXPECT_EQ(classify_entity_type(99), ShapeClass::Other);
-    EXPECT_EQ(classify_entity_type(100), ShapeClass::Aircraft);
-    EXPECT_EQ(classify_entity_type(199), ShapeClass::Aircraft);
-    EXPECT_EQ(classify_entity_type(200), ShapeClass::GroundVehicle);
-    EXPECT_EQ(classify_entity_type(299), ShapeClass::GroundVehicle);
-    EXPECT_EQ(classify_entity_type(300), ShapeClass::Other);
-    EXPECT_EQ(classify_entity_type(65535), ShapeClass::Other);
+TEST(Classify, EntityTypeRangesOfTheDefaultDatabase) {
+    const SceneModel scene(config());
+    EXPECT_EQ(scene.category_of(0), EntityCategory::None);
+    EXPECT_EQ(scene.category_of(1), EntityCategory::Other);
+    EXPECT_EQ(scene.category_of(99), EntityCategory::Other);
+    EXPECT_EQ(scene.category_of(100), EntityCategory::Aircraft);
+    EXPECT_EQ(scene.category_of(199), EntityCategory::Aircraft);
+    EXPECT_EQ(scene.category_of(200), EntityCategory::GroundVehicle);
+    EXPECT_EQ(scene.category_of(299), EntityCategory::GroundVehicle);
+    EXPECT_EQ(scene.category_of(300), EntityCategory::Other);
+    EXPECT_EQ(scene.category_of(65535), EntityCategory::Other);
 }
 
 // ---- Entity Control ---------------------------------------------------------------------------

@@ -42,6 +42,9 @@ set_target_properties(cigi_dispatch_alloc_test PROPERTIES CXX_CLANG_TIDY "")
 # Mock IG (apps/mock_ig): scene model, HAT/HOT responder, terrain, describe(), scripted host.
 if(CIGI_BUILD_MOCK_IG)
     cigi_add_test(cigi_mock_ig_test SOURCES
+        mock_ig/database_catalog_test.cpp
+        mock_ig/database_selector_test.cpp
+        mock_ig/database_test.cpp
         mock_ig/describe_test.cpp
         mock_ig/geo_test.cpp
         mock_ig/hat_hot_test.cpp
@@ -52,6 +55,13 @@ if(CIGI_BUILD_MOCK_IG)
         mock_ig/sky_test.cpp
         mock_ig/terrain_test.cpp
         LINK cigi_mock_ig)
+    target_compile_definitions(cigi_mock_ig_test PRIVATE
+        CIGI_DATABASES_DIR="${PROJECT_SOURCE_DIR}/databases")
+    # cigi_db: the database validator / lister and its JSON report.
+    cigi_add_test(cigi_db_test SOURCES cigi_db/cli_test.cpp cigi_db/report_test.cpp
+        LINK cigi_db_lib)
+    target_compile_definitions(cigi_db_test PRIVATE
+        CIGI_DATABASES_DIR="${PROJECT_SOURCE_DIR}/databases")
 endif()
 
 if(CIGI_BUILD_TRANSPORT)

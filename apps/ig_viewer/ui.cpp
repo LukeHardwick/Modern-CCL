@@ -30,18 +30,9 @@ ImU32 entity_im_color(std::uint16_t id, float alpha = 1.0F) {
     return to_im(Fade(id_color(id), alpha));
 }
 
-const char* shape_name(std::uint16_t type) {
-    switch (mock::classify_entity_type(type)) {
-    case mock::ShapeClass::None:
-        return "none";
-    case mock::ShapeClass::Aircraft:
-        return "aircraft";
-    case mock::ShapeClass::GroundVehicle:
-        return "vehicle";
-    case mock::ShapeClass::Other:
-        break;
-    }
-    return "other";
+std::string_view shape_name(const mock::SceneModel& scene, std::uint16_t type) {
+    const mock::EntityCategory category = scene.category_of(type);
+    return category == mock::EntityCategory::GroundVehicle ? "vehicle" : mock::to_string(category);
 }
 
 /// Position/size the next window from the current layout. The layout is forced only on the frame
@@ -223,7 +214,8 @@ void draw_entities(AppState& app) {
                 }
                 ImGui::PopStyleColor();
                 ImGui::TableNextColumn();
-                text(std::format("{} {}", e.entity_type, shape_name(e.entity_type)));
+                text(
+                    std::format("{} {}", e.entity_type, shape_name(app.ig.scene(), e.entity_type)));
                 ImGui::TableNextColumn();
                 text(e.state == EntityState::Active            ? "Active"
                      : e.state == EntityState::InactiveStandby ? "Standby"
@@ -268,7 +260,8 @@ void draw_selected(AppState& app) {
         return;
     }
     ImGui::PushStyleColor(ImGuiCol_Text, entity_im_color(e->id));
-    text(std::format("Entity {}  type {} ({})", e->id, e->entity_type, shape_name(e->entity_type)));
+    text(std::format("Entity {}  type {} ({})", e->id, e->entity_type,
+                     shape_name(scene, e->entity_type)));
     ImGui::PopStyleColor();
     ImGui::TextWrapped("%s", mock::describe(e->last_control).c_str());
     ImGui::Separator();
@@ -724,8 +717,8 @@ void draw_map(AppState& app) {
         const ImVec2 right{-fwd.y, fwd.x};
         const ImU32 col = entity_im_color(id);
         const float r = id == app.selected ? 9.0F : 7.0F;
-        switch (mock::classify_entity_type(e.entity_type)) {
-        case mock::ShapeClass::Aircraft:
+        switch (scene.category_of(e.entity_type)) {
+        case mock::EntityCategory::Aircraft:
             dl->AddTriangleFilled({s.x + (fwd.x * r * 1.4F), s.y + (fwd.y * r * 1.4F)},
                                   {s.x - (fwd.x * r) + (right.x * r * 0.9F),
                                    s.y - (fwd.y * r) + (right.y * r * 0.9F)},
@@ -733,7 +726,7 @@ void draw_map(AppState& app) {
                                    s.y - (fwd.y * r) - (right.y * r * 0.9F)},
                                   col);
             break;
-        case mock::ShapeClass::GroundVehicle:
+        case mock::EntityCategory::GroundVehicle:
             dl->AddQuadFilled(
                 {s.x + ((fwd.x + right.x * 0.6F) * r), s.y + ((fwd.y + right.y * 0.6F) * r)},
                 {s.x + ((fwd.x - right.x * 0.6F) * r), s.y + ((fwd.y - right.y * 0.6F) * r)},

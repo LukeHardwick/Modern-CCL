@@ -51,20 +51,37 @@ void integrate(Entity& e, double dt_s) {
 
 } // namespace
 
-ShapeClass classify_entity_type(std::uint16_t entity_type) noexcept {
-    if (entity_type == 0) {
-        return ShapeClass::None;
+SceneModel::SceneModel(const SceneConfig& config)
+    : config_(config), database_(config.database ? config.database : default_database()),
+      frame_(config.database ? config.database->origin : config.origin) {
+    if (config.database) {
+        config_.origin = config.database->origin;
+        config_.bounds = config.database->bounds;
     }
-    if (entity_type >= 100 && entity_type <= 199) {
-        return ShapeClass::Aircraft;
-    }
-    if (entity_type >= 200 && entity_type <= 299) {
-        return ShapeClass::GroundVehicle;
-    }
-    return ShapeClass::Other;
+    config_.database = database_;
 }
 
-SceneModel::SceneModel(const SceneConfig& config) : config_(config), frame_(config.origin) {}
+void SceneModel::set_database(std::shared_ptr<const Database> db) {
+    if (!db) {
+        return;
+    }
+    database_ = std::move(db);
+    config_.database = database_;
+    config_.origin = database_->origin;
+    config_.bounds = database_->bounds;
+    frame_ = LocalFrame(database_->origin);
+    stats_.unmapped_entity_types.clear();
+    for (const auto& [id, e] : entities_) {
+        if (database_->lookup(e.entity_type) == nullptr) {
+            stats_.unmapped_entity_types.insert(e.entity_type);
+        }
+    }
+    for (auto& [id, e] : entities_) {
+        e.trail.clear(); // trail points are in the old frame
+    }
+    dirty_ = true;
+    log_line(std::format("database {} \"{}\" in force", database_->number, database_->name));
+}
 
 void SceneModel::log_line(std::string text) {
     if (log_sink_) {
@@ -81,6 +98,9 @@ void SceneModel::log_line(std::string text) {
 void SceneModel::apply(const IgControl& p) {
     ++stats_.packets;
     ig_control_ = p;
+    if (ig_control_hook_) {
+        ig_control_hook_(p);
+    }
 }
 
 // ---- Entity Control (ICD 4.1.2) ---------------------------------------------------------------
@@ -147,6 +167,9 @@ void SceneModel::apply(const EntityControl& p) {
     e.last_control = p;
     e.state = p.entity_state;
     e.entity_type = p.entity_type;
+    if (database_->lookup(p.entity_type) == nullptr) {
+        stats_.unmapped_entity_types.insert(p.entity_type);
+    }
     e.alpha = p.alpha;
     e.inherit_alpha = p.inherit_alpha;
     e.ground_clamp = p.ground_clamp;

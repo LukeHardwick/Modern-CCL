@@ -20,6 +20,9 @@ const char* usage() noexcept {
     return "usage: ig_viewer [options]\n"
            "  --scripted                 built-in scripted Host (the default; Part 1)\n"
            "  --origin LAT,LON           centre of the scenario in degrees (default 51.5,-0.12)\n"
+           "  --db-root DIR              serve the mock-IG databases under DIR (default: built "
+           "in)\n"
+           "  --database N               database number in force at start (default 1)\n"
            "  --width N --height N       window size (default 1280x720)\n"
            "  --fullscreen               start in borderless fullscreen (F or F11 toggles)\n"
            "  --camera host|chase|free   initial camera\n"
@@ -93,6 +96,16 @@ Args parse_args(int argc, const char* const* argv) {
             const std::string_view v = next();
             if (a.error.empty()) {
                 a.screenshot = std::string(v);
+            }
+        } else if (arg == "--db-root") {
+            const std::string_view v = next();
+            if (a.error.empty()) {
+                a.db_root = std::string(v);
+            }
+        } else if (arg == "--database") {
+            number(a.database);
+            if (a.error.empty() && (a.database < 1 || a.database > 127)) {
+                a.error = "--database must be 1..127";
             }
         } else if (arg == "--origin") {
             const std::string_view v = next();

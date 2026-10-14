@@ -178,7 +178,30 @@ int main(int argc, char** argv) {
     mock::SceneConfig scene_config;
     scene_config.origin = host_config.origin;
     scene_config.bounds = mock::DatabaseBounds::around(host_config.origin, 0.25);
+    // A database root replaces the built-in database: its origin and bounds define the world.
+    mock::DatabaseCatalog catalog;
+    if (args.db_root) {
+        if (auto scanned = catalog.scan(*args.db_root); !scanned) {
+            std::fprintf(stderr, "ig_viewer: %s\n", mock::to_string(scanned.error()).c_str());
+            return EXIT_FAILURE;
+        }
+        const auto db = catalog.find(args.database);
+        if (!db) {
+            std::fprintf(stderr, "ig_viewer: no database number %d under %s\n", args.database,
+                         args.db_root->c_str());
+            for (const auto& error : catalog.errors()) {
+                std::fprintf(stderr, "  %s\n", mock::to_string(error).c_str());
+            }
+            return EXIT_FAILURE;
+        }
+        host_config.origin = db->origin;
+        scene_config.origin = db->origin;
+        scene_config.bounds = db->bounds;
+    }
     AppState app(args, host_config, scene_config);
+    if (args.db_root) {
+        app.ig.use_catalog(&catalog, args.database);
+    }
 
     const bool offline_capture = args.screenshot.has_value() || args.bench > 0;
     unsigned flags = FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE;
@@ -261,6 +284,9 @@ int main(int argc, char** argv) {
                 if (IsKeyPressed(KEY_TAB)) {
                     app.ui.mode = app.ui.mode == UiMode::None ? UiMode::All : UiMode::None;
                 }
+            }
+            if (args.db_root && frame % 60 == 0 && catalog.reload_if_changed().changed()) {
+                app.ig.refresh_database(); // hot reload: a database edited on disk applies at once
             }
             update_camera_input(app, frame_time);
             run_simulation(app, frame_time, offline_capture);

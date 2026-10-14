@@ -76,7 +76,8 @@ private:
         std::uint16_t id = 0;
     };
 
-    void draw_entity(const mock::Entity& e, const DrawOptions& options, bool selected);
+    void draw_entity(const mock::Entity& e, mock::EntityCategory category,
+                     const DrawOptions& options, bool selected);
     void draw_mesh(const Mesh& mesh, const mock::Vec3d& base_position, const mock::Mat3& base_body,
                    const mock::Vec3d& offset, const mock::Attitude& attitude, Color color,
                    float scale);

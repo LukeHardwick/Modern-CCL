@@ -15,6 +15,8 @@ struct Args {
     bool scripted = true; ///< The only mode in Part 1.
     double origin_lat = 51.5;
     double origin_lon = -0.12;
+    std::optional<std::string> db_root; ///< --db-root DIR: serve the databases under DIR (T20).
+    int database = 1;                   ///< --database N: the one in force at start.
     int width = 1280;
     int height = 720;
     bool fullscreen = false; ///< Start in borderless fullscreen (--fullscreen).

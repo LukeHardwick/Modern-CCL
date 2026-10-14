@@ -8,6 +8,7 @@
 //   auto replies = ig.end_frame(dt);  // advance the scene, collect due HAT/HOT answers
 //   ig.build_reply(builder, replies); // StartOfFrame + the answers, ready to send
 
+#include "mock_ig/database_selector.hpp"
 #include "mock_ig/hat_hot.hpp"
 #include "mock_ig/scene.hpp"
 
@@ -32,6 +33,16 @@ public:
     MockIg& operator=(MockIg&&) = delete;
     ~MockIg() = default;
 
+    /// Serve databases from `catalog` (not owned; it must outlive this): `initial_number` is in
+    /// force at once and the Database Number protocol (database_selector.hpp) answers the
+    /// Host's requests in the Start of Frame. Without a catalog the IG has one global database
+    /// (the one in the SceneConfig, else the built-in default) and reports Database Number 0.
+    void use_catalog(const DatabaseCatalog* catalog, int initial_number = 1);
+    /// After the catalog was hot-reloaded: switch to the newer version of the database in force.
+    /// True if it changed.
+    bool refresh_database();
+    [[nodiscard]] const DatabaseSelector& database_selector() const noexcept { return selector_; }
+
     /// Parse one Host datagram and dispatch every packet into the scene. Errors are those of
     /// MessageView::parse (the datagram is not a CIGI message at all); problems inside a message
     /// are counted in the scene's stats and the returned DispatchStats.
@@ -53,7 +64,10 @@ public:
     [[nodiscard]] std::uint32_t ig_frame() const noexcept { return ig_frame_; }
 
 private:
+    void sync_database();
+
     SceneModel scene_;
+    DatabaseSelector selector_;
     HatHotResponder hat_hot_;
     SceneModel::Handlers dispatcher_;
     std::uint32_t ig_frame_ = 0;
