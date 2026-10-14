@@ -144,7 +144,7 @@ TEST(PeerLearning, AClosedIgKeepsItsForeignCountAndHasNoPort) {
 
 TEST(PeerLearning, DecoratorsForwardTheHooks) {
     RawPeer peer;
-    FakeClock clock;
+    const FakeClock clock;
     auto learning = std::make_unique<LearningTransport>(peer.take_other());
     LearningTransport* inner = learning.get();
     inner->foreign = 3;
@@ -182,7 +182,7 @@ TEST(PeerLearning, ATransportWithoutHooksIsAlwaysKnown) {
 
 TEST(PeerLearning, TheHostCountsForeignDatagramsAndKnowsItsPort) {
     RawPeer peer;
-    FakeClock clock;
+    const FakeClock clock;
     auto transport = std::make_unique<LearningTransport>(peer.take_other());
     transport->foreign = 5;
     transport->port = 8005;
@@ -231,7 +231,7 @@ TEST(OnIgControl, FiresOncePerCurrentIgControlAfterTheOtherPackets) {
 
 TEST(OnIgControl, AHandlerThatClosesTheIgEndsThePoll) {
     RawPeer peer;
-    FakeClock clock;
+    const FakeClock clock;
     IgConfig config;
     config.session.clock = clock.fn();
     auto ig = Ig::over(config, peer.take_other()).value();

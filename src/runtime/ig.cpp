@@ -1,9 +1,8 @@
 #include "cigi/ig.hpp"
 
-#include "internal.hpp"
-
 #include "cigi/message/view.hpp"
 #include "cigi/udp_datagram_transport.hpp"
+#include "internal.hpp"
 
 #include <cmath>
 #include <spdlog/logger.h>
@@ -41,10 +40,9 @@ bool is_host_message(std::span<const std::byte> datagram) {
 class IgCore {
 public:
     IgCore(IgConfig config, std::unique_ptr<DatagramTransport> transport)
-        : config_(std::move(config)), transport_(std::move(transport)),
-          session_(config_.session), clock_(config_.session.clock),
-          log_(resolve_logger(config_.session)), pacing_(config_.rate_hz, clock_.now()),
-          rx_(receive_buffer_bytes) {
+        : config_(std::move(config)), transport_(std::move(transport)), session_(config_.session),
+          clock_(config_.session.clock), log_(resolve_logger(config_.session)),
+          pacing_(config_.rate_hz, clock_.now()), rx_(receive_buffer_bytes) {
         last_rx_ = clock_.now();
         session_.handlers().on_error([this](const Error& e) { report(e); });
         session_.handlers().on_unknown([this](const UnknownPacket& u) {

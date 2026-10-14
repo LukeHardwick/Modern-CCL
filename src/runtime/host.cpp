@@ -1,8 +1,7 @@
 #include "cigi/host.hpp"
 
-#include "internal.hpp"
-
 #include "cigi/udp_datagram_transport.hpp"
+#include "internal.hpp"
 
 #include <algorithm>
 #include <cmath>

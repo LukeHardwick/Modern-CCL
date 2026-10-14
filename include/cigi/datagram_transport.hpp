@@ -16,8 +16,8 @@
 
 #include <chrono>
 #include <cstddef>
-#include <memory>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <utility>
 

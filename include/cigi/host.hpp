@@ -90,8 +90,8 @@ struct HostStats {
     /// Datagrams the transport dropped because they came from someone other than the IG (not
     /// counted in `datagrams_received` or `receive_errors`).
     std::uint64_t foreign_datagrams = 0;
-    std::uint64_t ig_restarts = 0;        ///< IG restarts detected (frame numbers or stale run).
-    std::uint64_t link_losses = 0;        ///< Times the link went Lost.
+    std::uint64_t ig_restarts = 0; ///< IG restarts detected (frame numbers or stale run).
+    std::uint64_t link_losses = 0; ///< Times the link went Lost.
     std::array<std::chrono::microseconds, link_state_count> time_in_state{};
 
     [[nodiscard]] std::chrono::microseconds time_in(LinkState s) const noexcept {

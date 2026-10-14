@@ -33,7 +33,7 @@ std::array<std::byte, 1024>& buffer() {
     return b;
 }
 
-TEST(UdpLink, NominatesACandidateFromAHostMessageAndLatchesOnRequest) {
+TEST(UdpLink, LearnsThePeerOnLatchAndSendsNothingBefore) {
     auto ig = open_link(UdpLinkConfig{});
     ASSERT_NE(ig, nullptr);
     EXPECT_FALSE(ig->has_peer());
@@ -41,26 +41,17 @@ TEST(UdpLink, NominatesACandidateFromAHostMessageAndLatchesOnRequest) {
     ASSERT_NE(host, nullptr);
     EXPECT_TRUE(host->has_peer());
 
-    // Nowhere to send yet: counted, not an error.
+    // Nowhere to send yet: not an error, nothing leaves the socket.
     const auto reply = ig_message();
     EXPECT_TRUE(ig->send(reply));
-    EXPECT_EQ(ig->datagrams_unrouted(), 1U);
     EXPECT_EQ(ig->datagrams_sent(), 0U);
 
-    // Neither junk nor an IG -> Host message nominates a candidate.
-    const std::array<std::byte, 4> junk{};
-    EXPECT_TRUE(host->send(junk));
-    ASSERT_TRUE(ig->receive(buffer(), 1s));
-    EXPECT_TRUE(host->send(reply));
-    ASSERT_TRUE(ig->receive(buffer(), 1s));
-    EXPECT_FALSE(ig->latch_candidate());
-    EXPECT_FALSE(ig->has_peer());
-
-    // A Host message does, but the peer is only taken when the owner latches.
+    // Receiving does not adopt the sender; the owner (the facade, once it accepted the message)
+    // latches.
     EXPECT_TRUE(host->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
     EXPECT_FALSE(ig->has_peer());
-    EXPECT_TRUE(ig->latch_candidate());
+    EXPECT_TRUE(ig->latch_peer());
     EXPECT_TRUE(ig->has_peer());
 
     EXPECT_TRUE(ig->send(reply));
@@ -80,20 +71,20 @@ TEST(UdpLink, DatagramsFromOtherSendersAreDroppedOnceThePeerIsKnown) {
 
     EXPECT_TRUE(host->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
-    ASSERT_TRUE(ig->latch_candidate());
+    ASSERT_TRUE(ig->latch_peer());
 
     // The stray datagram is swallowed; the Host's one behind it is delivered.
     EXPECT_TRUE(stray->send(host_message()));
     EXPECT_TRUE(host->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
-    EXPECT_EQ(ig->datagrams_foreign(), 1U);
+    EXPECT_EQ(ig->foreign_datagrams(), 1U);
     EXPECT_EQ(ig->datagrams_received(), 2U);
     // Only strays: a timeout, and still the same peer.
     EXPECT_TRUE(stray->send(host_message()));
     const auto none = ig->receive(buffer(), 100ms);
     ASSERT_FALSE(none);
     EXPECT_EQ(none.error().code, ErrorCode::Timeout);
-    EXPECT_EQ(ig->datagrams_foreign(), 2U);
+    EXPECT_EQ(ig->foreign_datagrams(), 2U);
 }
 
 TEST(UdpLink, ARestartedHostIsLearntAgainAfterForgetting) {
@@ -103,7 +94,7 @@ TEST(UdpLink, ARestartedHostIsLearntAgainAfterForgetting) {
         auto first = open_link(towards(ig->local_port()));
         EXPECT_TRUE(first->send(host_message()));
         ASSERT_TRUE(ig->receive(buffer(), 1s));
-        ASSERT_TRUE(ig->latch_candidate());
+        ASSERT_TRUE(ig->latch_peer());
     } // the Host process ends
     ig->forget_peer();
     EXPECT_FALSE(ig->has_peer());
@@ -111,10 +102,10 @@ TEST(UdpLink, ARestartedHostIsLearntAgainAfterForgetting) {
     auto second = open_link(towards(ig->local_port())); // new port
     EXPECT_TRUE(second->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
-    ASSERT_TRUE(ig->latch_candidate());
+    ASSERT_TRUE(ig->latch_peer());
     EXPECT_TRUE(ig->send(ig_message()));
     EXPECT_TRUE(second->receive(buffer(), 1s));
-    EXPECT_EQ(ig->datagrams_foreign(), 0U);
+    EXPECT_EQ(ig->foreign_datagrams(), 0U);
 }
 
 TEST(UdpLink, ConfiguredPeerIsNeverForgottenAndOthersAreIgnored) {
@@ -132,7 +123,7 @@ TEST(UdpLink, ConfiguredPeerIsNeverForgottenAndOthersAreIgnored) {
     EXPECT_TRUE(stray->send(ig_message()));
     const auto none = host->receive(buffer(), 100ms);
     ASSERT_FALSE(none);
-    EXPECT_EQ(host->datagrams_foreign(), 1U);
+    EXPECT_EQ(host->foreign_datagrams(), 1U);
     EXPECT_EQ(host->datagrams_received(), 0U);
 }
 
@@ -190,7 +181,7 @@ TEST(UdpLink, WritesPcapWithRealAddressesAndPortsAndCallsTheTap) {
 
     EXPECT_TRUE(host->send(host_message()));
     ASSERT_TRUE(ig->receive(buffer(), 1s));
-    ASSERT_TRUE(ig->latch_candidate());
+    ASSERT_TRUE(ig->latch_peer());
     EXPECT_TRUE(ig->send(ig_message()));
     ASSERT_TRUE(host->receive(buffer(), 1s));
 

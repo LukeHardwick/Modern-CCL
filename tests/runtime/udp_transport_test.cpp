@@ -14,7 +14,11 @@ constexpr std::array<std::byte, 4> payload{std::byte{1}, std::byte{2}, std::byte
 
 std::unique_ptr<UdpDatagramTransport> open_on_loopback(std::uint16_t remote_port = 0,
                                                        bool filter = true) {
-    transport::UdpConfig config{.local_address = "127.0.0.1", .local_port = 0, .remote_address = {}};
+    transport::UdpConfig config{
+        .local_address = "127.0.0.1",
+        .local_port = 0,
+        .remote_address = {},
+    };
     if (remote_port != 0) {
         config.remote_address = "127.0.0.1";
         config.remote_port = remote_port;
@@ -26,15 +30,18 @@ std::unique_ptr<UdpDatagramTransport> open_on_loopback(std::uint16_t remote_port
 
 /// A plain socket that sends to `port` on loopback.
 transport::UdpEndpoint talker_to(std::uint16_t port) {
-    return transport::UdpEndpoint::open({.local_address = "127.0.0.1",
-                                         .local_port = 0,
-                                         .remote_address = "127.0.0.1",
-                                         .remote_port = port})
+    return transport::UdpEndpoint::open({
+                                            .local_address = "127.0.0.1",
+                                            .local_port = 0,
+                                            .remote_address = "127.0.0.1",
+                                            .remote_port = port,
+                                        })
         .value();
 }
 
 TEST(UdpDatagramTransport, OpenFailsForABadAddress) {
-    const auto bad = UdpDatagramTransport::open({.local_address = "not an address", .remote_address = {}});
+    const auto bad =
+        UdpDatagramTransport::open({.local_address = "not an address", .remote_address = {}});
     ASSERT_FALSE(bad.has_value());
     EXPECT_EQ(bad.error().code, ErrorCode::InvalidFieldValue);
 }
@@ -73,6 +80,7 @@ TEST(UdpDatagramTransport, LatchingAdoptsTheSenderAndOthersAreDroppedAndCounted)
     EXPECT_EQ(learner->last_sender()->port, host.local_port());
     EXPECT_TRUE(learner->latch_peer());
     EXPECT_TRUE(learner->has_peer());
+    ASSERT_TRUE(learner->peer().has_value());
     EXPECT_EQ(learner->peer()->port, host.local_port());
 
     // The learnt Host is answered, a stranger is dropped before the caller sees it.
@@ -82,6 +90,7 @@ TEST(UdpDatagramTransport, LatchingAdoptsTheSenderAndOthersAreDroppedAndCounted)
     ASSERT_TRUE(stranger.send(payload).has_value());
     ASSERT_TRUE(host.send(payload).has_value());
     EXPECT_EQ(learner->receive(buffer, 1000ms).value(), payload.size()); // the Host's
+    ASSERT_TRUE(learner->last_sender().has_value());
     EXPECT_EQ(learner->last_sender()->port, host.local_port());
     EXPECT_EQ(learner->foreign_datagrams(), 1U);
     // Only strangers waiting: the call times out within its time, having dropped them.
@@ -105,13 +114,14 @@ TEST(UdpDatagramTransport, ForgettingLetsANewSenderBeLearnt) {
     ASSERT_TRUE(second.send(payload).has_value());
     ASSERT_TRUE(learner->receive(buffer, 1000ms).has_value());
     ASSERT_TRUE(learner->latch_peer());
+    ASSERT_TRUE(learner->peer().has_value());
     EXPECT_EQ(learner->peer()->port, second.local_port());
     EXPECT_EQ(learner->foreign_datagrams(), 0U);
 }
 
 TEST(UdpDatagramTransport, AConfiguredPeerHearsNoOneElseUnlessFilteringIsOff) {
     std::array<std::byte, 64> buffer{};
-    auto expected = talker_to(1); // the peer both transports are configured for
+    const auto expected = talker_to(1); // the peer both transports are configured for
     auto filtered = open_on_loopback(expected.local_port());
     auto stranger = talker_to(filtered->local_port());
     ASSERT_TRUE(stranger.send(payload).has_value());
@@ -130,7 +140,8 @@ TEST(UdpEndpoint, KnowsItsRemoteAndWhetherTheLastSenderWasIt) {
     auto a = talker_to(1);
     EXPECT_TRUE(a.remote().has_value());
     EXPECT_FALSE(a.last_sender_is_remote()); // nothing received yet
-    auto unconnected = transport::UdpEndpoint::open({.local_address = "127.0.0.1", .remote_address = {}}).value();
+    const auto unconnected =
+        transport::UdpEndpoint::open({.local_address = "127.0.0.1", .remote_address = {}}).value();
     EXPECT_FALSE(unconnected.remote().has_value());
     EXPECT_FALSE(unconnected.last_sender_is_remote());
     auto b = talker_to(a.local_port());

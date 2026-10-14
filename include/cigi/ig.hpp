@@ -74,7 +74,7 @@ struct IgStats {
     std::uint64_t foreign_datagrams = 0;
     /// Start of Frame ticks not sent because no Host is known yet (or any more).
     std::uint64_t frames_unrouted = 0;
-    std::uint64_t restarts = 0;           ///< restart() calls.
+    std::uint64_t restarts = 0; ///< restart() calls.
 };
 
 /// One Start of Frame message being built by Ig::on_frame. Valid during the callback only.
