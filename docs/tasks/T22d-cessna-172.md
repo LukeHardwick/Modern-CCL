@@ -127,3 +127,28 @@ detail-1 vertex on the detail-4 surface). Two headless builds byte-identical (`.
   shading gates; slivers (poles, the fan caps of the tips and the nose bowl); dorsal fin,
   rounded fin and rudder tops, cowl inlets and exhaust, window frames, wing-root fairings,
   lights, antennas, steps, panel lines.
+
+**2026-10-14 — CP2a (detailed exterior).** `cessna.glb` 30 519 triangles, 0.632 vertices per
+triangle, 0.90 MB, 14 nodes, 29 primitives (largest 6 875 vertices). detail_check PASS; two
+headless builds byte-identical (`.glb` and all 9 PNGs).
+- Full audit (`docs/guide/img/models/audit/cessna/cp2a_cessna_audit.md`, 43 s): **87 of 93
+  gates pass, no hard failure.** Shape p99 0.99 mm / max 1.96 mm (gates 1 / 4), reverse p99
+  0.76 / max 2.45 mm; shading p95 1.63° (2°); every profile gate (belly kink 1.80°, tail cone
+  1.45°, cowl to windscreen: no dips or steps).
+- Still failing (soft): shading **max** 90° (hard-edged parts whose reference normals differ
+  at the crease: door edge walls, hinge faces, tip closing bands), fuselage skin headroom 30 %
+  (15 %: a structured grid cannot match an optimal decimation everywhere), hidden fuselage
+  2.27 % and gear 2.30 % (2 %: the nose bowl under the inlets, tail cone under the fin and
+  tailplane roots, the wheels' hub discs), slivers 1.68 % (1 %: the closing bands of the
+  elliptic tips, the dorsal fin's front point, strut and spinner poles).
+- Method changes (all deterministic, shape independent of `--detail`):
+  - fuselage: **per-ring** curvature-adaptive stations on a fine grid warped to the
+    superellipse's crowded flat sides; rings with different counts are zipped between knots
+    (so windows, doors and the cheat line stay exact); zipped end caps (no fans);
+  - foils: chord stations from the aerofoil's curvature with a minimum leading-edge step
+    (sliver control) and fixed counts per loft; elliptic tips closing to a line, flat-shaded
+    last band; tailplane, fin roots placed where the surface meets the skin (bisection);
+  - wheel fairings: curvature-adaptive arc and lengthwise stations (t = u² nose); tyres only
+    where they show, with hub discs; streamlined struts; firewall and rear bulkheads.
+- Added: dorsal fin, cowl inlets seated on the nose bowl, exhaust, beacon, strobes, landing
+  light, pitot, fuel caps, VHF and belly antennas, door handles, tail tie-down.

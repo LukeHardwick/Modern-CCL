@@ -56,13 +56,13 @@ FUS_KEYS = [
     (-1.45, 0.520, 0.500, -0.580, 0.120, 3.8, 3.0),
     (-1.05, 0.550, 0.740, -0.620, 0.220, 4.5, 3.2),
     (-0.62, 0.560, 0.955, -0.630, 0.300, 5.0, 3.2),
-    (-0.40, 0.560, 1.015, -0.630, 0.300, 5.0, 3.2),
-    (0.60, 0.560, 1.000, -0.600, 0.300, 5.0, 3.2),
-    (1.15, 0.540, 0.965, -0.520, 0.300, 4.6, 3.0),
-    (1.70, 0.475, 0.830, -0.400, 0.275, 3.8, 2.8),
-    (2.60, 0.370, 0.560, -0.240, 0.220, 2.8, 2.6),
-    (3.50, 0.270, 0.380, -0.080, 0.170, 2.4, 2.4),
-    (4.40, 0.180, 0.290, 0.020, 0.160, 2.2, 2.2),
+    (-0.40, 0.560, 1.005, -0.630, 0.300, 5.0, 3.2),
+    (0.60, 0.560, 1.000, -0.605, 0.300, 5.0, 3.2),
+    (1.15, 0.540, 0.965, -0.550, 0.300, 4.6, 3.0),
+    (1.70, 0.475, 0.830, -0.460, 0.275, 3.8, 2.8),
+    (2.60, 0.370, 0.560, -0.280, 0.220, 2.8, 2.6),
+    (3.50, 0.270, 0.380, -0.110, 0.170, 2.4, 2.4),
+    (4.40, 0.180, 0.290, 0.010, 0.160, 2.2, 2.2),
     (5.15, 0.080, 0.240, 0.100, 0.170, 2.0, 2.0),
 ]
 Y_COWL = FUS_KEYS[0][0]
@@ -147,7 +147,8 @@ BACK_WIN_TH = 0.55
 ROOF_CUT_Y = (-0.25, 0.80)      # the cabin roof inside the wing centre section is left out
 ROOF_CUT_TH = 1.30
 STRIPE_Z = (0.05, 0.17)
-BULKHEAD_Y = 2.15               # rear wall of the baggage area         # cheat line on the sides (behind the cowl)
+BULKHEAD_Y = 2.15               # rear wall of the baggage area
+FIREWALL_Y = -1.55              # between the engine compartment and the cabin         # cheat line on the sides (behind the cowl)
 
 TH_DOOR = (side_th(DOOR_Z[0]), side_th(DOOR_Z[1]))
 TH_DOOR_WIN = (side_th(DOOR_WIN_Z[0]), side_th(DOOR_WIN_Z[1]))
@@ -343,19 +344,110 @@ def wing_color(side):
     return f
 
 
+# --------------------------------------------------------------------------- tessellation
+
+
+_CHORD_CACHE = {}
+
+
+def chord_stations(tc, m, p, chord, d, knots=(), err=0.0004, min_step=0.012, max_step=0.10,
+                   a=0.0, b=1.0, counts=None, want_counts=False):
+    key = (tc, m, p, chord, d, tuple(knots), err, min_step, max_step, a, b,
+           None if counts is None else tuple(counts), want_counts)
+    if key not in _CHORD_CACHE:
+        _CHORD_CACHE[key] = _chord_stations(tc, m, p, chord, d, knots, err, min_step, max_step,
+                                            a, b, counts, want_counts)
+    return _CHORD_CACHE[key]
+
+
+def _chord_stations(tc, m, p, chord, d, knots, err, min_step, max_step, a, b, counts,
+                    want_counts):
+    """Chord fractions a..b for an aerofoil (t/c `tc`, camber m at p) of length `chord`:
+    spacing from the upper and lower surfaces' curvature for a chordal error `err` (at detail
+    1), no step shorter than `min_step` (the leading edge: keeps the long spanwise strips from
+    becoming slivers) or longer than `max_step`; knots (hinge lines) exact."""
+    def surf(v, sg):
+        return Vector((v * chord, 0.0, (camber(v, m, p) + sg * naca_t(v) * tc) * chord))
+
+    def density(u0, u1):
+        best = 0.0
+        for sg in (1.0, -1.0):
+            q0, q1 = surf(u0, sg), surf(u1, sg)
+            qm = surf(0.5 * (u0 + u1), sg)
+            seg = (q1 - q0).length
+            if seg < 1e-12:
+                continue
+            ang = (qm - q0).angle(q1 - qm, 0.0)
+            kappa = ang / max(seg, 1e-9)
+            dens = math.sqrt(kappa / (8.0 * err)) * seg
+            best = max(best, min(dens, seg / min_step), seg / max_step)
+        return best
+    # sample densely in a warped parameter (the leading edge needs it), then map back
+    return adaptive(a, b, knots, density, d, fine=2000, counts=counts,
+                    want_counts=want_counts)
+
+
+def zip_chains(m, A, B, mat, color, want):
+    """Triangulate the strip between two vertex chains with the same first and last vertex
+    (a cap split into two halves): advance along whichever chain gives the shorter diagonal,
+    so no triangle is a long fan blade. Faces are oriented towards `want(centre)`."""
+    i, j, faces = 0, 0, []
+    while i < len(A) - 1 or j < len(B) - 1:
+        if j == len(B) - 1 or (i < len(A) - 1 and
+                               (A[i + 1].co - B[j].co).length <= (B[j + 1].co - A[i].co).length):
+            faces.append(m.face([A[i], A[i + 1], B[j]], mat, color))
+            i += 1
+        else:
+            faces.append(m.face([A[i], B[j + 1], B[j]], mat, color))
+            j += 1
+    m.orient(faces, want)
+    return faces
+
+
+def ring_cap(m, ring, j0, jpi, mat, color, want):
+    """Close a section ring (vertex list) by zipping its two halves: from index j0 round to
+    jpi one way, and the other way."""
+    n = len(ring)
+    A = [ring[(j0 + k) % n] for k in range((jpi - j0) % n + 1)]
+    B = [ring[(j0 - k) % n] for k in range((j0 - jpi) % n + 1)]
+    return zip_chains(m, A, B, mat, color, want)
+
+
+def tip_rings(n):
+    """Rounded tip, ring k of n (1..n): (fraction of the tip length, thickness scale, chord
+    scale towards mid-chord); an elliptic cap that closes to a line at the end."""
+    out = []
+    for k in range(1, n + 1):  # even steps round the ellipse (s = sin phi, scale = cos phi)
+        phi = 0.5 * math.pi * k / n
+        s_ = math.sin(phi)
+        out.append((s_, math.cos(phi) if k < n else 0.0, 1.0 - 0.30 * s_ ** 3))
+    return out
+
+
 # --------------------------------------------------------------------------- foil loft
 # Same construction as hawk.foil_loft (copied so that the T22a jet and this model can change
 # independently).
 
 
-def foil_loft(m, stns, ring_at, hinge, is_cut, span_dir, outward, color, root_cap=False):
+def foil_loft(m, stns, ring_at, hinge, is_cut, span_dir, outward, color, root_cap=False,
+              mat="paint"):
     """A lifting surface as one loft: `ring_at(s, scale, mid)` gives the aerofoil ring at span
     station s (LE, upper surface, TE, lower surface; the same chord stations on every ring,
     with the hinge line at index `hinge`). Where `is_cut(sa, sb)` the skin behind the hinge is
     left out (a control surface sits there), with a hinge face along the cut and a wall where
     the cut starts or ends. The last ring is capped (the tip); the first only with
     `root_cap`."""
-    rings = [[m.vert(q) for q in ring_at(s, sc, mid)] for s, sc, mid in stns]
+    rings = []
+    for s_, sc, mid in stns:
+        pts = ring_at(s_, sc, mid)
+        ring = []
+        for k, q in enumerate(pts):  # a closed tip: the lower point merges with the upper one
+            twin = len(pts) - k
+            if 0 < twin < k and (pts[twin] - q).length < 1e-7:
+                ring.append(ring[twin])
+            else:
+                ring.append(m.vert(q))
+        rings.append(ring)
     n, h = len(rings[0]), hinge
     front = list(range(n - h, n)) + list(range(0, h))
     back = list(range(h, n - h + 1))
@@ -365,43 +457,51 @@ def foil_loft(m, stns, ring_at, hinge, is_cut, span_dir, outward, color, root_ca
         ra, rb = rings[i], rings[i + 1]
         cut = is_cut(stns[i][0], stns[i + 1][0])
         for j in (front if cut else range(n)):
-            skin.append(m.face([ra[j], rb[j], rb[(j + 1) % n], ra[(j + 1) % n]], "paint",
+            skin.append(m.face([ra[j], rb[j], rb[(j + 1) % n], ra[(j + 1) % n]], mat,
                                color, smooth=True))
         if not cut:
             continue
-        f = m.face([ra[h], rb[h], rb[n - h], ra[n - h]], "paint", color)
+        f = m.face([ra[h], rb[h], rb[n - h], ra[n - h]], mat, color)
         m.orient([f], lambda c: (0.0, 1.0, 0.0))
         for r, other in ((i, i - 1), (i + 1, i + 2)):
             if 0 <= other < len(rings) and not is_cut(*sorted((stns[r][0], stns[other][0]))):
-                f = m.face([rings[r][j] for j in back], "paint", color)
+                f = m.face([rings[r][j] for j in back], mat, color)
                 m.orient([f], lambda c, w=span_dir * (1.0 if other < r else -1.0): w)
     m.orient(skin, outward)
-    ends = [(rings[-1], span_dir)] + ([(rings[0], -span_dir)] if root_cap else [])
+    if len(set(map(id, rings[-1]))) < n:  # closed tip: flat-shade the last band so the
+        last = set(map(id, rings[-1]))     # closing line does not average both skins
+        for f in skin:
+            if f is not None and any(id(v) in last for v in f.verts):
+                f.smooth = False
+    ends = ([(rings[-1], span_dir)] if len(set(map(id, rings[-1]))) == n else []) + (
+        [(rings[0], -span_dir)] if root_cap else [])
     for ring, w in ends:
-        f = m.face(list(ring), "paint", color)
-        m.orient([f], lambda c, w=w: w)
+        K = (n + 1) // 2  # zip the upper and lower surfaces across the end
+        ring_cap(m, ring, 0, K, mat, color, lambda c, w=w: w)
 
 
 def build_wing(side, d):
     name = "wing_l" if side == LEFT else "wing_r"
     m = Mesh(name, origin=(side * 1.0, 0.3, wing_zq(1.0)), detail=d)
-    cnt = count(26, d, 6)
     knots = (WING["x_taper"], STRUT_X) + FLAP_X + AIL_X
-    xs = stations(0.0, WING["x_tip"], count(12, d, 3), knots, cosine=False)
-    nt = count(4, d, 2)
+    xs = stations(0.0, WING["x_tip"], count(18, d, 3), knots, cosine=False)
+    nt = count(8, d, 2)
     stns = [(x, 1.0, None) for x in xs] + [
         (WING["x_tip"] + (WING["x_end"] - WING["x_tip"]) * s, sc, mid)
-        for s, sc, mid in (tip_params(k, nt) for k in range(1, nt + 1))]
+        for s, sc, mid in tip_rings(nt)]
     le0, te0, _ = wing_frame(0.0)
-    v_h0 = (FLAP_HINGE - le0.y) / (te0.y - le0.y)
-    counts = station_counts(0.0, 1.0, cnt, (v_h0,))
+    c0 = te0.y - le0.y
+    _cs, counts = chord_stations(WING["tc"], WING["camber"], WING["camber_pos"], c0, d,
+                                 ((FLAP_HINGE - le0.y) / c0,), want_counts=True)
     hinge = counts[0]
 
     def ring_at(x, sc, mid):
         le, te, up = wing_frame(x)
         le, te = Vector((side * le.x, le.y, le.z)), Vector((side * te.x, te.y, te.z))
-        vh = (wing_hinge_y(x) - le.y) / (te.y - le.y)
-        cs = stations(0.0, 1.0, cnt, (vh,), counts=counts)
+        c = te.y - le.y
+        vh = (wing_hinge_y(x) - le.y) / c
+        cs = chord_stations(WING["tc"], WING["camber"], WING["camber_pos"], c0, d, (vh,),
+                            counts=counts)
         return foil_pts(le, te, up, WING["tc"], cs, WING["camber"], WING["camber_pos"], sc, mid)
 
     def is_cut(xa, xb):
@@ -414,6 +514,24 @@ def build_wing(side, d):
     y = le.y + 0.12
     m.tube((side * (WING["x_end"] - 0.06), y, le.z), (side * (WING["x_end"] + 0.005), y, le.z),
            0.025, 0.020, 8, mat="light", color=RED if side == LEFT else GREEN)
+    m.tube((side * (WING["x_end"] - 0.06), te.y - 0.25, te.z + 0.01),
+           (side * (WING["x_end"] + 0.004), te.y - 0.25, te.z + 0.01), 0.016, 0.014, 8,
+           mat="light", color=WHITE_LAMP)  # strobe
+    # fuel filler cap on the upper surface near the root
+    xc, yc = side * 1.15, 0.12
+    zc = wing_surface_z(1.15, yc, True)
+    disc(m, (xc, yc, zc + 0.002), (0.0, 0.0, 1.0), 0.035, 0.035, count(12, d, 8), "metal",
+         STEEL, up=(0.0, 1.0, 0.0))
+    if side == LEFT:
+        # landing/taxi light lens in the leading edge, pitot tube under the wing
+        x = 2.05
+        le, te, up = wing_frame(x)
+        disc(m, (x, le.y - 0.002, le.z), (0.0, -1.0, 0.0), 0.11, 0.025, count(16, d, 8),
+             "light", WHITE_LAMP)
+        zl = wing_surface_z(3.6, -0.10, False)
+        path = ([Vector((3.6, -0.10 - 0.02 * t, zl + 0.01 - 0.11 * t)) for t in (0, .5, 1)]
+                + [Vector((3.6, -0.12 - 0.23 * t, zl - 0.10)) for t in (.25, .5, .75, 1.0)])
+        m.sweep(path, 0.008, 8, mat="metal", color=STEEL)
     return m
 
 
@@ -426,15 +544,16 @@ def control_surface(name, side, x0, x1, hinge_y, d, pivot_drop=0.0):
     zc = wing_surface_z(xm, hinge_y, True)
     zl = wing_surface_z(xm, hinge_y, False)
     m = Mesh(name, origin=(side * xm, hinge_y, (zc + zl) / 2 - pivot_drop), detail=d)
-    nsp = count(3, d, 1)
-    cnt = count(12, d, 4)
     rings = []
-    for i in range(nsp + 1):
-        x = lerp(x0 + 0.004, x1 - 0.004, i / nsp)
+    counts = None
+    for x in stations(x0 + 0.004, x1 - 0.004, count(6, d, 1), (WING["x_taper"],),
+                      cosine=False):
         le, te, up = wing_frame(x)
         le, te = Vector((side * le.x, le.y, le.z)), Vector((side * te.x, te.y, te.z))
-        v0 = (hinge_y + GAP - le.y) / (te.y - le.y)
-        xs = stations(v0, 1.0, cnt, cosine=False)
+        c = te.y - le.y
+        v0 = (hinge_y + GAP - le.y) / c
+        xs, counts = chord_stations(WING["tc"], WING["camber"], WING["camber_pos"], c, d,
+                                    a=v0, counts=counts, want_counts=True)
         rings.append(foil_part(le, te, up, WING["tc"], xs, WING["camber"], WING["camber_pos"]))
     m.rings(rings, mat="paint", color=PAINT_SURF, smooth=True)
     return m
@@ -447,7 +566,7 @@ ELEV_HINGE = 4.92
 ELEV_X0 = 0.10   # the elevator halves start outside the rudder's lower end
 STAB_ROOT = 0.22  # first tailplane station, outside the tail cone (the root ring is moved in
                   # onto the skin), so no station of any detail falls inside the fuselage
-FIN = dict(z0=0.30, z1=1.46, z_end=1.52, le0=3.85, le1=4.86, tc=0.10)
+FIN = dict(z0=0.40, z1=1.46, z_end=1.52, le0=3.85, le1=4.86, tc=0.10)
 RUDDER_HINGE = 5.15
 RUDDER_Z = (0.10, 1.46)
 
@@ -470,29 +589,54 @@ def rudder_te_y(z):
     return lerp(5.62, Y_TAIL_END, smoothstep((z - RUDDER_Z[0]) / (1.30 - RUDDER_Z[0])))
 
 
+def root_on_skin(ring_fn, signed, s_out, s_in, iters=40):
+    """The root ring of a lifting surface where it meets the fuselage skin: for each ring
+    index, bisection along the span between `s_out` (outside the skin) and `s_in` (inside) for
+    the point where `signed(p)` changes sign (> 0 outside). The points lie on the surface's own
+    analytic shape, so the root does not depend on the station spacing."""
+    out_ring, in_ring = ring_fn(s_out), ring_fn(s_in)
+    res = []
+    for k in range(len(out_ring)):
+        if signed(in_ring[k]) > 0.0:  # never inside (behind the fuselage end): keep s_out
+            res.append(out_ring[k])
+            continue
+        a, b = s_out, s_in
+        for _ in range(iters):
+            mid = 0.5 * (a + b)
+            if signed(ring_fn(mid)[k]) > 0.0:
+                a = mid
+            else:
+                b = mid
+        res.append(ring_fn(0.5 * (a + b))[k])
+    return res
+
+
 def build_stab(m, d):
     """Fixed tailplane (part of the fuselage node): both halves, elevator cut-out behind the
     hinge."""
-    cnt = count(18, d, 5)
+    le0, te0, _ = stab_frame(0.0)
+    c0 = te0.y - le0.y
+    _cs, counts = chord_stations(STAB["tc"], 0.0, 0.4, c0, d,
+                                 ((ELEV_HINGE - le0.y) / c0,), want_counts=True)
     for side in (LEFT, RIGHT):
         xs = stations(STAB_ROOT, STAB["x1"], count(5, d, 2), cosine=False)
-        nt = count(3, d, 2)
+        nt = count(8, d, 2)
         stns = [(x, 1.0, None) for x in xs] + [
             (STAB["x1"] + (STAB["x_end"] - STAB["x1"]) * s, sc, mid)
-            for s, sc, mid in (tip_params(k, nt) for k in range(1, nt + 1))]
-        le0, te0, _ = stab_frame(0.0)
-        counts = station_counts(0.0, 1.0, cnt, ((ELEV_HINGE - le0.y) / (te0.y - le0.y),))
+            for s, sc, mid in tip_rings(nt)]
 
-        def ring_at(x, sc, mid, side=side):
+        def plain(x, sc=1.0, mid=None, side=side):
             le, te, up = stab_frame(x)
             le.x, te.x = side * le.x, side * te.x
             vh = (ELEV_HINGE - le.y) / (te.y - le.y)
-            cs = stations(0.0, 1.0, cnt, (vh,), counts=counts)
-            pts = foil_pts(le, te, up, STAB["tc"], cs, scale=sc, mid=mid)
-            if x == STAB_ROOT:  # the root follows the tail cone's side, just inside it
-                pts = [Vector((side * max(0.0, skin_x(p.y, p.z) - 0.004), p.y, p.z))
-                       for p in pts]
-            return pts
+            cs = chord_stations(STAB["tc"], 0.0, 0.4, c0, d, (vh,), counts=counts)
+            return foil_pts(le, te, up, STAB["tc"], cs, scale=sc, mid=mid)
+
+        def ring_at(x, sc, mid, side=side, plain=plain):
+            if x == STAB_ROOT:  # the root where the surface meets the tail cone, just inside
+                return root_on_skin(plain, lambda p: abs(p.x) - (skin_x(p.y, p.z) - 0.004),
+                                    STAB_ROOT, 0.0)
+            return plain(x, sc, mid)
         foil_loft(m, stns, ring_at, counts[0],
                   lambda xa, xb: xb <= STAB["x1"] + 1e-9,  # elevator, or the rudder's gap
                   (side, 0.0, 0.0), chord_outward(stab_frame, STAB["x1"], 0), PAINT_WING)
@@ -500,37 +644,44 @@ def build_stab(m, d):
 
 def build_elevator(d):
     m = Mesh("elevator", origin=(0.0, ELEV_HINGE, TAIL_Z), detail=d)
-    cnt = count(12, d, 4)
     for side in (LEFT, RIGHT):
         rings = []
+        counts = None
         for x in stations(ELEV_X0, STAB["x1"] - 0.01, count(4, d, 1), cosine=False):
             le, te, up = stab_frame(x)
             le.x, te.x = side * le.x, side * te.x
-            v0 = (ELEV_HINGE + GAP - le.y) / (te.y - le.y)
-            rings.append(foil_part(le, te, up, STAB["tc"], stations(v0, 1.0, cnt, cosine=False)))
+            c = te.y - le.y
+            v0 = (ELEV_HINGE + GAP - le.y) / c
+            xs, counts = chord_stations(STAB["tc"], 0.0, 0.4, c, d, a=v0, counts=counts,
+                                        want_counts=True)
+            rings.append(foil_part(le, te, up, STAB["tc"], xs))
         m.rings(rings, mat="paint", color=PAINT_SURF, smooth=True)
     return m
 
 
 def build_fin(m, d):
-    cnt = count(18, d, 5)
     zs = stations(FIN["z0"], FIN["z1"], count(5, d, 2), RUDDER_Z, cosine=False)
-    nt = count(3, d, 2)
+    nt = count(8, d, 2)
     stns = [(z, 1.0, None) for z in zs] + [
-        (FIN["z1"] + (FIN["z_end"] - FIN["z1"]) * s, sc, mid)
-        for s, sc, mid in (tip_params(k, nt) for k in range(1, nt + 1))]
+        (FIN["z1"] + (FIN["z_end"] - FIN["z1"]) * s, sc, mid) for s, sc, mid in tip_rings(nt)]
     le0, te0, _ = fin_frame(FIN["z0"])
-    counts = station_counts(0.0, 1.0, cnt, ((RUDDER_HINGE - le0.y) / (te0.y - le0.y),))
+    c0 = te0.y - le0.y
+    _cs, counts = chord_stations(FIN["tc"], 0.0, 0.4, c0, d,
+                                 ((RUDDER_HINGE - le0.y) / c0,), want_counts=True)
 
-    def ring_at(z, sc, mid):
+    def plain(z, sc=1.0, mid=None):
         le, te, up = fin_frame(z)
         vh = (RUDDER_HINGE - le.y) / (te.y - le.y)
-        cs = stations(0.0, 1.0, cnt, (vh,), counts=counts)
-        pts = foil_pts(le, te, up, FIN["tc"], cs, scale=sc, mid=mid)
-        if z == FIN["z0"]:  # the root follows the tail cone's top, just inside it
-            pts = [Vector((p.x, p.y, skin_top(p.y, p.x) - 0.004)) if p.y < Y_FUS_END
-                   else p for p in pts]
-        return pts
+        cs = chord_stations(FIN["tc"], 0.0, 0.4, c0, d, (vh,), counts=counts)
+        return foil_pts(le, te, up, FIN["tc"], cs, scale=sc, mid=mid)
+
+    def above_skin(p):  # behind the tail cone's end its end section continues
+        return p.z - (skin_top(min(p.y, Y_FUS_END), p.x) - 0.004)
+
+    def ring_at(z, sc, mid):
+        if z == FIN["z0"]:  # the root where the fin meets the tail cone, just inside it
+            return root_on_skin(plain, above_skin, FIN["z0"], 0.0)
+        return plain(z, sc, mid)
     foil_loft(m, stns, ring_at, counts[0],
               lambda za, zb: RUDDER_Z[0] - 1e-9 <= za and zb <= RUDDER_Z[1] + 1e-9,
               (0.0, 0.0, 1.0), chord_outward(fin_frame, FIN["z1"], 2), PAINT_WING,
@@ -539,12 +690,15 @@ def build_fin(m, d):
 
 def build_rudder(d):
     m = Mesh("rudder", origin=(0.0, RUDDER_HINGE, 0.7), detail=d)
-    cnt = count(12, d, 4)
     rings = []
-    for z in stations(RUDDER_Z[0] + 0.005, RUDDER_Z[1] - 0.005, count(5, d, 2), cosine=False):
+    counts = None
+    for z in stations(RUDDER_Z[0] + 0.005, RUDDER_Z[1] - 0.005, count(12, d, 2), cosine=False):
         le, te, up = fin_frame(z)
-        v0 = (RUDDER_HINGE + GAP - le.y) / (te.y - le.y)
-        rings.append(foil_part(le, te, up, FIN["tc"], stations(v0, 1.0, cnt, cosine=False)))
+        c = te.y - le.y
+        v0 = (RUDDER_HINGE + GAP - le.y) / c
+        xs, counts = chord_stations(FIN["tc"], 0.0, 0.4, c, d, a=v0, counts=counts,
+                                    want_counts=True)
+        rings.append(foil_part(le, te, up, FIN["tc"], xs))
     m.rings(rings, mat="paint", color=PAINT_SURF, smooth=True)
     return m
 
@@ -583,7 +737,7 @@ def fin_covers(p):
         lambda z: fin_frame(max(z, FIN["z0"])), FIN["tc"], p, p.z, FIN["z1"])
 
 
-def adaptive(a, b, knots, density, d, fine=1200):
+def adaptive(a, b, knots, density, d, fine=1200, counts=None, want_counts=False):
     """Stations from a to b (with every knot in (a, b) present exactly) whose spacing follows
     `density(u0, u1)` -> segments wanted between u0 and u1 at detail 1: each interval between
     knots gets max(1, round(d * its density integral)) equal parts of that integral. The
@@ -605,14 +759,72 @@ def adaptive(a, b, knots, density, d, fine=1200):
         t = 0.0 if span <= 0 else (f - cum[i]) / span
         return us[i] + (us[i + 1] - us[i]) * max(0.0, min(1.0, t))
     edges = [a] + sorted(k for k in set(knots) if a < k < b) + [b]
-    out = []
-    for u0, u1 in zip(edges, edges[1:]):
+    out, used = [], []
+    for i, (u0, u1) in enumerate(zip(edges, edges[1:])):
         f0, f1 = F(u0), F(u1)
-        k = max(1, int(round(d * (f1 - f0))))
+        k = counts[i] if counts is not None else max(1, int(round(d * (f1 - f0))))
+        used.append(k)
+        out.append(u0)
+        out += [Finv(f0 + (f1 - f0) * j / k) for j in range(1, k)]
+    out.append(b)
+    return (out, used) if want_counts else out
+
+
+def adaptive_grid(us, inc, knots, d, counts=None):
+    """As adaptive(), on a given (sorted, possibly non-uniform) fine grid `us` with `inc[i]` =
+    segments wanted between us[i - 1] and us[i] at detail 1."""
+    cum = [0.0]
+    for v in inc[1:]:
+        cum.append(cum[-1] + v)
+    a, b = us[0], us[-1]
+
+    def F(u):
+        i = max(0, min(len(us) - 2, bisect.bisect_right(us, u) - 1))
+        span = us[i + 1] - us[i]
+        t = 0.0 if span <= 0 else (u - us[i]) / span
+        return cum[i] + (cum[i + 1] - cum[i]) * t
+
+    def Finv(f):
+        i = max(0, min(len(us) - 2, bisect.bisect_right(cum, f) - 1))
+        span = cum[i + 1] - cum[i]
+        t = 0.0 if span <= 0 else (f - cum[i]) / span
+        return us[i] + (us[i + 1] - us[i]) * max(0.0, min(1.0, t))
+    edges = [a] + sorted(k for k in set(knots) if a < k < b) + [b]
+    out = []
+    for i, (u0, u1) in enumerate(zip(edges, edges[1:])):
+        f0, f1 = F(u0), F(u1)
+        k = counts[i] if counts is not None else max(1, int(round(d * (f1 - f0))))
         out.append(u0)
         out += [Finv(f0 + (f1 - f0) * j / k) for j in range(1, k)]
     out.append(b)
     return out
+
+
+def section_fn(y):
+    """Fast point function of the section at y (the section evaluated once)."""
+    w, top, bot, zw, nt, nb = fus_section(y)
+
+    def f(th):
+        up = math.sin(th) >= 0.0
+        sx, sz = superellipse_point(th, nt if up else nb)
+        h = (top - zw) if up else (zw - bot)
+        return Vector((w * sx, y, zw + h * sz))
+    return f
+
+
+def th_grid(per_quadrant=1500):
+    """Fine th samples, dense at the ends of each quadrant (the superellipse parameter crowds
+    the flat sides, top and bottom into a tiny range of th there)."""
+    out = []
+    for q in range(4):
+        base = -math.pi + q * 0.5 * math.pi
+        for i in range(per_quadrant if q < 3 else per_quadrant + 1):
+            f = i / per_quadrant
+            out.append(base + 0.5 * math.pi * f * f * f * (10 - 15 * f + 6 * f * f))
+    return out
+
+
+TH_GRID = th_grid()
 
 
 def _turn_density(pts, err):
@@ -634,86 +846,270 @@ FUS_ERR = 0.0004      # target chordal error of the skin at detail 1 (m)
 FUS_MIN_STEP = 0.30   # longest skin edge even where the skin is flat (m), for shading
 
 
+_FUS_ST = []
+
+
 def fus_stations():
-    """Curvature-adaptive (y, th) stations of the skin: the same lists at every detail before
-    scaling, so --detail only refines them."""
-    ny, nt = 160, 720
+    if not _FUS_ST:
+        _FUS_ST.append(_fus_stations())
+    return _FUS_ST[0]
+
+
+def _fus_stations():
+    """Curvature-adaptive y stations of the skin (the largest need over th lines sampled on
+    TH_GRID, so the flat sides are seen) and, for the doors, th stations of the cabin."""
+    ny = 200
     ysmp = [Y_COWL + (Y_FUS_END - Y_COWL) * i / ny for i in range(ny + 1)]
-    tsmp = [-math.pi + 2 * math.pi * j / nt for j in range(nt + 1)]
-    th_d = [0.0] * (nt + 1)
-    for y in ysmp[::4]:
-        pts = [fus_point(y, t) for t in tsmp]
-        dens = _turn_density(pts, FUS_ERR)
-        for j in range(nt + 1):
-            seg = (pts[j] - pts[j - 1]).length if j else 0.0
-            th_d[j] = max(th_d[j], dens[j], seg / FUS_MIN_STEP)
+    lines = TH_GRID[::40]
+    secs = [section_fn(y) for y in ysmp]
     y_d = [0.0] * (ny + 1)
-    for t in tsmp[::12]:
-        pts = [fus_point(y, t) for y in ysmp]
+    for t in lines:
+        pts = [f(t) for f in secs]
         dens = _turn_density(pts, FUS_ERR)
         for i in range(ny + 1):
             seg = (pts[i] - pts[i - 1]).length if i else 0.0
             y_d[i] = max(y_d[i], dens[i], seg / FUS_MIN_STEP)
+    f = section_fn(0.0)
+    cab = [f(t) for t in TH_GRID]
+    dens = _turn_density(cab, FUS_ERR)
+    th_inc = [0.0] + [max(0.5 * (dens[j] + dens[j - 1]), (cab[j] - cab[j - 1]).length /
+                          FUS_MIN_STEP) for j in range(1, len(cab))]
 
-    def table(us, vals):
-        def f(u0, u1):
-            t = (0.5 * (u0 + u1) - us[0]) / (us[-1] - us[0]) * (len(us) - 1)
-            i = min(len(us) - 2, max(0, int(t)))
-            v = vals[i] + (vals[i + 1] - vals[i]) * (t - i)
-            step = (us[-1] - us[0]) / (len(us) - 1)
-            return v * (u1 - u0) / step
-        return f
-    return table(ysmp, y_d), table(tsmp, th_d)
+    def y_den(u0, u1):
+        t = (0.5 * (u0 + u1) - ysmp[0]) / (ysmp[-1] - ysmp[0]) * ny
+        i = min(ny - 1, max(0, int(t)))
+        v = y_d[i] + (y_d[i + 1] - y_d[i]) * (t - i)
+        return v * (u1 - u0) / ((ysmp[-1] - ysmp[0]) / ny)
+    return y_den, th_inc
+
+
+def ring_stations(y, d):
+    """The th stations of the ring at y: from this section's own curvature (a small tail-cone
+    section needs fewer than the cabin), every knot included, so neighbouring rings can be
+    zipped between knots."""
+    f = section_fn(y)
+    pts = [f(t) for t in TH_GRID]
+    dens = _turn_density(pts, FUS_ERR)
+    inc = [0.0] + [max(0.5 * (dens[j] + dens[j - 1]),
+                       (pts[j] - pts[j - 1]).length / FUS_MIN_STEP)
+                   for j in range(1, len(pts))]
+    return adaptive_grid(TH_GRID, inc, fus_th_knots(), d)[:-1]
 
 
 def build_fuselage(d):
     m = Mesh("fuselage", detail=d)
-    y_den, th_den = fus_stations()
-    ths = adaptive(-math.pi, math.pi, fus_th_knots(), th_den, d)[:-1]
+    y_den, _th_inc = fus_stations()
     ys = adaptive(Y_COWL, Y_FUS_END, FUS_Y_KNOTS, y_den, d)
-    grid = [[m.vert(fus_point(y, th)) for th in ths] for y in ys]
-    n = len(ths)
+    knots = fus_th_knots()
+    rings = []  # per y: (th list, vertex list)
+    for y in ys:
+        ths = ring_stations(y, d)
+        rings.append((ths, [m.vert(fus_point(y, th)) for th in ths]))
+
+    def segments(ths):
+        """Index runs between consecutive knots (the last run wraps to -pi + 2 pi)."""
+        cut = [j for j, t in enumerate(ths) if any(abs(t - k) < 1e-9 for k in knots)
+               or j == 0]
+        runs = []
+        for a_, b_ in zip(cut, cut[1:] + [len(ths)]):
+            runs.append(list(range(a_, b_ + 1)))
+        return runs
     faces = []
     for i in range(len(ys) - 1):
+        (ta, va), (tb, vb) = rings[i], rings[i + 1]
         yc = (ys[i] + ys[i + 1]) / 2
-        for j in range(n):
-            j1 = (j + 1) % n
-            t0, t1 = ths[j], ths[j1] if j1 else ths[j1] + 2 * math.pi
-            tc = (t0 + t1) / 2
+        for ra, rb in zip(segments(ta), segments(tb)):
+            n_a, n_b = len(ta), len(tb)
+            th_a = [ta[j % n_a] + (2 * math.pi if j >= n_a else 0.0) for j in ra]
+            th_b = [tb[j % n_b] + (2 * math.pi if j >= n_b else 0.0) for j in rb]
+            A = [va[j % n_a] for j in ra]
+            B = [vb[j % n_b] for j in rb]
+            tc = 0.25 * (th_a[0] + th_a[-1] + th_b[0] + th_b[-1])
             if tc > math.pi:
                 tc -= 2 * math.pi
             if door_region(yc, tc):
                 continue
             if _in(yc, ROOF_CUT_Y) and ROOF_CUT_TH < tc < math.pi - ROOF_CUT_TH:
                 continue
-            quad = [grid[i][j], grid[i + 1][j], grid[i + 1][j1], grid[i][j1]]
             mat = fus_material(yc, tc)
-            faces.append(m.face(quad, mat, GLASS if mat == "glass" else
-                                paint_color(yc, side_of(tc)[1], PAINT), smooth=True))
+            col = GLASS if mat == "glass" else paint_color(yc, side_of(tc)[1], PAINT)
+            if len(A) == len(B):
+                for k in range(len(A) - 1):
+                    faces.append(m.face([A[k], B[k], B[k + 1], A[k + 1]], mat, col,
+                                        smooth=True))
+            else:
+                faces += zip_chains(m, A, B, mat, col, lambda c: Vector((0.0, 0.0, 0.0)))
+    for f in faces:
+        if f is not None:
+            f.smooth = True
     m.orient(faces, lambda c: c - Vector((0.0, c.y, fus_section(c.y)[3])))
-    # tail cone end cap
-    cap = m.face(list(reversed(grid[-1])), "paint", PAINT)
-    m.orient([cap], lambda c: (0.0, 1.0, 0.0))
+    ths, grid_last = rings[-1]
+    # tail cone end cap (zipped: no fan of slivers)
+    j0 = min(range(len(ths)), key=lambda j: abs(ths[j]))
+    ring_cap(m, grid_last, j0, 0, "paint", PAINT, lambda c: (0.0, 1.0, 0.0))
+    ths0, ring0 = rings[0]
     # nose bowl: annulus from the cowl front to the spinner base
-    ring0 = grid[0]
     k = count(2, d, 1)
     rings = [[v.co + m.origin for v in ring0]]
     for i in range(1, k + 1):
         t = i / k
         rings.append([Vector((lerp(p.x, 0.15 * math.cos(th), t), Y_COWL + 0.03 * t,
                               lerp(p.z, PROP_Z + 0.15 * math.sin(th), t)))
-                      for p, th in zip(rings[0], ths)])
+                      for p, th in zip(rings[0], ths0)])
     nose = m.rings(rings, close_ring=True, solid=False, mat="paint", color=PAINT, smooth=True,
                    ends=(ring0, None))
     m.orient(nose, lambda c: (0.0, -1.0, 0.0))
+    yf = FIREWALL_Y  # firewall: closes the engine compartment off from the cabin
+    thf = ring_stations(yf, d)
+    ring = [m.vert(fus_point(yf, th, -0.004)) for th in thf]
+    ring_cap(m, ring, min(range(len(thf)), key=lambda j: abs(thf[j])), 0, "dark", INTERIOR,
+             lambda c: (0.0, 1.0, 0.0))
     yb = BULKHEAD_Y
-    ring = [fus_point(yb, th, -0.004) for th in ths]
-    f = m.poly(ring, "dark", INTERIOR)
-    m.orient([f], lambda c: (0.0, -1.0, 0.0))
+    thb = ring_stations(yb, d)
+    ring = [m.vert(fus_point(yb, th, -0.004)) for th in thb]
+    ring_cap(m, ring, min(range(len(thb)), key=lambda j: abs(thb[j])), 0, "dark", INTERIOR,
+             lambda c: (0.0, -1.0, 0.0))
     build_stab(m, d)
     build_fin(m, d)
     build_struts(m, d)
+    build_details(m, d)
     return m
+
+
+def strut(m, a, b, chord, tc, d, color=None):
+    """A streamlined strut from a to b: a symmetric aerofoil section (chord along the flight
+    direction, square to the strut) lofted with enough stations that no quad is a needle.
+    The ends sit inside the parts they join, so they are left open."""
+    axis = (b - a).normalized()
+    fwd = Vector((0.0, -1.0, 0.0))
+    fwd = (fwd - axis * fwd.dot(axis)).normalized()
+    up = axis.cross(fwd).normalized()
+    xs = chord_stations(tc, 0.0, 0.4, chord, d, err=0.0003, min_step=0.008, max_step=0.03)
+    n = count(max(4, int((b - a).length / 0.15)), d, 2)
+    rings = []
+    for i in range(n + 1):
+        c = a.lerp(b, i / n)
+        le = c + fwd * (0.4 * chord)
+        te = c - fwd * (0.6 * chord)
+        rings.append(foil_pts(le, te, up, tc, xs))
+    f = m.rings(rings, mat="paint", color=color or PAINT_SURF, smooth=True, solid=False)
+    m.orient(f, lambda q: (q - a) - axis * (q - a).dot(axis))
+    return f
+
+
+def fin_le_y(z):
+    return lerp(FIN["le0"], FIN["le1"], (z - FIN["z0"]) / (FIN["z1"] - FIN["z0"]))
+
+
+DORSAL = dict(y0=2.80, z_top=0.80, half=0.024)  # dorsal fin: LE start, top, half-thickness
+
+
+def build_dorsal(m, d):
+    """Dorsal fin: a thin blade on the tail-cone top whose rounded crest rises in a straight
+    line from y0 into the fin's leading edge; built from cross-sections along y (so its
+    triangles do not narrow into needles), ending just inside the fin."""
+    z0 = skin_top(DORSAL["y0"], 0.0)
+    # the crest line meets the fin's leading edge at z_top
+    y_end = fin_le_y(DORSAL["z_top"]) + 0.015
+    half = DORSAL["half"]
+    k = count(10, d, 4)  # points over the crest from one side to the other
+    rings = []
+    for y in stations(DORSAL["y0"], y_end, count(12, d, 3))[1:]:
+        t = (y - DORSAL["y0"]) / (y_end - DORSAL["y0"])
+        crest = lerp(z0, DORSAL["z_top"], t)
+        hw = half * min(1.0, 4.0 * t) ** 0.5  # the blade thickens behind its front point
+        base = skin_top(y, hw) - 0.004
+        ring = []
+        for j in range(k + 1):
+            phi = math.pi * j / k
+            ring.append(Vector((hw * math.cos(phi), y,
+                                base + (crest - base) * math.sin(phi) ** 0.35)))
+        rings.append(ring)
+    nose = Vector((0.0, DORSAL["y0"], z0 - 0.004))
+    rings.insert(0, [nose] * (k + 1))
+    f = m.rings(rings, close_ring=False, mat="paint", color=PAINT_WING, smooth=True,
+                solid=False)
+    m.orient(f, lambda c: (c.x, 0.0, 0.0))
+
+
+def disc(m, centre, normal, rx, rz, seg, mat, color, up=(0.0, 0.0, 1.0)):
+    """A flat elliptical disc (decal-like part: an inlet, a cap, a lamp lens), zip-closed."""
+    n = Vector(normal).normalized()
+    u = Vector(up)
+    u = (u - n * u.dot(n)).normalized()
+    v = n.cross(u)
+    ring = [m.vert(Vector(centre) + v * (rx * math.cos(2 * math.pi * k / seg))
+                   + u * (rz * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
+    return ring_cap(m, ring, 0, seg // 2, mat, color, lambda c: n)
+
+
+def bowl_y(x, z):
+    """y of the nose bowl (the annulus from the cowl front ring in to r = 0.15 round the
+    thrust line) at (x, z), from the polar radius between the outer ring and the inner circle."""
+    f = section_fn(Y_COWL)
+    phi = math.atan2(z - PROP_Z, x)
+    rho = math.hypot(x, z - PROP_Z)
+    best = None
+    for k in range(720):  # the outer ring's radius at this polar angle
+        p = f(-math.pi + 2 * math.pi * k / 720)
+        a = math.atan2(p.z - PROP_Z, p.x)
+        da = abs((a - phi + math.pi) % (2 * math.pi) - math.pi)
+        if best is None or da < best[0]:
+            best = (da, math.hypot(p.x, p.z - PROP_Z))
+    t = max(0.0, min(1.0, (best[1] - rho) / max(best[1] - 0.15, 1e-6)))
+    return Y_COWL + 0.03 * t
+
+
+def inlet(m, xc, zc, rx, rz, seg):
+    """A cowl air inlet: a dark ellipse lying 1.5 mm in front of the nose bowl with a skirt
+    running back through the bowl, so no gap shows behind it."""
+    front, back = [], []
+    for k in range(seg):
+        a = 2 * math.pi * k / seg
+        x, z = xc + rx * math.cos(a), zc + rz * math.sin(a)
+        y = bowl_y(x, z)
+        front.append(m.vert((x, y - 0.0015, z)))
+        back.append(m.vert((x, y + 0.008, z)))
+    ring_cap(m, front, 0, seg // 2, "dark", BLACK, lambda c: (0.0, -1.0, 0.0))
+    skirt = [m.face([front[k], front[(k + 1) % seg], back[(k + 1) % seg], back[k]], "dark",
+                    BLACK) for k in range(seg)]
+    m.orient(skirt, lambda c: (c.x - xc, 0.0, c.z - zc))
+
+
+def build_details(m, d):
+    """Fuselage-node detail: dorsal fin, cowl inlets and exhaust, lights, antennas, door-post
+    step, tail tie-down."""
+    build_dorsal(m, d)
+    seg = count(16, d, 8)
+    for side in (LEFT, RIGHT):  # cowl air inlets either side of the spinner
+        inlet(m, side * 0.215, PROP_Z + 0.03, 0.085, 0.055, seg)
+    # exhaust stack under the right side of the cowl
+    zb = fus_point(-1.75, -0.5 * math.pi).z
+    m.tube((-0.14, -1.80, zb + 0.06), (-0.16, -1.66, zb - 0.07), 0.024, 0.024, 12, mat="dark",
+           color=EXHAUST)
+    # rotating beacon on the fin tip, white tail light on the rudder trailing edge
+    le, te, _ = fin_frame(FIN["z1"])
+    yb = le.y + 0.12
+    m.tube((0.0, yb, FIN["z_end"] - 0.035), (0.0, yb, FIN["z_end"] - 0.005), 0.022, 0.018,
+           12, mat="light", color=RED)
+    # VHF antennas on the cabin roof behind the wing, ADF/transponder blade under the belly
+    for x, y in ((0.0, 1.45), (0.0, 1.85)):
+        zt = skin_top(y, x) - 0.01
+        m.plate([(x, y, zt), (x, y + 0.10, zt), (x, y + 0.13, zt + 0.32), (x, y + 0.08, zt + 0.32)],
+                (0.006, 0.0, 0.0), mat="dark", color=BLACK)
+    zb = fus_point(1.30, -0.5 * math.pi).z
+    m.plate([(0.0, 1.20, zb + 0.01), (0.0, 1.32, zb + 0.01), (0.0, 1.36, zb - 0.09),
+             (0.0, 1.28, zb - 0.09)], (0.006, 0.0, 0.0), mat="dark", color=BLACK)
+    # tail tie-down ring under the tail cone
+    zt = fus_point(4.75, -0.5 * math.pi).z
+    m.tube((0.0, 4.75, zt + 0.01), (0.0, 4.75, zt - 0.06), 0.012, 0.012, 8, mat="metal",
+           color=STEEL)
+    # door handles
+    for side in (LEFT, RIGHT):
+        y0, y1, z = DOOR_Y[1] - 0.20, DOOR_Y[1] - 0.08, 0.30
+        pa = Vector((side * (skin_x(y0, z) + 0.004), y0, z))
+        pb = Vector((side * (skin_x(y1, z) + 0.004), y1, z))
+        m.tube(pa, pb, 0.008, 0.008, 6, mat="metal", color=STEEL)
 
 
 def build_struts(m, d):
@@ -722,9 +1118,9 @@ def build_struts(m, d):
         y_top = le.y + 0.30 * (te.y - le.y)
         z_top = wing_surface_z(STRUT_X, y_top, False) + 0.01
         w = fus_section(0.25)[0]
-        a = Vector((side * (w - 0.02), 0.25, -0.30))
+        a = Vector((side * (skin_x(0.25, -0.30) - 0.02), 0.25, -0.30))
         b = Vector((side * STRUT_X, y_top, z_top))
-        m.tube(a, b, 0.038, 0.034, 16, mat="paint", color=PAINT_SURF)
+        strut(m, a, b, 0.105, 0.34, d)
 
 
 # --------------------------------------------------------------------------- doors
@@ -736,13 +1132,12 @@ def build_door(side, d):
     t0, t1 = TH_DOOR
     hinge = fus_point(y_h, side_th(0.25) if side == LEFT else _mirror_th(side_th(0.25)))
     m = Mesh(name, origin=hinge, detail=d)
-    ky = count(10, d, 3)
-    kt = count(10, d, 3)
     tw = TH_DOOR_WIN
-    ys = stations(DOOR_Y[0] + DOOR_GAP, DOOR_Y[1] - DOOR_GAP, ky, DOOR_WIN_Y, cosine=False)
-    ts = stations(t0 + 0.003, t1 - 0.003, kt, tw + TH_STRIPE, cosine=False)
-    if side == RIGHT:
-        ts = [_mirror_th(t) for t in ts]
+    y_den, th_inc = fus_stations()
+    ys = adaptive(DOOR_Y[0] + DOOR_GAP, DOOR_Y[1] - DOOR_GAP, DOOR_WIN_Y, y_den, d)
+    tsl = [t for t in adaptive_grid(TH_GRID, th_inc, (t0 + 0.003, t1 - 0.003) + tw + TH_STRIPE,
+                                    d) if t0 + 0.003 - 1e-12 <= t <= t1 - 0.003 + 1e-12]
+    ts = tsl if side == LEFT else [_mirror_th(t) for t in tsl]
     outer = [[fus_point(y, t) for t in ts] for y in ys]
     inner = [[fus_point(y, t, -0.045) for t in ts] for y in ys]
     vo = [[m.vert(p) for p in row] for row in outer]
@@ -751,8 +1146,7 @@ def build_door(side, d):
     glass_cells = set()
     for i in range(len(ys) - 1):
         for j in range(len(ts) - 1):
-            yc, tc = (ys[i] + ys[i + 1]) / 2, (ts[j] + ts[j + 1]) / 2
-            _s, tl = side_of(tc)
+            yc, tl = (ys[i] + ys[i + 1]) / 2, (tsl[j] + tsl[j + 1]) / 2
             glass = _in(yc, DOOR_WIN_Y) and _in(tl, tw)
             if glass:
                 glass_cells.add((i, j))
@@ -795,9 +1189,9 @@ def build_door(side, d):
 def build_propeller(d):
     m = Mesh("propeller", origin=(0.0, PROP_Y, PROP_Z), detail=d)
     # spinner: profile of revolution about the thrust line
-    ns = count(24, d, 8)
+    ns = count(36, d, 8)
     prof = [(Y_NOSE, 0.0)]
-    k = count(10, d, 4)
+    k = count(16, d, 4)
     for i in range(1, k + 1):
         t = i / k
         prof.append((lerp(Y_NOSE, -2.22, t), 0.172 * math.sin(0.5 * math.pi * t) ** 0.75))
@@ -807,21 +1201,23 @@ def build_propeller(d):
                               PROP_Z + r * math.sin(2 * math.pi * j / ns))) for j in range(ns)])
     sp = m.rings(rings, mat="paint", color=PAINT, smooth=True, solid=False)
     m.orient(sp, lambda c: Vector((c.x, c.y - (Y_NOSE + 0.35), c.z - PROP_Z)))
-    # two blades along +-Z at rest; pitch angle from a 1.5 m helix, chord tapering to a round tip
-    nr = count(10, d, 3)
-    cnt = count(10, d, 4)
+    # two blades along +-Z at rest; pitch angle from a 1.52 m helix, chord tapering to a round
+    # tip that closes to a line; chord stations from the section's curvature
+    _xs, counts = chord_stations(0.12, 0.03, 0.4, 0.15, d, err=0.0002, min_step=0.004,
+                                 max_step=0.03, want_counts=True)
+    xs = chord_stations(0.12, 0.03, 0.4, 0.15, d, err=0.0002, min_step=0.004, max_step=0.03,
+                        counts=counts)
+    nt = count(6, d, 2)
+    rs = stations(0.15, PROP_R - 0.08, count(30, d, 3), cosine=False)
+    rows = [(r, 1.0, None) for r in rs] + [
+        (PROP_R - 0.08 + 0.08 * s_, sc, mid) for s_, sc, mid in tip_rings(nt)]
     for sg in (1.0, -1.0):
         rings = []
-        rs = stations(0.15, PROP_R - 0.06, nr, cosine=False)
-        nt = count(3, d, 2)
-        rows = [(r, 1.0, None) for r in rs] + [
-            (PROP_R - 0.06 + 0.06 * s, sc, mid) for s, sc, mid in
-            (tip_params(i, nt) for i in range(1, nt + 1))]
         for r, sc, mid in rows:
-            chord = 0.155 - 0.045 * (r - 0.15) / (PROP_R - 0.15) if r > 0.25 else lerp(0.07, 0.15, (r - 0.15) / 0.10)
+            chord = (0.155 - 0.045 * (r - 0.25) / (PROP_R - 0.25) if r > 0.25
+                     else lerp(0.07, 0.155, smoothstep((r - 0.15) / 0.10)))
             beta = math.atan2(1.52, 2 * math.pi * max(r, 0.2))
-            # chord direction in the x-y plane, rotated by the pitch angle; the blade turns
-            # clockwise seen from the cockpit, the leading edge on +x for the upper blade
+            # chord direction in the x-y plane, rotated by the pitch angle
             cdir = Vector((-sg * math.cos(beta), math.sin(beta), 0.0))
             up = cdir.cross(Vector((0.0, 0.0, 1.0))).normalized()
             if up.y > 0.0:  # the cambered (suction) face looks forward
@@ -829,19 +1225,25 @@ def build_propeller(d):
             centre = Vector((0.0, PROP_Y, PROP_Z + sg * r))
             le = centre - cdir * (0.35 * chord)
             te = centre + cdir * (0.65 * chord)
-            tc = lerp(0.30, 0.08, min(1.0, (r - 0.15) / 0.5))
-            xs = stations(0.0, 1.0, cnt)
+            tc = lerp(0.30, 0.08, smoothstep((r - 0.15) / 0.5))
             rings.append(foil_pts(le, te, up, tc, xs, 0.03, 0.4, sc, mid))
-        bl = m.rings(rings, mat="metal", color=PROP_GREY, smooth=True, caps=(False, True))
-        m.recalc(bl)
+        stns = [(i, 1.0, None) for i in range(len(rings))]
+        foil_loft(m, stns, lambda i, sc, mid, rings=rings: rings[i], 0,
+                  lambda a_, b_: False, (0.0, 0.0, sg),
+                  lambda c, sg=sg: blade_out(c, sg), PROP_GREY, mat="metal")
     return m
+
+
+def blade_out(c, sg):
+    """Outward from a blade's pitch axis (the radial line through the hub)."""
+    return Vector((c.x, c.y - PROP_Y, 0.0))
 
 
 def build_prop_disc(d):
     m = Mesh("prop_disc", origin=(0.0, PROP_Y, PROP_Z), shade=False, detail=d)
     ns = count(48, d, 12)
     rings = []
-    for r in (0.175, PROP_R):
+    for r in [lerp(0.175, PROP_R, (i / 5) ** 0.8) for i in range(6)]:
         rings.append([Vector((r * math.cos(2 * math.pi * j / ns), PROP_Y - 0.01,
                               PROP_Z + r * math.sin(2 * math.pi * j / ns))) for j in range(ns)])
     f = m.rings(rings, close_ring=True, solid=False, mat="hud", color=srgb(0.5, 0.5, 0.5, 0.25),
@@ -859,6 +1261,7 @@ NOSE_R = 0.180
 
 
 FAIRING_CUT = 0.07  # the fairing's flat bottom is this far below the axle
+FAIRING_ERR = 0.0006  # chordal target of the fairings (they are seen from 8 m at the closest)
 
 
 def _wheel(m, centre, ro, width, d):
@@ -866,18 +1269,26 @@ def _wheel(m, centre, ro, width, d):
     cx, cy, cz = centre
     rr = ro * 0.55
     h = ro - rr
-    ns = count(12, d, 4)
-    nt = count(12, d, 6)
-    prof = []
-    for k in range(nt):
-        sx, sz = superellipse_point(2 * math.pi * k / nt, 3.0)
+    ns = count(20, d, 4)
+    nt = count(24, d, 6)
+    prof = []  # the outer part of the section only: the inside faces the axle in the fairing
+    for k in range(nt + 1):
+        a = -0.2 * math.pi + 1.4 * math.pi * k / nt
+        sx, sz = superellipse_point(a, 3.0)
         prof.append((0.5 * width * sx, rr + h * (0.5 + 0.5 * sz)))
-    half = math.acos(min(1.0, (FAIRING_CUT - 0.015) / ro))  # 15 mm up into the fairing
+    half = math.acos(min(1.0, (FAIRING_CUT - 0.004) / ro))  # 4 mm up into the fairing
     phis = stations(-0.5 * math.pi - half, -0.5 * math.pi + half, ns, cosine=False)
     rings = [[Vector((cx + u, cy + r * math.cos(phi), cz + r * math.sin(phi))) for phi in phis]
              for u, r in prof]
-    tyre = m.rings(rings, wrap_rings=True, close_ring=False, mat="dark", color=RUBBER,
-                   smooth=True, solid=False, rounded=True)
+    tyre = m.rings(rings, close_ring=False, mat="dark", color=RUBBER, smooth=True,
+                   solid=False, rounded=True)
+    for u, r_in in (prof[0], prof[-1]):  # hub faces closing each sidewall, below the floor
+        hh = math.acos(min(1.0, (FAIRING_CUT - 0.004) / r_in))
+        hp = stations(-0.5 * math.pi - hh, -0.5 * math.pi + hh, count(10, d, 3), cosine=False)
+        hub = m.rings([[Vector((cx + u, cy + rad * math.cos(phi), cz + rad * math.sin(phi)))
+                        for phi in hp] for rad in (r_in, FAIRING_CUT + 0.004)], close_ring=False,
+                      mat="metal", color=STEEL, solid=False)
+        m.orient(hub, lambda c, sx=math.copysign(1.0, u): (sx, 0.0, 0.0))
     core = rr + 0.5 * h
 
     def out(c):  # away from the tyre's core circle
@@ -896,27 +1307,45 @@ def _fairing(m, centre, length, width, height, d):
     """Wheel speed fairing: a closed teardrop with a flat bottom FAIRING_CUT below the axle;
     the tyre shows through the bottom (a slot in the real one)."""
     cx, cy, cz = centre
-    ns = count(20, d, 8)
-    k = count(14, d, 5)
+    ns = count(22, d, 8)
+    k = count(16, d, 5)
     zc = cz + 0.10
     zcut = cz - FAIRING_CUT
     nf = count(4, d, 2)
+    # arc stations from the curvature of the widest section (a tall, narrow ellipse)
+    a_w, a_h = 0.5 * width, zc + 0.5 * height - zcut
+    grid = [math.pi * i / 2000 for i in range(2001)]
+    pts = [Vector((-a_w * math.cos(a), 0.0, a_h * math.sin(a))) for a in grid]
+    dens = _turn_density(pts, FAIRING_ERR)
+    inc = [0.0] + [max(0.5 * (dens[i] + dens[i - 1]), (pts[i] - pts[i - 1]).length / 0.08)
+                   for i in range(1, len(pts))]
+    arc = adaptive_grid(grid, inc, (), d)
+    ns = len(arc) - 1
     rings = []
-    for t in stations(0.0, 1.0, k)[1:]:
+    # lengthwise stations in u (t = u^2 resolves the round nose) from the curvature of the
+    # crown line and the side line
+    ug = [math.sqrt(0.97) * i / 2000 for i in range(2001)]
+    crown = [Vector((0.0, length * u * u, a_h * fairing_r(u * u))) for u in ug]
+    sidel = [Vector((a_w * fairing_r(u * u), length * u * u, 0.0)) for u in ug]
+    dc, ds = _turn_density(crown, FAIRING_ERR), _turn_density(sidel, FAIRING_ERR)
+    inc = [0.0] + [max(0.5 * (dc[i] + dc[i - 1]), 0.5 * (ds[i] + ds[i - 1]),
+                       (crown[i] - crown[i - 1]).length / 0.08) for i in range(1, len(ug))]
+    for u in adaptive_grid(ug, inc, (), d)[1:]:
+        t = u * u
         y = cy - 0.36 * length + length * t
         r = fairing_r(t)
         top = zcut + (zc + 0.5 * height - zcut) * r
         ring = []
-        for j in range(ns + 1):  # arc over the top, from the right floor corner to the left
-            a = math.pi * j / ns
+        for a in arc:  # arc over the top, from the right floor corner to the left
             ring.append(Vector((cx - 0.5 * width * r * math.cos(a), y,
-                                zcut + (top - zcut) * math.sin(a) ** 0.85)))
+                                zcut + (top - zcut) * math.sin(a))))
         for j in range(1, nf):  # the floor back to the right
             ring.append(Vector((cx + 0.5 * width * r * (1 - 2 * j / nf), y, zcut)))
         rings.append(ring)
     nose = Vector((cx, cy - 0.36 * length, zcut))
     rings.insert(0, [nose] * len(rings[0]))
     f = m.rings(rings, mat="paint", color=PAINT, smooth=True, solid=False)
+    f += ring_cap(m, m.last_rings[-1], 0, ns, "paint", PAINT, lambda c: (0.0, 1.0, 0.0))
 
     def out(c):
         t = max(0.0, min(1.0, (c.y - (cy - 0.36 * length)) / length))
@@ -929,20 +1358,27 @@ def build_gear(d):
     m = Mesh("gear", detail=d)
     for side in (LEFT, RIGHT):
         # spring-steel leg from the lower fuselage side out to the axle
-        w = fus_section(MAIN_Y)[0]
-        top = Vector((side * (w - 0.05), MAIN_Y, -0.50))
+        top = Vector((side * (skin_x(MAIN_Y, -0.50) - 0.012), MAIN_Y, -0.50))
         end = Vector((side * (MAIN_X - 0.09), MAIN_Y, GROUND + MAIN_R + 0.02))  # in the fairing
         k = count(6, d, 3)
         pts = [top.lerp(end, i / k) for i in range(k + 1)]
-        m.sweep(pts, 0.032, 8, mat="paint", color=PAINT)
+        m.sweep(pts, 0.032, 16, mat="paint", color=PAINT)
         _wheel(m, (side * MAIN_X, MAIN_Y, GROUND + MAIN_R), MAIN_R, 0.15, d)
         _fairing(m, (side * MAIN_X, MAIN_Y, GROUND + MAIN_R), 0.80, 0.26, 0.42, d)
     # nose leg (oleo) from under the firewall to the fork
-    top = Vector((0.0, -1.62, -0.50))
+    top = Vector((0.0, -1.62, fus_point(-1.62, -0.5 * math.pi).z + 0.012))
     hub = Vector((0.0, NOSE_Y, GROUND + NOSE_R))
-    m.tube(top, top.lerp(hub, 0.55), 0.045, 0.045, 10, mat="metal", color=STEEL)
-    m.tube(top.lerp(hub, 0.5), top.lerp(hub, 0.80), 0.032, 0.032, 10, mat="metal",
-           color=STEEL)
+    t_end = (top.z - (hub.z + 0.25)) / (top.z - hub.z)  # 3 cm into the fairing's crown
+    axis = (hub - top).normalized()
+    u_ = axis.cross(Vector((1.0, 0.0, 0.0))).normalized()
+    v_ = axis.cross(u_)
+    seg = count(16, d, 8)
+    oleo = []
+    for t, r in ((0.0, 0.045), (0.55, 0.045), (0.55, 0.032), (t_end, 0.032)):
+        c = top.lerp(hub, t)
+        oleo.append([c + r * (math.cos(2 * math.pi * k / seg) * u_ + math.sin(2 * math.pi * k / seg)
+                              * v_) for k in range(seg)])
+    m.rings(oleo, mat="metal", color=STEEL, smooth=True, caps=(False, False), rounded=True)
     _wheel(m, (0.0, NOSE_Y, GROUND + NOSE_R), NOSE_R, 0.13, d)
     _fairing(m, (0.0, NOSE_Y, GROUND + NOSE_R), 0.62, 0.22, 0.36, d)
     return m
