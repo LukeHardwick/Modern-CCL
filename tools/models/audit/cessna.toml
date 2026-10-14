@@ -126,8 +126,8 @@ rudder = [2, -24.0]
 [[poses]]
 name = "doors_open"
 [poses.rotate]
-door_l = [2, 70.0]
-door_r = [2, -70.0]
+door_l = [2, -70.0]   # outwards (sign fixed at the T22d review; positive yaw is nose left)
+door_r = [2, 70.0]
 
 [[poses]]
 name = "prop_turned"       # the blades a quarter turn on, so the spinner and cowl face behind

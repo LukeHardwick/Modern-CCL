@@ -10,4 +10,7 @@ drawings or markings were used, and none is affiliated with or endorsed by any m
 | `cessna.glb` | Generic high-wing four-seat light aircraft, proportions from the published dimensions of the Cessna 172R/S (not affiliated); hero tier with a cockpit interior | `tools/models/cessna.py` (task T22d) |
 | `cessna_lod1.glb`, `cessna_lod2.glb`, `cessna_lod3.glb` | Lower levels of detail of `cessna.glb` (same nodes and pivots, no cockpit) | `make_models.py --lods` |
 
-Rebuild: `blender --background --python tools/models/make_models.py -- --out databases/sample/models --only cessna --lods`
+Rebuild (headless, without user add-ons or bytecode caches, so the output is byte-identical):
+
+    blender --background --factory-startup --python-expr "import sys; sys.dont_write_bytecode=True" \
+        --python tools/models/make_models.py -- --out databases/sample/models --only cessna --lods

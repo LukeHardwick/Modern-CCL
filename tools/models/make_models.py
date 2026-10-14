@@ -93,7 +93,9 @@ DEFLECT = {
     "aileron_l": (0, 22.0), "aileron_r": (0, -22.0), "flap_l": (0, -28.0),
     "flap_r": (0, -28.0), "elevator": (0, -14.0), "rudder": (2, 22.0),
     "airbrake": (0, -50.0), "canopy": (1, -65.0), "turret": (2, 40.0), "barrel": (0, 15.0),
-    "door_l": (2, 70.0), "door_r": (2, -70.0), "propeller": (1, 35.0),
+    # doors hinge at the front edge: positive yaw (nose left) would swing the left door into
+    # the cabin, so the left door opens with negative yaw and the right with positive
+    "door_l": (2, -70.0), "door_r": (2, 70.0), "propeller": (1, 35.0),
 }
 
 # ---------------------------------------------------------------- export and checks

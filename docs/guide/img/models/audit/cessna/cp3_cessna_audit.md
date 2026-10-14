@@ -1,6 +1,6 @@
 # Model audit: cessna
 
-Model `cessna.glb` (1.20 MB, sha256 `e809ba59291f`) against reference `cessna.glb` (sha256 `aa88354bd127`), config `cessna.toml`; mode **full**.
+Model `cessna.glb` (1.20 MB, sha256 `fc5a6a5617ea`) against reference `cessna.glb` (sha256 `ec0a187cb44e`), config `cessna.toml`; mode **full**.
 Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft (nose at -y), z = up.
 
 **92 of 107 gates pass; 15 fail (0 hard).** Overall: **FAIL**.
@@ -20,21 +20,21 @@ Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft 
 | A | Shape accuracy exterior: reference to model p99 | 0.76 mm | <= 1.00 mm | PASS |
 | A | Not measured exterior: share of the visible area | 0.00 % | <= 2.00 % | PASS |
 | B | Shading cockpit: normal error max | 28.72° | <= 10.00° | **FAIL** |
-| B | Shading cockpit: normal error p95 | 0.53° | <= 2.00° | PASS |
+| B | Shading cockpit: normal error p95 | 0.54° | <= 2.00° | PASS |
 | B | Shading exterior: normal error max | 90.00° | <= 10.00° | **FAIL** |
 | B | Shading exterior: normal error p95 | 1.65° | <= 2.00° | PASS |
 | C | Simplification headroom cockpit component 2 (2354 tris) | 40.06 % | <= 15.00 % | **FAIL** |
 | C | Simplification headroom fuselage component 0 (9170 tris) | 30.01 % | <= 15.00 % | **FAIL** |
 | C | Hidden triangles aileron_l | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles aileron_r | 0.00 % | <= 2.00 % | PASS |
-| C | Hidden triangles cockpit | 14.47 % | <= 2.00 % | **FAIL** |
+| C | Hidden triangles cockpit | 5.37 % | <= 2.00 % | **FAIL** |
 | C | Hidden triangles door_l | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles door_r | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles elevator | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles flap_l | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles flap_r | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles fuselage | 2.36 % | <= 2.00 % | **FAIL** |
-| C | Hidden triangles gear | 2.38 % | <= 2.00 % | **FAIL** |
+| C | Hidden triangles gear | 2.50 % | <= 2.00 % | **FAIL** |
 | C | Hidden triangles prop_disc | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles propeller | 0.00 % | <= 2.00 % | PASS |
 | C | Hidden triangles rudder | 0.00 % | <= 2.00 % | PASS |
@@ -117,7 +117,7 @@ Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft 
 
 ## Model
 
-39 062 triangles, 26 134 vertices (0.67 per triangle), 17 nodes, 32 primitives (draw calls), 6 materials; largest primitive 6 875 vertices. Size 8.280 × 11.010 × 2.720 m (length × span × height). Hidden: 1 800 triangles (4.61 % of the non-degenerate ones).
+39 062 triangles, 26 134 vertices (0.67 per triangle), 17 nodes, 32 primitives (draw calls), 6 materials; largest primitive 6 875 vertices. Size 8.280 × 11.010 × 2.720 m (length × span × height). Hidden: 1 031 triangles (2.64 % of the non-degenerate ones).
 
 ## Per node
 
@@ -127,14 +127,14 @@ Shape and shading over the triangles that are measured: seen (hidden and flipped
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | aileron_l | exterior | 150 | 0.80 | 0.29 / 0.29 | 0.18 / 0.26 | 0.37 / 0.68 | 0.0 % | 0.0 % | 0 | 6.7 % | 8.0 % | 12 |
 | aileron_r | exterior | 150 | 0.80 | 0.29 / 0.29 | 0.18 / 0.26 | 0.37 / 87.24 | 0.0 % | 0.0 % | 0 | 4.0 % | 5.3 % | 8 |
-| cockpit | cockpit | 8543 | 0.80 | 0.70 / 2.43 | 0.48 / 2.27 | 0.53 / 28.72 | 0.0 % | 14.5 % | 0 | 0.0 % | 0.0 % | 98 |
+| cockpit | cockpit | 8543 | 0.80 | 0.70 / 2.43 | 0.48 / 2.27 | 0.54 / 28.72 | 0.0 % | 5.4 % | 0 | 0.0 % | 0.0 % | 98 |
 | door_l | exterior | 978 | 0.85 | 0.84 / 0.86 | 0.74 / 0.79 | 2.57 / 90.00 | 0.0 % | 0.0 % | 0 | 0.0 % | 0.0 % | 0 |
 | door_r | exterior | 978 | 0.85 | 0.84 / 0.86 | 0.74 / 0.79 | 2.57 / 90.00 | 0.0 % | 0.0 % | 0 | 0.0 % | 0.0 % | 0 |
 | elevator | exterior | 252 | 0.84 | 0.11 / 0.11 | 0.09 / 0.10 | 0.20 / 89.28 | 0.0 % | 0.0 % | 0 | 7.1 % | 8.7 % | 22 |
 | flap_l | exterior | 122 | 0.84 | 0.24 / 0.25 | 0.22 / 0.23 | 0.50 / 0.68 | 0.0 % | 0.0 % | 0 | 1.6 % | 3.3 % | 4 |
 | flap_r | exterior | 122 | 0.84 | 0.24 / 0.25 | 0.22 / 0.23 | 0.50 / 0.68 | 0.0 % | 0.0 % | 0 | 2.5 % | 6.6 % | 8 |
 | fuselage | exterior | 13233 | 0.62 | 1.07 / 1.96 | 0.84 / 2.45 | 1.94 / 88.58 | 0.0 % | 2.4 % | 0 | 3.8 % | 4.4 % | 356 |
-| gear | exterior | 6562 | 0.58 | 0.97 / 1.03 | 0.79 / 1.01 | 2.37 / 90.00 | 0.0 % | 2.4 % | 0 | 13.4 % | 5.1 % | 21 |
+| gear | exterior | 6562 | 0.58 | 0.97 / 1.03 | 0.79 / 1.01 | 2.37 / 90.00 | 0.0 % | 2.5 % | 0 | 13.4 % | 5.1 % | 21 |
 | prop_disc | exterior | 480 | 0.60 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.0 % | 0.0 % | 0 | 0.0 % | 0.0 % | 0 |
 | propeller | exterior | 3132 | 0.59 | 1.09 / 1.65 | 0.74 / 1.67 | 6.47 / 56.41 | 0.0 % | 0.0 % | 0 | 10.9 % | 7.5 % | 0 |
 | rudder | exterior | 282 | 0.72 | 0.69 / 0.94 | 0.41 / 0.82 | 0.36 / 89.77 | 0.0 % | 0.0 % | 0 | 1.1 % | 2.5 % | 8 |
@@ -147,14 +147,14 @@ Error map (share of each node's area by per-triangle error ÷ the group's p99 ga
 |---|---|---|---|---|
 | aileron_l | 24.6 % | 75.3 % | 0.0 % | 0.0 % |
 | aileron_r | 24.6 % | 75.3 % | 0.0 % | 0.0 % |
-| cockpit | 66.0 % | 4.7 % | 17.2 % | 12.2 % |
+| cockpit | 65.5 % | 4.8 % | 17.4 % | 12.3 % |
 | door_l | 7.9 % | 79.7 % | 12.4 % | 0.0 % |
 | door_r | 7.9 % | 79.7 % | 12.4 % | 0.0 % |
 | elevator | 93.3 % | 6.7 % | 0.0 % | 0.0 % |
 | flap_l | 40.6 % | 59.4 % | 0.0 % | 0.0 % |
 | flap_r | 40.6 % | 59.4 % | 0.0 % | 0.0 % |
 | fuselage | 8.1 % | 49.6 % | 40.2 % | 2.1 % |
-| gear | 15.4 % | 12.5 % | 71.8 % | 0.4 % |
+| gear | 15.3 % | 12.5 % | 71.8 % | 0.4 % |
 | prop_disc | 100.0 % | 0.0 % | 0.0 % | 0.0 % |
 | propeller | 13.8 % | 49.9 % | 35.1 % | 1.2 % |
 | rudder | 36.8 % | 59.6 % | 3.5 % | 0.0 % |
@@ -174,21 +174,21 @@ Large connected pieces, decimated (Blender Decimate, collapse) until the shape e
 
 | Node | Tris | Area (m²) | Centre (x, y, z) m | Size (m) |
 |---|---|---|---|---|
-| cockpit | 205 | 0.0127 | (-0.27, -0.94, 0.09) | 0.31 × 0.03 × 0.07 |
-| cockpit | 174 | 0.0109 | (0.27, -0.94, 0.09) | 0.31 × 0.03 × 0.07 |
+| cockpit | 66 | 0.0049 | (-0.25, -0.94, 0.08) | 0.12 × 0.03 × 0.02 |
+| cockpit | 66 | 0.0049 | (0.25, -0.94, 0.08) | 0.12 × 0.03 × 0.02 |
 | fuselage | 52 | 0.1624 | (0.00, 4.42, 0.29) | 0.18 × 1.46 × 0.12 |
-| cockpit | 36 | 0.0053 | (0.27, -1.22, 0.18) | 0.08 × 0.00 × 0.09 |
-| cockpit | 36 | 0.0053 | (0.38, -1.22, 0.18) | 0.08 × 0.00 × 0.09 |
 | fuselage | 35 | 0.0449 | (-0.16, 4.49, 0.16) | 0.10 × 0.68 × 0.11 |
 | fuselage | 35 | 0.0447 | (0.16, 4.49, 0.16) | 0.10 × 0.68 × 0.11 |
-| cockpit | 34 | 0.0033 | (-0.41, -1.22, 0.26) | 0.06 × 0.00 × 0.07 |
-| cockpit | 34 | 0.0012 | (0.19, -1.22, 0.06) | 0.05 × 0.00 × 0.04 |
-| cockpit | 34 | 0.0052 | (0.38, -1.22, 0.30) | 0.09 × 0.00 × 0.09 |
-| cockpit | 33 | 0.0013 | (0.27, -1.22, 0.06) | 0.05 × 0.00 × 0.04 |
-| cockpit | 33 | 0.0013 | (0.35, -1.22, 0.06) | 0.05 × 0.00 × 0.04 |
-| cockpit | 33 | 0.0013 | (0.43, -1.22, 0.06) | 0.05 × 0.00 × 0.04 |
+| cockpit | 27 | 0.0362 | (-0.34, 0.28, 0.96) | 0.05 × 1.05 × 0.02 |
+| cockpit | 26 | 0.0366 | (0.34, 0.28, 0.97) | 0.05 × 1.05 × 0.02 |
 | fuselage | 25 | 0.1415 | (-0.06, 0.14, 0.99) | 0.69 × 1.09 × 0.03 |
 | wing_l | 21 | 0.3235 | (0.15, 0.30, 0.96) | 0.31 × 1.10 × 0.03 |
+| wing_r | 19 | 0.2908 | (-0.15, 0.25, 0.96) | 0.31 × 0.99 × 0.02 |
+| fuselage | 18 | 0.0608 | (0.36, 0.28, 0.98) | 0.08 × 1.05 × 0.02 |
+| cockpit | 17 | 0.0050 | (0.27, -1.22, 0.18) | 0.07 × 0.00 × 0.09 |
+| cockpit | 16 | 0.0007 | (0.06, -1.15, -0.02) | 0.03 × 0.00 × 0.03 |
+| cockpit | 16 | 0.0050 | (0.16, -1.22, 0.18) | 0.08 × 0.00 × 0.09 |
+| cockpit | 16 | 0.0050 | (0.16, -1.22, 0.30) | 0.08 × 0.00 × 0.09 |
 
 ## Flipped triangles: largest clusters
 
@@ -217,4 +217,4 @@ Degenerate 0, slivers 611, duplicate faces (same winding) 0, back-to-back face p
 
 ## Runtime
 
-load 0.5 s, topology 0.1 s, shape+shading 2.5 s, visibility 6.4 s, hygiene 0.2 s, headroom 2.1 s, profiles 0.1 s, total 12.2 s, images 6.4 s; the visibility check ran in 4 worker processes and this one (the only part of this report that changes between runs).
+load 0.5 s, topology 0.1 s, shape+shading 2.5 s, visibility 5.4 s, hygiene 0.2 s, headroom 2.0 s, profiles 0.1 s, total 11.1 s, images 6.5 s; the visibility check ran in 4 worker processes and this one (the only part of this report that changes between runs).

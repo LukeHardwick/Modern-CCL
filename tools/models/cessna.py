@@ -13,13 +13,11 @@
 import bisect
 import math
 
-import bmesh
 
 from mathutils import Matrix, Vector
 
-from mm_common import (LEFT, RIGHT, Mesh, count, empty, hash01, lerp, make_ao, make_materials,
-                       mix, naca_t, pchip, smoothstep, srgb, station_counts, stations,
-                       superellipse_point, tip_params, tone)
+from mm_common import (LEFT, RIGHT, Mesh, count, empty, lerp, make_ao, make_materials, naca_t,
+                       pchip, smoothstep, srgb, stations, superellipse_point)
 
 Y_NOSE = -2.53     # spinner tip
 Y_TAIL_END = 5.75  # rudder trailing edge
@@ -164,9 +162,9 @@ BACK_WIN_Y = (1.24, 1.95)       # rear (overhead) window behind the wing
 BACK_WIN_TH = 0.55
 ROOF_CUT_Y = (-0.25, 0.80)      # the cabin roof inside the wing centre section is left out
 ROOF_CUT_TH = 1.30
-STRIPE_Z = (0.05, 0.17)
+STRIPE_Z = (0.05, 0.17)         # cheat line on the sides (behind the cowl)
 BULKHEAD_Y = 2.15               # rear wall of the baggage area
-FIREWALL_Y = -1.55              # between the engine compartment and the cabin         # cheat line on the sides (behind the cowl)
+FIREWALL_Y = -1.55              # between the engine compartment and the cabin
 
 TH_DOOR = (side_th(DOOR_Z[0]), side_th(DOOR_Z[1]))
 TH_DOOR_WIN = (side_th(DOOR_WIN_Z[0]), side_th(DOOR_WIN_Z[1]))
@@ -193,7 +191,7 @@ def fus_th_knots():
 
 
 FUS_Y_KNOTS = (DOOR_Y + DOOR_WIN_Y + REAR_WIN_Y + WS_Y + BACK_WIN_Y + ROOF_CUT_Y
-               + (-1.55, Y_FUS_END - 0.6))
+               + (FIREWALL_Y, Y_FUS_END - 0.6))
 
 
 def _in(v, lo_hi):
@@ -223,7 +221,7 @@ def fus_material(y, th):
 
 
 def paint_color(y, t, base):
-    if y > -1.55 and _in(t, TH_STRIPE):
+    if y > FIREWALL_Y and _in(t, TH_STRIPE):
         return STRIPE
     return base
 
@@ -560,7 +558,6 @@ def control_surface(name, side, x0, x1, hinge_y, d, pivot_drop=0.0):
     node pivot is on the hinge line (dropped below it by `pivot_drop` for a flap whose tracks
     move it aft as well as down)."""
     xm = (x0 + x1) / 2
-    le, te, up = wing_frame(xm)
     zc = wing_surface_z(xm, hinge_y, True)
     zl = wing_surface_z(xm, hinge_y, False)
     m = Mesh(name, origin=(side * xm, hinge_y, (zc + zl) / 2 - pivot_drop), detail=d)
@@ -1108,8 +1105,8 @@ def inlet(m, xc, zc, rx, rz, seg):
 
 
 def build_details(m, d):
-    """Fuselage-node detail: dorsal fin, cowl inlets and exhaust, lights, antennas, door-post
-    step, tail tie-down."""
+    """Fuselage-node detail: dorsal fin, cowl inlets and exhaust, beacon, antennas, door
+    handles, tail tie-down."""
     build_dorsal(m, d)
     seg = count(16, d, 8)
     for side in (LEFT, RIGHT):  # cowl air inlets either side of the spinner
@@ -1148,7 +1145,6 @@ def build_struts(m, d):
         le, te, _ = wing_frame(STRUT_X)
         y_top = le.y + 0.30 * (te.y - le.y)
         z_top = wing_surface_z(STRUT_X, y_top, False) + 0.01
-        w = fus_section(0.25)[0]
         a = Vector((side * (skin_x(0.25, -0.30) - 0.02), 0.25, -0.30))
         b = Vector((side * STRUT_X, y_top, z_top))
         strut(m, a, b, 0.105, 0.34, d)
@@ -1249,7 +1245,9 @@ def build_propeller(d):
                      else lerp(0.07, 0.155, smoothstep((r - 0.15) / 0.10)))
             beta = math.atan2(1.52, 2 * math.pi * max(r, 0.2))
             # chord direction in the x-y plane, rotated by the pitch angle
-            cdir = Vector((-sg * math.cos(beta), math.sin(beta), 0.0))
+            # clockwise seen from the cockpit (as the 172's Lycoming): the upper blade moves
+            # towards -x (vehicle right), so its leading edge is on -x
+            cdir = Vector((sg * math.cos(beta), math.sin(beta), 0.0))
             up = cdir.cross(Vector((0.0, 0.0, 1.0))).normalized()
             if up.y > 0.0:  # the cambered (suction) face looks forward
                 up = -up
@@ -1693,7 +1691,7 @@ def build(d=1.0, cockpit=True, extras=True):
         names.append(p.name)
     disc.finish(mats, parent=fus)
     names.append("prop_disc")
-    if d >= 0.0 and cockpit:
+    if cockpit:
         cock = build_cockpit(d)
         cock.finish(mats, parent=fus)
         names.append("cockpit")

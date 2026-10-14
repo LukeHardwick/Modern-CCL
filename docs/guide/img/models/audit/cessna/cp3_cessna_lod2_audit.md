@@ -1,6 +1,6 @@
 # Model audit: cessna_lod2
 
-Model `cessna_lod2.glb` (0.10 MB, sha256 `cb392d9f1239`) against reference `cessna.glb` (sha256 `e809ba59291f`), config `cessna_lod2.toml`; mode **full**.
+Model `cessna_lod2.glb` (0.10 MB, sha256 `d8f367f706d7`) against reference `cessna.glb` (sha256 `fc5a6a5617ea`), config `cessna_lod2.toml`; mode **full**.
 Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft (nose at -y), z = up.
 
 **54 of 64 gates pass; 10 fail (2 hard).** Overall: **FAIL (hard)**.
@@ -135,11 +135,11 @@ Error map (share of each node's area by per-triangle error ÷ the group's p99 ga
 |---|---|---|---|---|
 | fuselage | 13 | 0.5186 | (0.01, -1.68, -0.32) | 1.03 × 0.56 × 0.54 |
 | fuselage | 6 | 0.2860 | (1.67, 0.18, 0.38) | 2.37 × 0.27 × 1.35 |
-| propeller | 6 | 0.0702 | (-0.02, -2.29, 0.45) | 0.13 × 0.09 × 0.54 |
-| propeller | 6 | 0.0702 | (0.02, -2.29, -0.39) | 0.13 × 0.09 × 0.54 |
+| propeller | 6 | 0.0702 | (-0.02, -2.29, -0.39) | 0.13 × 0.09 × 0.54 |
+| propeller | 6 | 0.0702 | (0.02, -2.29, 0.45) | 0.13 × 0.09 × 0.54 |
 | fuselage | 4 | 0.1906 | (-1.67, 0.15, 0.38) | 2.37 × 0.22 × 1.35 |
-| propeller | 4 | 0.0081 | (-0.02, -2.30, 0.94) | 0.11 × 0.03 × 0.08 |
-| propeller | 4 | 0.0081 | (0.02, -2.30, -0.89) | 0.11 × 0.03 × 0.08 |
+| propeller | 4 | 0.0081 | (-0.02, -2.30, -0.89) | 0.11 × 0.03 × 0.08 |
+| propeller | 4 | 0.0081 | (0.02, -2.30, 0.94) | 0.11 × 0.03 × 0.08 |
 | fuselage | 3 | 0.0028 | (-0.12, 4.85, 0.16) | 0.08 × 0.60 × 0.02 |
 | fuselage | 2 | 0.1517 | (-0.52, 0.45, -0.16) | 0.08 × 0.70 × 0.43 |
 | fuselage | 2 | 0.0446 | (-0.48, -1.68, 0.21) | 0.10 × 0.56 × 0.16 |
@@ -147,7 +147,7 @@ Error map (share of each node's area by per-triangle error ÷ the group's p99 ga
 | fuselage | 2 | 0.0473 | (-0.30, -1.68, 0.42) | 0.24 × 0.56 × 0.11 |
 | fuselage | 2 | 0.1863 | (0.04, 1.59, 0.85) | 0.51 × 0.71 × 0.21 |
 | fuselage | 2 | 0.0474 | (0.32, -1.68, 0.41) | 0.16 × 0.56 × 0.20 |
-| propeller | 2 | 0.0051 | (0.03, -2.26, -0.13) | 0.07 × 0.08 × 0.02 |
+| door_l | 1 | 0.0666 | (0.53, -0.70, 0.61) | 0.06 × 0.32 × 0.53 |
 
 ## Hygiene
 
@@ -155,7 +155,7 @@ Degenerate 3, slivers 122, duplicate faces (same winding) 0, back-to-back face p
 
 ## Warnings
 
-- 99 visible triangles face the opposite way in the reference (nodes aileron_l, aileron_r, door_l, door_r, fuselage, gear, propeller, rudder, wing_l, wing_r): the reference build is flipped there
+- 97 visible triangles face the opposite way in the reference (nodes aileron_l, aileron_r, door_l, door_r, fuselage, gear, rudder, wing_l, wing_r): the reference build is flipped there
 - node door_l: 4 triangles on curved surfaces (0.4 % of its visible area) are tessellated exactly as in the reference, so their shape error is not measured and they are left out of checks A and B (the generator does not scale them with --detail)
 - node door_r: 4 triangles on curved surfaces (0.4 % of its visible area) are tessellated exactly as in the reference, so their shape error is not measured and they are left out of checks A and B (the generator does not scale them with --detail)
 - reference node cockpit is missing from the model

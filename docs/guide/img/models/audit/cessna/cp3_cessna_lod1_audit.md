@@ -1,6 +1,6 @@
 # Model audit: cessna_lod1
 
-Model `cessna_lod1.glb` (0.18 MB, sha256 `4c2f769c57f6`) against reference `cessna.glb` (sha256 `e809ba59291f`), config `cessna_lod1.toml`; mode **full**.
+Model `cessna_lod1.glb` (0.18 MB, sha256 `3cec1bad7d8f`) against reference `cessna.glb` (sha256 `fc5a6a5617ea`), config `cessna_lod1.toml`; mode **full**.
 Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft (nose at -y), z = up.
 
 **55 of 64 gates pass; 9 fail (2 hard).** Overall: **FAIL (hard)**.
@@ -58,7 +58,7 @@ Coordinates: modelling frame of tools/models: metres, x = vehicle left, y = aft 
 | C | Vertices per triangle | 0.810 | <= 0.650 | **FAIL** |
 | D | Degenerate triangles | 1 | <= 0 | **FAIL (hard)** |
 | D | Duplicate faces | 0 | <= 0 | PASS |
-| D | Flipped faces | 37 | <= 0 | **FAIL (hard)** |
+| D | Flipped faces | 38 | <= 0 | **FAIL (hard)** |
 | D | Floating islands | 0 | <= 0 | PASS |
 | D | Sliver triangles (< 2 deg) | 3.19 % | <= 1.00 % | **FAIL** |
 | D | Inconsistent winding (edges) | 0 | <= 0 | PASS |
@@ -92,7 +92,7 @@ Shape and shading over the triangles that are measured: seen (hidden and flipped
 | fuselage | exterior | 1953 | 0.73 | 8.86 / 10.21 | 282.54 / 338.04 | 57.08 / 88.72 | 0.0 % | 1.0 % | 32 | 8.1 % | 10.3 % | 129 |
 | gear | exterior | 850 | 0.72 | 8.06 / 9.38 | 6.56 / 8.34 | 26.72 / 90.00 | 0.0 % | 0.9 % | 0 | 36.0 % | 8.8 % | 8 |
 | prop_disc | exterior | 160 | 0.60 | 2.28 / 2.28 | 0.00 / 0.00 | 0.00 / 0.00 | 0.0 % | 0.0 % | 0 | 0.0 % | 0.0 % | 0 |
-| propeller | exterior | 336 | 0.76 | 7.46 / 8.55 | 6.37 / 8.61 | 46.03 / 68.68 | 0.0 % | 0.0 % | 1 | 8.3 % | 0.6 % | 0 |
+| propeller | exterior | 336 | 0.76 | 7.46 / 8.55 | 6.37 / 8.61 | 46.03 / 68.68 | 0.0 % | 0.0 % | 2 | 8.3 % | 0.6 % | 0 |
 | rudder | exterior | 46 | 1.09 | 4.34 / 4.34 | 2.66 / 3.49 | 1.46 / 89.86 | 0.0 % | 0.0 % | 0 | 2.2 % | 4.3 % | 2 |
 | wing_l | exterior | 288 | 0.88 | 8.03 / 9.57 | 7.09 / 179.42 | 41.35 / 87.98 | 0.0 % | 0.4 % | 0 | 4.2 % | 3.1 % | 0 |
 | wing_r | exterior | 288 | 0.88 | 8.03 / 9.89 | 7.09 / 23.31 | 41.35 / 87.98 | 0.0 % | 0.4 % | 0 | 4.2 % | 3.1 % | 0 |
@@ -111,7 +111,7 @@ Error map (share of each node's area by per-triangle error ÷ the group's p99 ga
 | fuselage | 10.3 % | 86.3 % | 3.4 % | 0.0 % |
 | gear | 16.2 % | 82.7 % | 1.1 % | 0.0 % |
 | prop_disc | 95.7 % | 4.3 % | 0.0 % | 0.0 % |
-| propeller | 21.1 % | 77.9 % | 1.0 % | 0.0 % |
+| propeller | 21.2 % | 77.8 % | 1.0 % | 0.0 % |
 | rudder | 74.2 % | 25.9 % | 0.0 % | 0.0 % |
 | wing_l | 31.1 % | 67.8 % | 1.2 % | 0.0 % |
 | wing_r | 31.1 % | 67.8 % | 1.2 % | 0.0 % |
@@ -146,15 +146,16 @@ Error map (share of each node's area by per-triangle error ÷ the group's p99 ga
 | fuselage | 2 | 0.0309 | (-0.49, -1.59, 0.21) | 0.07 × 0.39 × 0.16 |
 | fuselage | 2 | 0.0309 | (0.49, -1.59, 0.21) | 0.04 × 0.39 × 0.26 |
 | fuselage | 1 | 0.0503 | (0.51, 0.51, -0.28) | 0.05 × 0.58 × 0.19 |
-| propeller | 1 | 0.0019 | (0.03, -2.27, -0.16) | 0.05 × 0.08 × 0.07 |
+| propeller | 1 | 0.0019 | (-0.03, -2.27, -0.16) | 0.05 × 0.08 × 0.07 |
+| propeller | 1 | 0.0019 | (0.03, -2.27, 0.22) | 0.05 × 0.08 × 0.07 |
 
 ## Hygiene
 
-Degenerate 1, slivers 143, duplicate faces (same winding) 0, back-to-back face pairs (not a fault) 0, flipped 37 (back side visible 3, normals against winding 0, normal error > 90° 34), floating islands 0, inconsistent winding edges 0, non-manifold edges 24, open (boundary) edges 397.
+Degenerate 1, slivers 143, duplicate faces (same winding) 0, back-to-back face pairs (not a fault) 0, flipped 38 (back side visible 3, normals against winding 0, normal error > 90° 35), floating islands 0, inconsistent winding edges 0, non-manifold edges 24, open (boundary) edges 397.
 
 ## Warnings
 
-- 129 visible triangles face the opposite way in the reference (nodes aileron_l, aileron_r, door_l, door_r, fuselage, gear, propeller, rudder, wing_l, wing_r): the reference build is flipped there
+- 127 visible triangles face the opposite way in the reference (nodes aileron_l, aileron_r, door_l, door_r, fuselage, gear, rudder, wing_l, wing_r): the reference build is flipped there
 - node door_l: 2 triangles on curved surfaces (0.2 % of its visible area) are tessellated exactly as in the reference, so their shape error is not measured and they are left out of checks A and B (the generator does not scale them with --detail)
 - node door_r: 2 triangles on curved surfaces (0.2 % of its visible area) are tessellated exactly as in the reference, so their shape error is not measured and they are left out of checks A and B (the generator does not scale them with --detail)
 - node prop_disc: reference has only 3.0x the model's triangles (want >= 4x); its errors are underestimated
@@ -162,4 +163,4 @@ Degenerate 1, slivers 143, duplicate faces (same winding) 0, back-to-back face p
 
 ## Runtime
 
-load 0.1 s, topology 0.0 s, shape+shading 0.5 s, visibility 0.8 s, hygiene 0.0 s, headroom 0.0 s, profiles 0.0 s, total 1.4 s (the only part of this report that changes between runs).
+load 0.1 s, topology 0.0 s, shape+shading 0.5 s, visibility 0.7 s, hygiene 0.0 s, headroom 0.0 s, profiles 0.0 s, total 1.4 s (the only part of this report that changes between runs).

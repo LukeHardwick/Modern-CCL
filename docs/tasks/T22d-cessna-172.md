@@ -202,3 +202,66 @@ required in `cessna.toml`. `cessna.glb` 39 062 triangles, 1.20 MB, 32 primitives
 - Checks: detail_check PASS; two full builds (`--lods --preview --deflect`) byte-identical
   (4 `.glb` + 13 PNG); the jet's `jet.glb` is byte-identical to the committed one after the
   `make_models.py` changes. `databases/sample/models/CREDITS.md` added (jet and Cessna).
+
+**2026-10-14 — Independent Opus review (read-only, of `ef566e5`): merge after fixes.** The
+reviewer reproduced everything: byte-identical rebuilds of all `.glb` and PNG files, the jet
+unchanged, detail_check PASS, the audit numbers, hinge axes and pivots measured in the
+deflected pose, propeller clearance and eyepoints. Fixed in the commit after it:
+- **Doors opened into the cabin:** the yaw sign in `make_models.DEFLECT` and in the
+  `doors_open` audit pose was wrong. Now `door_l` −70°, `door_r` +70° (positive yaw is nose
+  left). This corrects the approved `cessna.toml` pose. With the doors really open, hidden
+  cockpit triangles fell from 14.5 % to 5.4 %.
+- **Propeller turned counter-clockwise from the cockpit:** it is now clockwise, as on the
+  172's Lycoming.
+- **Code tidy-ups:** unused imports and dead code removed, `FIREWALL_Y` used in place of
+  literals, the stray comment fixed, the `build_details` docstring corrected.
+- **CREDITS.md:** gives the full headless rebuild command.
+
+**Every gate still failing (final audits, `docs/guide/img/models/audit/cessna/cp3_*`).**
+- **LOD0 (92/107, no hard failure):**
+  - exterior shading max 90°;
+  - fuselage headroom 30 %;
+  - hidden triangles: fuselage 2.36 %, gear 2.50 %, wing_l 2.48 %, wing_r 2.22 % (the wing's lower surface above the headliner);
+  - slivers 1.56 %;
+  - cockpit shape p99 0.70 mm and max 2.43 mm (reverse 0.48 / 2.27 mm);
+  - cockpit shading max 28.7°;
+  - cockpit headroom 40 %;
+  - hidden cockpit 5.37 %;
+  - vertices per triangle 0.669.
+- **LOD1, 55/64:**
+  - reverse shape p99 181 mm and max 338 mm (the small parts are left out of the LODs: the 0.32 m antennas, the pitot);
+  - shading p95 45.8°;
+  - sub-pixel 11.6 %;
+  - vertices per triangle 0.81;
+  - slivers 3.2 %;
+  - hard: 1 degenerate triangle, 38 flipped faces.
+- **LOD2, 54/64:**
+  - reverse shape p99 143 mm and max 337 mm;
+  - shading p95 78°;
+  - sub-pixel 57 %;
+  - vertices per triangle 0.97;
+  - slivers 5.9 %;
+  - inconsistent winding on 8 edges;
+  - hard: 3 degenerate triangles, 67 flipped faces.
+- **LOD3, 56/64:**
+  - shading p95 86°;
+  - sub-pixel 94 %;
+  - vertices per triangle 1.02;
+  - slivers 6.1 %;
+  - inconsistent winding on 4 edges;
+  - hard: 3 degenerate triangles, 61 flipped faces.
+- The LOD gates (`cessna_lod*.toml`) were written in this session and **still need the user's
+  approval** (`normal_max_deg = 90` there effectively turns that gate off). **LOD2/3 are
+  experimental** until an LOD mode in the generator exists.
+
+**Known and deferred (not built, or only partly).**
+- Not built: panel lines and rivets, window frames, wing-root fairings, steps, the
+  stall-warning vent, the second cheat-line colour, the elevator trim tab, painted propeller
+  tips.
+- Moving parts that intersect when deflected (mostly hidden):
+  - the rudder at ±22° against the elevator and the tail cone;
+  - the elevator's inboard ends inside the tail cone;
+  - the ailerons and flaps at full travel against the wing.
+- The wing hinges are level while the wing has 1.7° dihedral.
+- The brief's "propeller pivot on the spinner axis" holds by construction and is not checked
+  separately.
