@@ -864,5 +864,27 @@ TEST(HostLink, AStaleFrameBeforeTheRequestedStandbyIsNotARestart) {
     EXPECT_EQ(host.stats().ig_restarts, 0U);
 }
 
+TEST(HostLink, AStaleFrameBeforeTheRequestedStandbyDoesNotReplayTheDatabase) {
+    RawPeer peer;
+    FakeClock const clock;
+    HostConfig config = host_config_with(clock);
+    config.database = 5;
+    auto host = Host::over(config, peer.take_other()).value();
+    peer.send(sof_message(10, IgMode::Operate, -5)); // loading: the request is acknowledged
+    peer.send(sof_message(11, IgMode::Operate, 5));  // loaded and running
+    ASSERT_TRUE(host.poll(0ms));
+    ASSERT_EQ(host.state(), LinkState::Operate);
+    static_cast<void>(peer.received());
+    ASSERT_TRUE(host.request_mode(IgMode::ResetStandby));
+    peer.send(sof_message(9, IgMode::Operate, 5));       // reordered
+    peer.send(sof_message(12, IgMode::ResetStandby, 5)); // the IG obeys, still on the database
+    ASSERT_TRUE(host.poll(0ms));
+    EXPECT_EQ(host.state(), LinkState::Standby);
+    EXPECT_EQ(host.stats().ig_restarts, 0U);
+    for (const auto& m : peer.received()) {
+        EXPECT_EQ(control_of(m).database_number, 0); // nothing replayed
+    }
+}
+
 } // namespace
 // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,bugprone-unused-return-value)

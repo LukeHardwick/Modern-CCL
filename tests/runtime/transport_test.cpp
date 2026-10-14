@@ -257,6 +257,42 @@ TEST(FaultTransport, AFailedReleaseNeverFailsAReceive) {
     EXPECT_EQ(next.error().os_error, 5);
 }
 
+/// Refuses every send with the next number (1, 2, 3 ...) as its OS error, so a test can tell
+/// which refusal it was handed.
+class CountsItsFailures final : public DatagramTransport {
+public:
+    Result<void> send(std::span<const std::byte> /*datagram*/) override {
+        return std::unexpected(Error{.code = ErrorCode::TransportError, .os_error = ++failures_});
+    }
+    Result<std::size_t> receive(std::span<std::byte> /*buffer*/,
+                                std::chrono::milliseconds /*timeout*/) override {
+        return std::unexpected(Error{.code = ErrorCode::Timeout});
+    }
+
+private:
+    int failures_ = 0;
+};
+
+TEST(FaultTransport, AFailingSendReturnsItsOwnErrorAndDropsTheDeferredOne) {
+    const FakeClock clock;
+    FaultInjectingTransport faulty{std::make_unique<CountsItsFailures>(), clock.fn()};
+    faulty.set_added_latency(10ms);
+    ASSERT_TRUE(faulty.send(numbered(1))); // queued
+    clock.advance(1000);
+    faulty.set_added_latency(0us);
+    // Releases datagram 1 (inner failure no. 1, deferred), then sends 2 (inner failure no. 2).
+    const auto sent = faulty.send(numbered(2));
+    ASSERT_FALSE(sent);
+    EXPECT_EQ(sent.error().os_error, 2); // its own error, not the deferred one
+    EXPECT_EQ(faulty.stats().release_failures, 1U);
+    EXPECT_EQ(faulty.stats().sent, 2U); // both counted
+    EXPECT_EQ(faulty.stats().released, 1U);
+    // The deferred error is gone: the next failure is the inner transport's third, nothing older.
+    const auto again = faulty.send(numbered(3));
+    ASSERT_FALSE(again);
+    EXPECT_EQ(again.error().os_error, 3);
+}
+
 TEST(FaultTransport, AFailingInnerSendOfAReleasedDatagramIsReported) {
     auto broken = std::make_unique<BrokenTransport>();
     BrokenTransport* inner = broken.get();
