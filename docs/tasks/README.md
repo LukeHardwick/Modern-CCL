@@ -49,6 +49,7 @@ remaining CIGI 3.3 packets, benchmarks and documentation.
 | [T22](T22-gltf-models.md) | glTF models, articulated part nodes, primitive fallback, Database panel | Tools | T20 | 📝 |
 | [T22b](T22b-viewer-render-upgrades.md) | Viewer render upgrades: cockpit pass, instancing, textures/PBR (later) | Tools | T22 | 📝 |
 | [T22c](T22c-model-audit.md) | Deterministic model audit: shape fidelity, needless triangles, hygiene, budgets (Opus) | Tools | T22a CP1 | ⏳ |
+| [T22d](T22d-cessna-172.md) | Hero light aircraft (Cessna 172 class) with cockpit + LODs, from the Blender script, audited (Opus) | Tools | T22a generator, T22c audit | ⏳ |
 | [T23](T23-ig-config-file.md) | `ig.toml` config for `ig_viewer` / `demo_ig` | Tools | T09b P2, T20 | 📝 |
 | [T24](T24-scenario-files.md) | Scenario files replace the hardcoded scripted Host | Tools | T20 | 📝 |
 | [T25](T25-record-replay.md) | Record / replay (pcap + pcapng reader, JSON index, replay panel) | Tools | T09b P2, T10 | 📝 |

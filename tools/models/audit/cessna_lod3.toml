@@ -1,0 +1,124 @@
+# Audit configuration for databases/sample/models/cessna_lod3.glb (task T22d CP3): the level
+# of detail audited against LOD0 (cessna.glb, the reference) at its switch distance 400 m,
+# where a pixel is 427.7 mm (1920 x 1080, 60 deg vertical FOV). Shape gates: p99 within
+# half a pixel, max within two pixels; shading p95 10 deg. Everything else as cessna.toml.
+
+[model]
+name = "cessna_lod3"
+# Published Cessna 172R figures (Wikipedia, accessed 2026-10-14), check E.
+published_size = { length = 8.28, span = 11.00, height = 2.72 }
+eyepoints = []   # no cockpit in the lower levels of detail
+glass_materials = ["glass", "hud"]                 # windows; "hud" = the translucent prop disc
+default_group = "exterior"
+
+[sampling]
+spacing = 0.05       # no two samples on a triangle further apart than this (m)
+inset = 0.01         # samples pulled 1 % towards the centroid, so none sits exactly on a shared edge
+weld = 1e-6          # vertices closer than this count as one for topology (m)
+kmax = 400           # at most 400 subdivisions per edge: spacing holds on triangles up to 20 m
+vis_spacing = 0.25   # coarser sample grid for the visibility rays (m)
+vis_kmax = 64        # up to 16 m; longer triangles get sparser samples (the report warns)
+vis_inset = 0.001    # visibility samples stay at least 1 mm inside every edge (no leaks at seams)
+
+# Design viewing conditions: the closest a viewer is expected to look at each group.
+[view]
+width = 1920
+height = 1080
+vfov_deg = 60.0
+
+[visibility]
+directions = 162     # rays per sample, spread evenly over the front hemisphere
+ray_offset = 1e-4    # rays start 0.1 mm off the surface (m)
+parallel_min = 20000 # from this many triangles, worker processes cast the rays (--jobs N);
+                     # speed only: the results do not depend on it
+worker_timeout = 1200.0  # a worker still running after this many seconds is stopped and its
+                         # share computed in the main process (same result, only slower)
+
+[headroom]
+ratios = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01]
+min_component = 2000 # only connected pieces with at least this many triangles
+slack = 0.05         # a piece that already misses the shape gate may get at most 5 % worse
+max_reverse_points = 50000  # larger pieces use an even subset of the reference points (speed)
+
+[reference]
+min_density = 4.0    # warn when a reference node has fewer than 4x the model's triangles
+
+[gates]
+headroom_max = 0.15        # C: at most 15 % of a large piece's triangles removable without loss
+hidden_max = 0.02          # C: at most 2 % of a node's triangles hidden in every pose
+subpixel_max = 0.10        # C: at most 10 % of a group's triangles smaller than a pixel
+verts_per_tri_max = 0.65   # C: exported vertices per triangle (shared vertices)
+index_max = 65535          # C: raylib 6.0 indices are 16-bit
+degenerate_max = 0         # D
+duplicate_max = 0          # D
+flipped_max = 0            # D
+floating_max = 0           # D
+winding_max = 0            # D
+sliver_max = 0.01          # D: at most 1 % of triangles with an angle under 2 degrees
+size_tolerance = 0.02      # E: length, span and height within 2 % of the published figures
+unmeasured_max = 0.02      # A: at most 2 % of a group's visible area "not measured" (coincides
+                           # with the reference on a curve, so its error cannot be measured)
+# Gates that make the audit exit with status 1 (the others are reported as FAIL only):
+hard = ["index_max", "degenerate_max", "duplicate_max", "flipped_max", "floating_max",
+        "budget_total"]
+
+# Budget: this level's cap (the generator's own detail; the knots of the windows, doors and
+# cheat line set a floor of about 1.7 k triangles, above the plan's 1 k / 200 for LOD2/3).
+[budget]
+total = 2000
+file_bytes = 10000000
+nodes = 24
+materials = 10
+primitives = 40
+[budget.groups]
+exterior = 2000
+
+[[groups]]
+name = "exterior"
+nodes = ["fuselage", "wing_l", "wing_r", "aileron_l", "aileron_r", "flap_l", "flap_r",
+         "elevator", "rudder", "propeller", "prop_disc", "door_l", "door_r", "gear"]
+required = true
+distance = 400.0
+shape_p99 = 0.2138
+shape_max = 0.8553
+normal_p95_deg = 10.0
+normal_max_deg = 90.0
+
+# Poses for the hidden check: a triangle counts as visible if it can be seen in ANY pose.
+# Angles as make_models.DEFLECT: [axis (0 = x, 1 = y, 2 = z), degrees] about the node pivot.
+[[poses]]
+name = "rest"
+
+[[poses]]
+name = "controls"
+[poses.rotate]
+aileron_l = [0, 20.0]
+aileron_r = [0, -15.0]
+flap_l = [0, -30.0]
+flap_r = [0, -30.0]
+elevator = [0, -25.0]
+rudder = [2, 24.0]
+
+[[poses]]
+name = "controls_opposite"
+[poses.rotate]
+aileron_l = [0, -15.0]
+aileron_r = [0, 20.0]
+elevator = [0, 15.0]
+rudder = [2, -24.0]
+
+[[poses]]
+name = "doors_open"
+[poses.rotate]
+door_l = [2, -70.0]   # outwards (sign fixed at the T22d review; positive yaw is nose left)
+door_r = [2, 70.0]
+
+[[poses]]
+name = "prop_turned"       # the blades a quarter turn on, so the spinner and cowl face behind
+[poses.rotate]             # them count as visible
+propeller = [1, 90.0]
+
+[[poses]]
+name = "no_disc"
+hide = ["prop_disc"]
+
