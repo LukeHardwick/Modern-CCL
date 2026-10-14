@@ -94,7 +94,7 @@ DatabaseCatalog::Reload DatabaseCatalog::reload_if_changed() {
             Item item = load_item(manifest);
             if (item.database) {
                 result.updated.push_back(item.database->number);
-            } else {
+            } else if (item.error) {
                 result.errors.push_back(*item.error);
             }
             items_.push_back(std::move(item));
@@ -113,7 +113,9 @@ DatabaseCatalog::Reload DatabaseCatalog::reload_if_changed() {
         } else {
             // Keep the last good version; the error is reported once and stays on the item.
             it->error = fresh.error;
-            result.errors.push_back(*fresh.error);
+            if (fresh.error) {
+                result.errors.push_back(*fresh.error);
+            }
         }
     }
     std::ranges::sort(items_, {}, &Item::manifest);

@@ -141,7 +141,7 @@ TEST(MockIgDatabase, WithoutACatalogTheIgReportsTheGlobalDatabase) {
 }
 
 TEST(MockIgDatabase, LoadReloadStandbyUnknownAndAHostThatNeverSendsZero) {
-    Databases dbs;
+    const Databases dbs;
     MockIg ig;
     ig.use_catalog(&dbs.catalog, 1);
     EXPECT_EQ(ig.scene().database().name, "One");
@@ -173,14 +173,14 @@ TEST(MockIgDatabase, LoadReloadStandbyUnknownAndAHostThatNeverSendsZero) {
     EXPECT_EQ(ig.scene().database().number, 2);
     bool logged = false;
     for (const auto& line : ig.scene().log()) {
-        logged = logged || line.find("99") != std::string::npos;
+        logged = logged || line.contains("99");
     }
     EXPECT_TRUE(logged);
     EXPECT_EQ(ig.database_selector().reported(), 2);
 }
 
 TEST(MockIgDatabase, EntitiesSurviveALoadAndUnmappedTypesAreTracked) {
-    Databases dbs;
+    const Databases dbs;
     MockIg ig;
     ig.use_catalog(&dbs.catalog, 1);
     EntityControl e;
@@ -216,7 +216,7 @@ TEST(MockIgDatabase, RefreshDatabasePicksUpAHotReload) {
 }
 
 TEST(MockIgDatabase, SceneConfigCanCarryADatabase) {
-    Databases dbs;
+    const Databases dbs;
     SceneConfig config;
     config.database = dbs.catalog.find(2);
     MockIg ig(config);

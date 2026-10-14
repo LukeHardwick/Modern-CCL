@@ -31,7 +31,7 @@ Result run(const std::vector<std::string>& args) {
 }
 
 std::string read_file(const std::filesystem::path& p) {
-    std::ifstream in(p, std::ios::binary);
+    const std::ifstream in(p, std::ios::binary);
     std::ostringstream ss;
     ss << in.rdbuf();
     return ss.str();

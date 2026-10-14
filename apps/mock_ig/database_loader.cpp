@@ -5,7 +5,6 @@
 #include "mock_ig/database.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <format>
 #include <fstream>
@@ -237,7 +236,7 @@ Res<std::optional<Vec3d>> opt_vec3(const Ctx& c, const toml::table& t, std::stri
     if (!*v) {
         return std::nullopt;
     }
-    return Vec3d{(**v)[0], (**v)[1], (**v)[2]};
+    return Vec3d{(**v).at(0), (**v).at(1), (**v).at(2)};
 }
 
 // ---- sections ---------------------------------------------------------------------------------
@@ -366,7 +365,7 @@ Res<void> parse_terrain_table(const Ctx& c, const toml::table& root, Database& d
     } else {
         return c.fail(
             *t.get("kind"),
-            std::format("terrain kind must be \"synthetic\" or \"heightmap\", not \"{}\"", *kind));
+            std::format(R"x(terrain kind must be "synthetic" or "heightmap", not "{}")x", *kind));
     }
     return {};
 }
@@ -380,18 +379,27 @@ Res<std::optional<Rgb8>> parse_colour(const Ctx& c, const toml::table& t, std::s
         return std::nullopt;
     }
     const std::string& s = **text;
+    const auto digit = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9') {
+            return ch - '0';
+        }
+        if (ch >= 'a' && ch <= 'f') {
+            return ch - 'a' + 10;
+        }
+        if (ch >= 'A' && ch <= 'F') {
+            return ch - 'A' + 10;
+        }
+        return -1;
+    };
     const bool shape =
-        s.size() == 7 && s[0] == '#' && std::ranges::all_of(s.begin() + 1, s.end(), [](char ch) {
-            return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
-        });
+        s.size() == 7 && s.front() == '#' &&
+        std::ranges::all_of(s.substr(1), [&digit](char ch) { return digit(ch) >= 0; });
     if (!shape) {
         return c.fail(*t.get(key),
-                      std::format("'{}' must be a colour like \"#295c99\", not \"{}\"", key, s));
+                      std::format(R"x('{}' must be a colour like "#295c99", not "{}")x", key, s));
     }
-    const auto byte = [&s](std::size_t at) {
-        unsigned value = 0;
-        std::from_chars(s.data() + at, s.data() + at + 2, value, 16); // validated above
-        return static_cast<std::uint8_t>(value);
+    const auto byte = [&s, &digit](std::size_t at) {
+        return static_cast<std::uint8_t>((digit(s.at(at)) * 16) + digit(s.at(at + 1)));
     };
     return Rgb8{byte(1), byte(3), byte(5)};
 }
@@ -527,7 +535,7 @@ Res<void> parse_parts(const Ctx& c, const toml::table& t, EntityModel& e) {
             if (**axis != "x" && **axis != "y" && **axis != "z") {
                 return c.fail(
                     *p->get("axis"),
-                    std::format("part axis must be \"x\", \"y\" or \"z\", not \"{}\"", **axis));
+                    std::format(R"x(part axis must be "x", "y" or "z", not "{}")x", **axis));
             }
             m.axis = std::move(**axis);
         }
@@ -614,13 +622,13 @@ Res<void> parse_models(const Ctx& c, const toml::table& t, EntityModel& e) {
         }
     }
     const toml::node* where = model_node != nullptr ? model_node : lods_node;
-    for (std::size_t i = 0; i < e.lods.size(); ++i) {
+    for (const auto& lod : e.lods) {
         std::error_code ec;
-        if (!c.root.empty() && !std::filesystem::exists(c.root / e.lods[i], ec)) {
+        if (!c.root.empty() && !std::filesystem::exists(c.root / lod, ec)) {
             c.warn(where->source().begin,
                    std::format(
                        "model file '{}' not found (the viewer falls back to the category shape)",
-                       e.lods[i]));
+                       lod));
         }
     }
     return {};
@@ -733,7 +741,7 @@ Res<EntityModel> parse_entity(const Ctx& c, const toml::table& t) {
         } else {
             return c.fail(
                 *t.get("attached_view"),
-                std::format("attached_view must be \"cockpit\", \"full\" or \"hidden\", not \"{}\"",
+                std::format(R"x(attached_view must be "cockpit", "full" or "hidden", not "{}")x",
                             **view));
         }
     }
@@ -763,12 +771,12 @@ Res<void> check_overlaps(const Ctx& c, const std::vector<const toml::table*>& ta
                          const std::vector<EntityModel>& entities) {
     for (std::size_t j = 1; j < entities.size(); ++j) {
         for (std::size_t i = 0; i < j; ++i) {
-            const EntityModel& a = entities[i];
-            const EntityModel& b = entities[j];
+            const EntityModel& a = entities.at(i);
+            const EntityModel& b = entities.at(j);
             const bool overlap = a.first_type <= b.last_type && b.first_type <= a.last_type;
             if (overlap && a.is_exact() == b.is_exact()) {
                 return c.fail(
-                    *tables[j]->get("types"),
+                    *tables.at(j)->get("types"),
                     std::format("entity types [{}, {}] overlap the entry at line {} ([{}, {}])",
                                 b.first_type, b.last_type, a.line, a.first_type, a.last_type));
             }
@@ -829,7 +837,7 @@ std::expected<Database, DbError> parse_database(std::string_view text,
 }
 
 std::expected<Database, DbError> load_database(const std::filesystem::path& manifest) {
-    std::ifstream in(manifest, std::ios::binary);
+    const std::ifstream in(manifest, std::ios::binary);
     if (!in) {
         return std::unexpected(DbError{manifest.string(), 0, 0, "cannot open the manifest"});
     }

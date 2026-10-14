@@ -21,10 +21,13 @@ std::string toml(const std::vector<std::string>& lines) {
     return out;
 }
 
-const std::filesystem::path fake_manifest{"/nonexistent-cigi-db/db1/database.toml"};
+const std::filesystem::path& fake_manifest() {
+    static const std::filesystem::path path{"/nonexistent-cigi-db/db1/database.toml"};
+    return path;
+}
 
 std::expected<Database, DbError> parse(const std::string& text) {
-    return parse_database(text, fake_manifest);
+    return parse_database(text, fake_manifest());
 }
 
 /// The error of a manifest that must not load.
@@ -58,9 +61,9 @@ TEST(DatabaseLoader, MinimalManifestUsesDefaults) {
     EXPECT_TRUE(db->entities.empty());
     EXPECT_TRUE(db->bounds.contains(db->origin.lat_deg, db->origin.lon_deg));
     EXPECT_TRUE(db->warnings.empty());
-    EXPECT_EQ(db->root, fake_manifest.parent_path());
-    EXPECT_EQ(db->manifest, fake_manifest);
-    EXPECT_EQ(db->resolve("models/a.glb"), fake_manifest.parent_path() / "models" / "a.glb");
+    EXPECT_EQ(db->root, fake_manifest().parent_path());
+    EXPECT_EQ(db->manifest, fake_manifest());
+    EXPECT_EQ(db->resolve("models/a.glb"), fake_manifest().parent_path() / "models" / "a.glb");
 }
 
 TEST(DatabaseLoader, ParsesEveryField) {
@@ -87,7 +90,7 @@ TEST(DatabaseLoader, ParsesEveryField) {
         "types = [100, 199]",
         "name = \"jets\"",
         "category = \"aircraft\"",
-        "lods = [\"jet.glb\", \"jet1.glb\", \"jet2.glb\"]",
+        R"(lods = ["jet.glb", "jet1.glb", "jet2.glb"])",
         "scale = 0.5",
         "offset = [1, 2.5, -3]",
         "rotation = [90, 0, 180]",
@@ -271,7 +274,7 @@ void expect_error(const ErrorCase& c) {
     EXPECT_EQ(e.line, c.line) << to_string(e);
     EXPECT_GT(e.column, 0U) << to_string(e);
     EXPECT_NE(e.message.find(c.fragment), std::string::npos) << to_string(e);
-    EXPECT_EQ(e.file, fake_manifest.string());
+    EXPECT_EQ(e.file, fake_manifest().string());
 }
 
 TEST(DatabaseErrors, Syntax) {
@@ -527,7 +530,7 @@ TEST(DatabaseErrors, LodThresholds) {
     expect_error({"cull out of range", with("cull_below = 2"), 7, "'cull_below'"});
     expect_error({"too many lods",
                   {"[database]", "number = 1", "name = \"x\"", "[[entity]]", "types = 1",
-                   "category = \"other\"", "lods = [\"a\", \"b\", \"c\", \"d\", \"e\"]"},
+                   "category = \"other\"", R"(lods = ["a", "b", "c", "d", "e"])"},
                   7,
                   "need 4"});
 }
@@ -564,6 +567,68 @@ TEST(DatabaseErrors, PartsAndComponents) {
     ASSERT_TRUE(db);
     EXPECT_EQ(db->entities[0].components[0].kind, ComponentKind::Translation);
     EXPECT_EQ(to_string(ComponentKind::Translation), "translation");
+}
+
+TEST(DatabaseErrors, WrongTypesAreNamedInTheMessage) {
+    const auto head3 = std::vector<std::string>{"[database]", "name = \"x\""};
+    const auto with = [&head3](const char* line) {
+        auto lines = head3;
+        lines.emplace_back(line);
+        return toml(lines);
+    };
+    EXPECT_NE(error_of(with("number = true")).message.find("not boolean"), std::string::npos);
+    EXPECT_NE(error_of(with("number = [1]")).message.find("not array"), std::string::npos);
+    EXPECT_NE(error_of(with("number = { a = 1 }")).message.find("not table"), std::string::npos);
+    EXPECT_NE(error_of(with("number = 1979-05-27")).message.find("not date or time"),
+              std::string::npos);
+    EXPECT_NE(error_of(with("number = 1.5")).message.find("not float"), std::string::npos);
+}
+
+TEST(DatabaseErrors, MoreFieldTypes) {
+    const auto entity = [](const char* line) {
+        return toml({"[database]", "number = 1", "name = \"x\"", "[[entity]]", "types = 1",
+                     "category = \"other\"", line});
+    };
+    EXPECT_EQ(error_of(entity("name = 5")).line, 7U);
+    EXPECT_EQ(error_of(entity("attached_view = 5")).line, 7U);
+    EXPECT_EQ(error_of(entity("part = 3")).line, 7U);
+    EXPECT_EQ(error_of(entity("component = 3")).line, 7U);
+    EXPECT_EQ(
+        error_of(toml({"[database]", "number = 1", "name = \"x\"", "[default]", "category = 5"}))
+            .line,
+        5U);
+    EXPECT_EQ(error_of(toml({"[database]", "number = 1", "name = \"x\"", "[[material]]", "code = 1",
+                             "name = 5", "colour = \"#000000\""}))
+                  .line,
+              6U);
+}
+
+TEST(DatabaseLoader, ExplicitEnumValuesAndNames) {
+    const auto db =
+        parse(toml({"[database]", "number = 1", "name = \"x\"", "[[entity]]", "types = 1",
+                    "category = \"other\"", "attached_view = \"cockpit\"", "[[entity.component]]",
+                    "id = 1", "node = \"n\"", "kind = \"visibility\"", "[[entity]]", "types = 2",
+                    "category = \"other\"", "attached_view = \"full\""}));
+    ASSERT_TRUE(db) << to_string(db.error());
+    EXPECT_EQ(db->entities[0].attached_view, AttachedView::Cockpit);
+    EXPECT_EQ(db->entities[1].attached_view, AttachedView::Full);
+    EXPECT_EQ(db->entities[0].components[0].kind, ComponentKind::Visibility);
+    EXPECT_EQ(to_string(AttachedView::Cockpit), "cockpit");
+    EXPECT_EQ(to_string(AttachedView::Full), "full");
+    EXPECT_EQ(to_string(AttachedView::Hidden), "hidden");
+    EXPECT_EQ(to_string(ComponentKind::Visibility), "visibility");
+    EXPECT_EQ(to_string(ComponentKind::Rotation), "rotation");
+    EXPECT_EQ(to_string(EntityCategory::Other), "other");
+    EXPECT_EQ(to_string(static_cast<EntityCategory>(200)), "other"); // out-of-range value
+    EXPECT_EQ(to_string(static_cast<AttachedView>(200)), "cockpit");
+    EXPECT_EQ(to_string(static_cast<ComponentKind>(200)), "visibility");
+}
+
+TEST(DatabaseLoader, AFolderIsNotAManifest) {
+    const test::TempDir dir;
+    const auto result = load_database(dir.path());
+    // Cannot open or cannot read (platform-dependent), or reads as empty: an error either way.
+    EXPECT_FALSE(result);
 }
 
 TEST(DatabaseErrors, DiagnosticFormatting) {
@@ -613,7 +678,7 @@ TEST(DatabaseWarnings, UnknownKeysAreCollectedNotFatal) {
         lines.push_back(w.line);
         EXPECT_NE(w.message.find("unknown key"), std::string::npos) << to_string(w);
         EXPECT_GT(w.column, 0U);
-        EXPECT_EQ(w.file, fake_manifest.string());
+        EXPECT_EQ(w.file, fake_manifest().string());
     }
     std::ranges::sort(lines);
     EXPECT_EQ(lines, (std::vector<std::uint32_t>{1, 5, 6, 9, 12, 16, 20, 24, 28}));
@@ -627,7 +692,7 @@ TEST(DatabaseWarnings, MissingFilesAreWarnings) {
     const auto db = parse_database(
         toml({"[database]", "number = 1", "name = \"x\"", "[terrain]", "kind = \"heightmap\"",
               "file = \"missing.png\"", "[[entity]]", "types = 1", "category = \"other\"",
-              "lods = [\"here.glb\", \"gone.glb\"]", "[[entity]]", "types = 2",
+              R"(lods = ["here.glb", "gone.glb"])", "[[entity]]", "types = 2",
               "category = \"other\"", "model = \"also_gone.glb\""}),
         file);
     ASSERT_TRUE(db) << to_string(db.error());

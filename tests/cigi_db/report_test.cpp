@@ -8,7 +8,7 @@ namespace {
 
 using namespace cigi;
 using cigi::test::TempDir;
-using Report = db::Report;
+using db::Report;
 
 Report sample_report() {
     TempDir dir;
@@ -66,7 +66,8 @@ TEST(CigiDbReport, ErrorsCarryTheirLocations) {
     EXPECT_EQ(back->errors, report.errors);
     EXPECT_FALSE(back->ok);
 
-    const Report failure = db::report_for_failure("x", {"x", 0, 0, "nope"});
+    const Report failure =
+        db::report_for_failure("x", {.file = "x", .line = 0, .column = 0, .message = "nope"});
     EXPECT_FALSE(failure.ok);
     EXPECT_EQ(failure.errors[0].message, "nope");
 }

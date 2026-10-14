@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -35,8 +36,15 @@ void print_database(std::ostream& out, const ReportDatabase& d) {
                        d.terrain, d.load_frames, d.duplicate ? " [DUPLICATE NUMBER]" : "");
 }
 
+struct Streams {
+    std::ostream& out;
+    std::ostream& err;
+};
+
 int finish_validate(const Report& report, const std::optional<std::string_view>& json_path,
-                    std::ostream& out, std::ostream& err) {
+                    const Streams& io) {
+    std::ostream& out = io.out;
+    std::ostream& err = io.err;
     for (const auto& d : report.databases) {
         print_database(out, d);
     }
@@ -59,21 +67,22 @@ int finish_validate(const Report& report, const std::optional<std::string_view>&
 int validate(std::span<const std::string_view> args, std::ostream& out, std::ostream& err) {
     std::optional<std::string_view> path;
     std::optional<std::string_view> json_path;
-    for (std::size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--json") {
-            if (i + 1 >= args.size() || json_path) {
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        const std::string_view arg = *it;
+        if (arg == "--json") {
+            if (std::next(it) == args.end() || json_path) {
                 err << "error: --json needs exactly one file name\n" << usage();
                 return exit_usage;
             }
-            json_path = args[++i];
-        } else if (!args[i].empty() && args[i].front() == '-') {
-            err << "error: unknown option " << args[i] << '\n' << usage();
+            json_path = *++it;
+        } else if (arg.starts_with('-')) {
+            err << "error: unknown option " << arg << '\n' << usage();
             return exit_usage;
         } else if (path) {
             err << "error: only one path may be given\n" << usage();
             return exit_usage;
         } else {
-            path = args[i];
+            path = arg;
         }
     }
     if (!path) {
@@ -81,31 +90,31 @@ int validate(std::span<const std::string_view> args, std::ostream& out, std::ost
         return exit_usage;
     }
 
+    const Streams io{out, err};
     const fs::path target{*path};
     std::error_code ec;
     if (fs::is_directory(target, ec)) {
         mock::DatabaseCatalog catalog;
         if (auto scanned = catalog.scan(target); !scanned) {
-            return finish_validate(report_for_failure(target, scanned.error()), json_path, out,
-                                   err);
+            return finish_validate(report_for_failure(target, scanned.error()), json_path, io);
         }
-        return finish_validate(report_for_catalog(catalog, target), json_path, out, err);
+        return finish_validate(report_for_catalog(catalog, target), json_path, io);
     }
     if (!fs::is_regular_file(target, ec)) {
         return finish_validate(
             report_for_failure(target, {target.string(), 0, 0, "no such file or folder"}),
-            json_path, out, err);
+            json_path, io);
     }
-    return finish_validate(report_for_manifest(target), json_path, out, err);
+    return finish_validate(report_for_manifest(target), json_path, io);
 }
 
 int list(std::span<const std::string_view> args, std::ostream& out, std::ostream& err) {
-    if (args.size() != 1 || args[0].starts_with('-')) {
+    if (args.size() != 1 || args.front().starts_with('-')) {
         err << "error: list needs exactly one database root\n" << usage();
         return exit_usage;
     }
     mock::DatabaseCatalog catalog;
-    if (auto scanned = catalog.scan(fs::path(args[0])); !scanned) {
+    if (auto scanned = catalog.scan(fs::path(args.front())); !scanned) {
         err << "error: " << mock::to_string(scanned.error()) << '\n';
         return exit_errors;
     }
@@ -119,7 +128,8 @@ int list(std::span<const std::string_view> args, std::ostream& out, std::ostream
                                item.duplicate ? "  [duplicate number, unused]" : "");
         } else {
             out << std::format("{:>3}  {:<28} {:>8} {:>6} {}  [ERROR: {}]\n", "-", "-", "-", "-",
-                               item.manifest.string(), mock::to_string(*item.error));
+                               item.manifest.string(),
+                               item.error ? mock::to_string(*item.error) : std::string{});
         }
     }
     if (catalog.items().empty()) {
@@ -143,7 +153,7 @@ int run(std::span<const std::string_view> args, std::ostream& out, std::ostream&
         err << usage();
         return exit_usage;
     }
-    const std::string_view command = args[0];
+    const std::string_view command = args.front();
     if (command == "--help" || command == "-h" || command == "help") {
         out << usage();
         return exit_ok;
