@@ -246,9 +246,7 @@ def run(data, cfg, family=None):
     family = family or f4.get("family", "textured")
     gates, details = [], {"family": family}
     exempt = set(f4.get("exempt_materials", []))
-    visible = [p for p in data.prims if p.material not in exempt
-               and p.node not in cfg["model"].get("interior_nodes", [])
-               and not (f4.get("include_nodes") and p.node not in f4["include_nodes"])]
+    visible = [p for p in data.prims if p.material not in exempt]
 
     def add(gid, label, value, op, limit, unit, ok, reason=None, detail=None):
         gates.append(fm.gate(gid, label, value, op, limit, unit, ok, fm.is_hard(gid, hard),
@@ -340,10 +338,11 @@ def run(data, cfg, family=None):
                 bool(p5) and p95 / p5 <= f4["density_spread_max"])
             for k, p in enumerate(sh.prims):
                 sel = pidx == k
-                for g in groups:
+                for g in groups:          # a primitive counts in the first group that claims it
                     if _in_group(p, g):
                         group_vals[g["name"]][0].append(dens[sel])
                         group_vals[g["name"]][1].append(area[sel])
+                        break
         # range
         lo = min(float(p.uvs.min()) for p in sh.prims)
         hi = max(float(p.uvs.max()) for p in sh.prims)

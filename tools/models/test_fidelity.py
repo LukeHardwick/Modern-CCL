@@ -118,7 +118,7 @@ def quad(origin, du, dv):
 
 BASE_CFG = {
     "model": {"published_size": {"length": 4.0, "span": 4.0, "height": 1.0},
-              "exterior_exclude_nodes": [], "interior_nodes": []},
+              "exterior_exclude_nodes": []},
     "gates": {"hard": ["F1", "F2.required", "F3", "F4", "F5"]},
     "F1_outline": {"reference": "ref.toml", "raster_px_per_cm": 2,
                    "iou_min": {"side": 0.94, "top": 0.94, "front": 0.9}, "outline_p95_mm": 30,
@@ -836,7 +836,8 @@ class TestDriver(unittest.TestCase):
 
 if __name__ == "__main__":
     import os
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else (
+        [] if "bpy" in sys.modules else sys.argv[1:])
     prog = unittest.main(argv=["test_fidelity"] + argv, exit=False, verbosity=2)
     ok = prog.result.wasSuccessful()
     print(f"[test_fidelity] {prog.result.testsRun} tests, "

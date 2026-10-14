@@ -7,13 +7,14 @@
 
 [meta]
 status = "CALIBRATED, pending user approval"
+# changed from the proposal: F1 iou_min (all three views), F3 cowl_lip ratio, F3 tail_cone ratio; new
+# keys: F1_stations, probes (F5), F2 probe boxes (empty until CP2), F4 sheets and density groups.
 model = "cessna"
 reference = "tools/models/reference/cessna_172_skyhawk_line_drawing.svg (public domain, Werneuchen; drawing A, approved 2026-10-14)"
 
 [model]
 published_size = { length = 8.28, span = 11.00, height = 2.72 }   # Cessna 172R/S, as the T22c config
 exterior_exclude_nodes = ["cockpit", "prop_disc"]                # interior and the translucent prop disc
-interior_nodes = ["cockpit"]                                     # not judged against the airframe sheets
 
 # A gate id is "hard" when it equals one of these or starts with one followed by a dot: a hard
 # gate that fails (or cannot be measured) makes the checker exit 1.
@@ -26,10 +27,15 @@ reference = "tools/models/reference/cessna_172_reference.toml"   # masks + prove
 raster_px_per_cm = 2             # 5 mm grid
 # scaling: the reference is scaled to the published length / span / height on each axis and
 # anchored at the model's spinner tip, lowest point and x = 0: no best fit.
-iou_min = { side = 0.94, top = 0.94, front = 0.90 }
-outline_p95_mm = 30
-outline_max_mm = 80
-station_tol_mm = 40
+# CALIBRATED (proposal 0.94 / 0.94 / 0.90): an IoU gate must not be stricter than the outline
+# gate, so each value is the IoU that a UNIFORM error of the outline_p95_mm gate (30 mm, either
+# direction) produces, rounded down to 0.01 (docs/guide/img/models/audit/cessna/fidelity_noise.md,
+# study 3: side 0.9226, top 0.9523, front 0.7240). The thin wing makes the front view much more
+# sensitive: 0.90 there would demand a 12 mm uniform fit.
+iou_min = { side = 0.92, top = 0.95, front = 0.72 }
+outline_p95_mm = 30             # kept: processing noise (raster pitch, mask extraction) is <= 10 mm
+outline_max_mm = 80             # kept: noise <= 10 mm
+station_tol_mm = 40             # kept: extraction noise <= 27 mm on the sloped edges (tailplane_te)
 
 # The side view of the reference omits the wing (only the strut is drawn): the wing, flaps and
 # ailerons are left out of the model's side silhouette. The propeller blades are not in the
@@ -503,6 +509,10 @@ relief_mm = 3
 nodes = ["fuselage", "door_l", "door_r"]
 
 
+# FLAGGED for the user, value not changed: radius_mm [15, 90] reads like the lip-edge bevel (F5 measures
+# that); as the corner radius of the 0.86 m wide section it would demand an almost square cowl
+# (T22d measures 189 mm; the cabin sections use 60-250). cabin_door ratio [0.62, 0.72] is also
+# unverified: neighbouring reference stations read 0.72-0.78.
 [[F3_section]]
 name = "cowl_lip"
 axis = "y"

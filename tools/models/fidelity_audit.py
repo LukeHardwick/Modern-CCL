@@ -222,7 +222,8 @@ def write_md(res, name):
 
 def main(argv=None):
     if argv is None:
-        argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
+        argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else (
+            [] if "bpy" in sys.modules else sys.argv[1:])
     try:
         return run_cli(argv)
     except (glb_io.GlbError, fm.ConfigError, tomllib.TOMLDecodeError, OSError) as exc:
@@ -235,8 +236,9 @@ def main(argv=None):
 
 
 def run_cli(argv):
-    ap = argparse.ArgumentParser(prog="fidelity_audit.py", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="fidelity_audit.py", description=(
+        "Deterministic fidelity checker for the high-fidelity Cessna: gates F1 outline, F2 features, "
+        "F3 sections, F4 UVs/textures/budget, F5 edges. See the header of this file."))
     ap.add_argument("--model", required=True, type=Path)
     ap.add_argument("--config", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)

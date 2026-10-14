@@ -285,7 +285,7 @@ def section_outline(segs, nbins=2880, x_clip=None, sample_mm=0.5):
     return {"pts": pts, "chord": chord, "centre": c}
 
 
-def protrusion_skip(outline, pitch=0.002, open_mm=10.0, min_len_mm=30.0, skip_mm=30.0):
+def protrusion_skip(outline, pitch=0.002, open_mm=25.0, min_len_mm=25.0, skip_mm=40.0):
     """Mask (and its origin) of the neighbourhood of thin protrusions (a fin or antenna that
     crosses the plane): the filled outline is opened with a disk of open_mm; what the opening
     removes and that is longer than min_len_mm is a protrusion; its surroundings (skip_mm) are
@@ -294,21 +294,36 @@ def protrusion_skip(outline, pitch=0.002, open_mm=10.0, min_len_mm=30.0, skip_mm
     lo = pts.min(axis=0) - 0.05
     w = int(math.ceil((pts[:, 0].max() + 0.05 - lo[0]) / pitch))
     h = int(math.ceil((pts[:, 1].max() + 0.05 - lo[1]) / pitch))
-    px = np.concatenate([[(c - lo) / pitch] * len(pts)]).reshape(-1, 2)
-    a = (pts - lo) / pitch
-    bq = (np.roll(pts, -1, axis=0) - lo) / pitch
-    tri = np.stack([px, a, bq], axis=1)
-    mask = ru.rasterise_triangles(tri, w, h) > 0
+    # filled star-shaped outline: a pixel is inside when it is nearer the centre than the
+    # outline in its direction (the outline radius, interpolated over the angle)
+    q = pts - c
+    ang = np.arctan2(q[:, 1], q[:, 0])
+    rad = np.hypot(q[:, 0], q[:, 1])
+    order = np.argsort(ang, kind="stable")
+    ang, rad = ang[order], rad[order]
+    ang_p = np.concatenate([ang[-1:] - 2 * math.pi, ang, ang[:1] + 2 * math.pi])
+    rad_p = np.concatenate([rad[-1:], rad, rad[:1]])
+    gx = lo[0] + (np.arange(w) + 0.5) * pitch - c[0]
+    gy = lo[1] + (np.arange(h) + 0.5) * pitch - c[1]
+    xx, yy = np.meshgrid(gx, gy)
+    mask = np.hypot(xx, yy) <= np.interp(np.arctan2(yy, xx), ang_p, rad_p)
     r = max(1, int(round(open_mm / 1000.0 / pitch)))
     opened = ru.dilate(ru.erode(mask, r), r)
     diff = mask & ~opened
     lab, n = ru.label_components(diff, 8)
     flag = np.zeros_like(mask)
-    for i in range(1, n + 1):
-        rows, cols = np.nonzero(lab == i)
-        ext = max(rows.max() - rows.min(), cols.max() - cols.min()) * pitch
-        if ext >= min_len_mm / 1000.0:
-            flag[rows, cols] = True
+    if n:
+        rows, cols = np.nonzero(lab)
+        ids = lab[rows, cols]
+        big = np.iinfo(np.int64).max
+        rmin, cmin = np.full(n + 1, big), np.full(n + 1, big)
+        rmax, cmax = np.full(n + 1, -1), np.full(n + 1, -1)
+        np.minimum.at(rmin, ids, rows)
+        np.maximum.at(rmax, ids, rows)
+        np.minimum.at(cmin, ids, cols)
+        np.maximum.at(cmax, ids, cols)
+        ext = np.maximum(rmax - rmin, cmax - cmin) * pitch
+        flag[rows, cols] = (ext[ids] >= min_len_mm / 1000.0)
     if flag.any():
         flag = ru.dilate(flag, int(round(skip_mm / 1000.0 / pitch)))
     return flag, lo

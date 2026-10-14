@@ -1,0 +1,2224 @@
+{
+ "detail": {
+  "F1": {
+   "reference": {
+    "file": "tools/models/reference/cessna_172_reference.toml",
+    "mask_sha256": {
+     "front": "386ae3fe91aec31295cf2bb054e11ea26f32c231ce3ee0b4dc3d129fcb2c6eac",
+     "side": "526b570ff045fd1e12f33346f16f435ff3a14fd610324babe7faba4beecc3015",
+     "top": "c10bb34477166ab7aedf0636818a339f433306bda4049fe125227b2998e41fd3"
+    },
+    "svg_sha256": "5d14e7351e330ebf75d1712e535d80872cd2154005e2b3427546b92714ba5760"
+   },
+   "stations": [
+    {
+     "delta_mm": 0.0,
+     "model_m": -2.53,
+     "name": "spinner_tip",
+     "reference_m": -2.53,
+     "view": "side"
+    },
+    {
+     "delta_mm": 0.0,
+     "model_m": 5.75,
+     "name": "rudder_te",
+     "reference_m": 5.75,
+     "view": "side"
+    },
+    {
+     "delta_mm": 0.0,
+     "model_m": 1.52,
+     "name": "fin_top",
+     "reference_m": 1.52,
+     "view": "side"
+    },
+    {
+     "delta_mm": 60.7,
+     "model_m": -0.4021,
+     "name": "belly_line",
+     "reference_m": -0.4629,
+     "view": "side"
+    },
+    {
+     "delta_mm": -117.1,
+     "model_m": -2.24,
+     "name": "cowl_front",
+     "reference_m": -2.1229,
+     "view": "side"
+    },
+    {
+     "delta_mm": 180.0,
+     "model_m": 0.435,
+     "name": "cowl_top",
+     "reference_m": 0.255,
+     "view": "side"
+    },
+    {
+     "delta_mm": -562.9,
+     "model_m": -1.4607,
+     "name": "windscreen_base",
+     "reference_m": -0.8979,
+     "view": "side"
+    },
+    {
+     "delta_mm": 202.9,
+     "model_m": 0.995,
+     "name": "cabin_roof",
+     "reference_m": 0.7921,
+     "view": "side"
+    },
+    {
+     "delta_mm": -2840.0,
+     "model_m": 1.9693,
+     "name": "fin_leading_edge",
+     "reference_m": 4.8093,
+     "view": "side"
+    },
+    {
+     "delta_mm": -377.5,
+     "model_m": -1.8,
+     "name": "nose_wheel_centre",
+     "reference_m": -1.4225,
+     "view": "side"
+    },
+    {
+     "delta_mm": 265.0,
+     "model_m": 0.48,
+     "name": "main_wheel_centre",
+     "reference_m": 0.215,
+     "view": "side"
+    },
+    {
+     "delta_mm": 235.0,
+     "model_m": -0.45,
+     "name": "wing_le_root",
+     "reference_m": -0.685,
+     "view": "top"
+    },
+    {
+     "delta_mm": 641.1,
+     "model_m": -0.0189,
+     "name": "wing_le_tip",
+     "reference_m": -0.66,
+     "view": "top"
+    },
+    {
+     "delta_mm": -25.0,
+     "model_m": 1.18,
+     "name": "wing_te_root",
+     "reference_m": 1.205,
+     "view": "top"
+    },
+    {
+     "delta_mm": 511.8,
+     "model_m": 1.18,
+     "name": "wing_te_tip",
+     "reference_m": 0.6682,
+     "view": "top"
+    },
+    {
+     "delta_mm": 85.0,
+     "model_m": 1.725,
+     "name": "tailplane_tip",
+     "reference_m": 1.64,
+     "view": "top"
+    },
+    {
+     "delta_mm": 192.9,
+     "model_m": 5.3661,
+     "name": "tailplane_te",
+     "reference_m": 5.1732,
+     "view": "top"
+    },
+    {
+     "delta_mm": 5.0,
+     "model_m": 5.505,
+     "name": "wing_tip_x",
+     "reference_m": 5.5,
+     "view": "front"
+    },
+    {
+     "delta_mm": 522.5,
+     "model_m": 1.205,
+     "name": "wing_top_mid",
+     "reference_m": 0.6825,
+     "view": "front"
+    },
+    {
+     "delta_mm": -5.0,
+     "model_m": 1.27,
+     "name": "main_wheel_x",
+     "reference_m": 1.275,
+     "view": "front"
+    }
+   ],
+   "views": {
+    "front": {
+     "anchors": {
+      "x_mid": 0.0,
+      "y_nose": -2.53,
+      "z_ground": -1.2
+     },
+     "excluded": [
+      "cockpit",
+      "prop_disc",
+      "propeller:metal"
+     ],
+     "grid_px": [
+      2280,
+      620
+     ],
+     "iou": 0.2551,
+     "model_area_m2": 4.3517,
+     "model_to_reference_mm": {
+      "max": 550.11,
+      "mean": 251.8,
+      "n": 8929.0,
+      "p95": 535.0
+     },
+     "primitives": 27,
+     "reference_area_m2": 4.0743,
+     "reference_m_per_px": {
+      "h": 0.005774,
+      "v": 0.004772
+     },
+     "reference_to_model_mm": {
+      "max": 585.77,
+      "mean": 221.31,
+      "n": 7428.0,
+      "p95": 555.0
+     }
+    },
+    "side": {
+     "anchors": {
+      "x_mid": 0.0,
+      "y_nose": -2.53,
+      "z_ground": -1.2
+     },
+     "excluded": [
+      "aileron_l",
+      "aileron_r",
+      "cockpit",
+      "flap_l",
+      "flap_r",
+      "prop_disc",
+      "propeller:metal",
+      "wing_l",
+      "wing_r"
+     ],
+     "grid_px": [
+      1720,
+      620
+     ],
+     "iou": 0.7015,
+     "model_area_m2": 10.0048,
+     "model_to_reference_mm": {
+      "max": 753.26,
+      "mean": 186.09,
+      "n": 6636.0,
+      "p95": 534.25
+     },
+     "primitives": 17,
+     "reference_area_m2": 8.5847,
+     "reference_m_per_px": {
+      "h": 0.005691,
+      "v": 0.004991
+     },
+     "reference_to_model_mm": {
+      "max": 494.77,
+      "mean": 129.08,
+      "n": 4308.0,
+      "p95": 349.05
+     }
+    },
+    "top": {
+     "anchors": {
+      "x_mid": 0.0,
+      "y_nose": -2.53,
+      "z_ground": -1.2
+     },
+     "excluded": [
+      "cockpit",
+      "prop_disc",
+      "propeller:metal"
+     ],
+     "grid_px": [
+      2280,
+      1720
+     ],
+     "iou": 0.7393,
+     "model_area_m2": 23.9667,
+     "model_to_reference_mm": {
+      "max": 620.0,
+      "mean": 194.99,
+      "n": 14802.0,
+      "p95": 480.0
+     },
+     "primitives": 27,
+     "reference_area_m2": 25.8923,
+     "reference_m_per_px": {
+      "h": 0.005702,
+      "v": 0.005996
+     },
+     "reference_to_model_mm": {
+      "max": 667.53,
+      "mean": 146.9,
+      "n": 8303.0,
+      "p95": 559.84
+     }
+    }
+   }
+  },
+  "F2": [
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "window_frames",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "window_seals",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "door_gaps",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "door_handles",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "cowl_lip_and_inlets",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "cowl_flap_outlines",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "oil_door",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "panel_lines_fuselage",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "panel_lines_wing",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "rivet_rows",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "wing_root_fairings",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "cabin_steps",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "stall_warning_vent",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "fuel_cap_and_vents",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "elevator_trim_tab",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "landing_light_lens",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "nav_strobe_lenses",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "beacon",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "pitot_and_static",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "antennas",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "hinge_lines_control_surfaces",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "prop_tip_paint",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "prop_blade_decals_neutral",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "spinner_backplate_and_screws",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "cheat_line_two_colours",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "exhaust_stain",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "hinge_grime",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "wheel_fairing_split_lines",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "brake_lines_and_hubs",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "strut_fairings_and_attach_plates",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "tie_down_rings",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "gauge_faces_legible",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "radio_stack_faces",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "placards_generic",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "texture",
+    "measured": null,
+    "name": "seat_stitching_and_belts",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "yoke_buttons_and_grips",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "rudder_pedal_brakes",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "door_seals_and_latches_interior",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "tail_navigation_light",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "static_wicks",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": false
+   },
+   {
+    "kind": "geometry",
+    "measured": null,
+    "name": "fin_dorsal_and_rudder_balance",
+    "present": false,
+    "reason": "no probe box defined yet",
+    "required": true
+   }
+  ],
+  "F3": [
+   {
+    "area_m2": 0.6005,
+    "fill": 0.8686,
+    "found": true,
+    "height_m": 0.8074,
+    "name": "cowl_lip",
+    "radius_m": 0.1885,
+    "ratio": 1.0607,
+    "width_m": 0.8563
+   },
+   {
+    "area_m2": 0.938,
+    "fill": 0.8916,
+    "flat_m": 0.0058,
+    "found": true,
+    "height_m": 1.0345,
+    "name": "firewall",
+    "radius_m": 0.1729,
+    "ratio": 0.983,
+    "width_m": 1.0169
+   },
+   {
+    "area_m2": 1.6732,
+    "fill": 0.9208,
+    "flat_m": 0.0044,
+    "found": true,
+    "height_m": 1.6225,
+    "name": "cabin_door",
+    "radius_m": 0.1801,
+    "ratio": 0.6903,
+    "width_m": 1.12
+   },
+   {
+    "area_m2": 1.486,
+    "fill": 0.9085,
+    "flat_m": 0.0042,
+    "found": true,
+    "height_m": 1.5147,
+    "name": "cabin_rear",
+    "radius_m": 0.1868,
+    "ratio": 0.7129,
+    "width_m": 1.0798
+   },
+   {
+    "area_m2": 0.3712,
+    "fill": 0.7588,
+    "found": true,
+    "height_m": 0.7532,
+    "name": "tail_cone",
+    "radius_m": 0.1494,
+    "ratio": 0.8621,
+    "width_m": 0.6493
+   }
+  ],
+  "F4": {
+   "family": "textured",
+   "images": 0,
+   "sheets": [],
+   "textured_file": false
+  },
+  "F5": [
+   {
+    "found": true,
+    "name": "wing_trailing_edge",
+    "probe": "flap_l x=2.0 +y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 0.000302,
+    "turn_deg": 164.171188
+   },
+   {
+    "found": true,
+    "name": "wing_trailing_edge",
+    "probe": "aileron_l x=4.3 +y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 0.000313,
+    "turn_deg": 163.633752
+   },
+   {
+    "found": true,
+    "name": "control_surface_edges",
+    "probe": "elevator x=0.8 +y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 0.000228,
+    "turn_deg": 168.094919
+   },
+   {
+    "found": true,
+    "name": "control_surface_edges",
+    "probe": "rudder z=0.8 +y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 0.000252,
+    "turn_deg": 166.826154
+   },
+   {
+    "found": true,
+    "name": "door_frame",
+    "probe": "door_l z=0.2 +y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": null,
+    "turn_deg": 90.000283
+   },
+   {
+    "found": true,
+    "name": "cowl_lip",
+    "probe": "fuselage x=0.0 -y",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 0.003488,
+    "turn_deg": 84.16641
+   },
+   {
+    "found": true,
+    "name": "tailplane_and_fin_tips",
+    "probe": "elevator y=5.3 +x",
+    "radius_m": 0.0,
+    "segments": 0,
+    "thickness_m": 3.1e-05,
+    "turn_deg": 178.395125
+   },
+   {
+    "found": true,
+    "name": "fin_leading_edge",
+    "probe": "fuselage z=1.2 -y",
+    "radius_m": 0.004243,
+    "segments": 1,
+    "thickness_m": 0.006,
+    "turn_deg": 180.0
+   },
+   {
+    "edge_length_m": 3918.38,
+    "hard_edge_length_m": 182.54,
+    "name": "hard_crease_fraction"
+   }
+  ]
+ },
+ "frame": "metres, x = vehicle left, y = aft (nose at -y), z = up",
+ "gates": [
+  {
+   "hard": true,
+   "id": "F1.side.iou",
+   "label": "side silhouette IoU",
+   "limit": 0.92,
+   "op": ">=",
+   "status": "fail",
+   "unit": "ratio",
+   "value": 0.7015
+  },
+  {
+   "hard": true,
+   "id": "F1.side.outline_p95",
+   "label": "side outline distance p95",
+   "limit": 30,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 534.25
+  },
+  {
+   "hard": true,
+   "id": "F1.side.outline_max",
+   "label": "side outline distance max",
+   "limit": 80,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 753.26
+  },
+  {
+   "detail": {
+    "model_m": -2.53,
+    "reference_m": -2.53
+   },
+   "hard": true,
+   "id": "F1.station.spinner_tip",
+   "label": "station spinner_tip (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "detail": {
+    "model_m": 5.75,
+    "reference_m": 5.75
+   },
+   "hard": true,
+   "id": "F1.station.rudder_te",
+   "label": "station rudder_te (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "detail": {
+    "model_m": 1.52,
+    "reference_m": 1.52
+   },
+   "hard": true,
+   "id": "F1.station.fin_top",
+   "label": "station fin_top (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "detail": {
+    "model_m": -0.4021,
+    "reference_m": -0.4629
+   },
+   "hard": true,
+   "id": "F1.station.belly_line",
+   "label": "station belly_line (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 60.7
+  },
+  {
+   "detail": {
+    "model_m": -2.24,
+    "reference_m": -2.1229
+   },
+   "hard": true,
+   "id": "F1.station.cowl_front",
+   "label": "station cowl_front (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 117.1
+  },
+  {
+   "detail": {
+    "model_m": 0.435,
+    "reference_m": 0.255
+   },
+   "hard": true,
+   "id": "F1.station.cowl_top",
+   "label": "station cowl_top (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 180.0
+  },
+  {
+   "detail": {
+    "model_m": -1.4607,
+    "reference_m": -0.8979
+   },
+   "hard": true,
+   "id": "F1.station.windscreen_base",
+   "label": "station windscreen_base (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 562.9
+  },
+  {
+   "detail": {
+    "model_m": 0.995,
+    "reference_m": 0.7921
+   },
+   "hard": true,
+   "id": "F1.station.cabin_roof",
+   "label": "station cabin_roof (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 202.9
+  },
+  {
+   "detail": {
+    "model_m": 1.9693,
+    "reference_m": 4.8093
+   },
+   "hard": true,
+   "id": "F1.station.fin_leading_edge",
+   "label": "station fin_leading_edge (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 2840.0
+  },
+  {
+   "detail": {
+    "model_m": -1.8,
+    "reference_m": -1.4225
+   },
+   "hard": true,
+   "id": "F1.station.nose_wheel_centre",
+   "label": "station nose_wheel_centre (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 377.5
+  },
+  {
+   "detail": {
+    "model_m": 0.48,
+    "reference_m": 0.215
+   },
+   "hard": true,
+   "id": "F1.station.main_wheel_centre",
+   "label": "station main_wheel_centre (side)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 265.0
+  },
+  {
+   "hard": true,
+   "id": "F1.top.iou",
+   "label": "top silhouette IoU",
+   "limit": 0.95,
+   "op": ">=",
+   "status": "fail",
+   "unit": "ratio",
+   "value": 0.7393
+  },
+  {
+   "hard": true,
+   "id": "F1.top.outline_p95",
+   "label": "top outline distance p95",
+   "limit": 30,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 480.0
+  },
+  {
+   "hard": true,
+   "id": "F1.top.outline_max",
+   "label": "top outline distance max",
+   "limit": 80,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 620.0
+  },
+  {
+   "detail": {
+    "model_m": -0.45,
+    "reference_m": -0.685
+   },
+   "hard": true,
+   "id": "F1.station.wing_le_root",
+   "label": "station wing_le_root (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 235.0
+  },
+  {
+   "detail": {
+    "model_m": -0.0189,
+    "reference_m": -0.66
+   },
+   "hard": true,
+   "id": "F1.station.wing_le_tip",
+   "label": "station wing_le_tip (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 641.1
+  },
+  {
+   "detail": {
+    "model_m": 1.18,
+    "reference_m": 1.205
+   },
+   "hard": true,
+   "id": "F1.station.wing_te_root",
+   "label": "station wing_te_root (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 25.0
+  },
+  {
+   "detail": {
+    "model_m": 1.18,
+    "reference_m": 0.6682
+   },
+   "hard": true,
+   "id": "F1.station.wing_te_tip",
+   "label": "station wing_te_tip (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 511.8
+  },
+  {
+   "detail": {
+    "model_m": 1.725,
+    "reference_m": 1.64
+   },
+   "hard": true,
+   "id": "F1.station.tailplane_tip",
+   "label": "station tailplane_tip (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 85.0
+  },
+  {
+   "detail": {
+    "model_m": 5.3661,
+    "reference_m": 5.1732
+   },
+   "hard": true,
+   "id": "F1.station.tailplane_te",
+   "label": "station tailplane_te (top)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 192.9
+  },
+  {
+   "hard": true,
+   "id": "F1.front.iou",
+   "label": "front silhouette IoU",
+   "limit": 0.72,
+   "op": ">=",
+   "status": "fail",
+   "unit": "ratio",
+   "value": 0.2551
+  },
+  {
+   "hard": true,
+   "id": "F1.front.outline_p95",
+   "label": "front outline distance p95",
+   "limit": 30,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 535.0
+  },
+  {
+   "hard": true,
+   "id": "F1.front.outline_max",
+   "label": "front outline distance max",
+   "limit": 80,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 550.11
+  },
+  {
+   "detail": {
+    "model_m": 5.505,
+    "reference_m": 5.5
+   },
+   "hard": true,
+   "id": "F1.station.wing_tip_x",
+   "label": "station wing_tip_x (front)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 5.0
+  },
+  {
+   "detail": {
+    "model_m": 1.205,
+    "reference_m": 0.6825
+   },
+   "hard": true,
+   "id": "F1.station.wing_top_mid",
+   "label": "station wing_top_mid (front)",
+   "limit": 40,
+   "op": "<=",
+   "status": "fail",
+   "unit": "mm",
+   "value": 522.5
+  },
+  {
+   "detail": {
+    "model_m": 1.27,
+    "reference_m": 1.275
+   },
+   "hard": true,
+   "id": "F1.station.main_wheel_x",
+   "label": "station main_wheel_x (front)",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 5.0
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.window_frames",
+   "label": "feature window_frames (geometry, required)",
+   "limit": 12,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.window_seals",
+   "label": "feature window_seals (geometry, optional)",
+   "limit": 12,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.door_gaps",
+   "label": "feature door_gaps (geometry, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.door_handles",
+   "label": "feature door_handles (geometry, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.cowl_lip_and_inlets",
+   "label": "feature cowl_lip_and_inlets (geometry, required)",
+   "limit": 3,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.cowl_flap_outlines",
+   "label": "feature cowl_flap_outlines (texture, optional)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.oil_door",
+   "label": "feature oil_door (geometry, optional)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.panel_lines_fuselage",
+   "label": "feature panel_lines_fuselage (texture, required)",
+   "limit": 20,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.panel_lines_wing",
+   "label": "feature panel_lines_wing (texture, required)",
+   "limit": 12,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.rivet_rows",
+   "label": "feature rivet_rows (texture, required)",
+   "limit": 30,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.wing_root_fairings",
+   "label": "feature wing_root_fairings (geometry, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.cabin_steps",
+   "label": "feature cabin_steps (geometry, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.stall_warning_vent",
+   "label": "feature stall_warning_vent (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.fuel_cap_and_vents",
+   "label": "feature fuel_cap_and_vents (geometry, required)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.elevator_trim_tab",
+   "label": "feature elevator_trim_tab (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.landing_light_lens",
+   "label": "feature landing_light_lens (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.nav_strobe_lenses",
+   "label": "feature nav_strobe_lenses (geometry, required)",
+   "limit": 6,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.beacon",
+   "label": "feature beacon (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.pitot_and_static",
+   "label": "feature pitot_and_static (geometry, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.antennas",
+   "label": "feature antennas (geometry, required)",
+   "limit": 3,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.hinge_lines_control_surfaces",
+   "label": "feature hinge_lines_control_surfaces (geometry, required)",
+   "limit": 8,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.prop_tip_paint",
+   "label": "feature prop_tip_paint (texture, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.prop_blade_decals_neutral",
+   "label": "feature prop_blade_decals_neutral (texture, optional)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.spinner_backplate_and_screws",
+   "label": "feature spinner_backplate_and_screws (geometry, required)",
+   "limit": 6,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.cheat_line_two_colours",
+   "label": "feature cheat_line_two_colours (texture, required)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.exhaust_stain",
+   "label": "feature exhaust_stain (texture, optional)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.hinge_grime",
+   "label": "feature hinge_grime (texture, optional)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.wheel_fairing_split_lines",
+   "label": "feature wheel_fairing_split_lines (texture, required)",
+   "limit": 3,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.brake_lines_and_hubs",
+   "label": "feature brake_lines_and_hubs (geometry, optional)",
+   "limit": 3,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.strut_fairings_and_attach_plates",
+   "label": "feature strut_fairings_and_attach_plates (geometry, required)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.tie_down_rings",
+   "label": "feature tie_down_rings (geometry, optional)",
+   "limit": 3,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.gauge_faces_legible",
+   "label": "feature gauge_faces_legible (texture, required)",
+   "limit": 6,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.radio_stack_faces",
+   "label": "feature radio_stack_faces (texture, required)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.placards_generic",
+   "label": "feature placards_generic (texture, optional)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.seat_stitching_and_belts",
+   "label": "feature seat_stitching_and_belts (texture, optional)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.yoke_buttons_and_grips",
+   "label": "feature yoke_buttons_and_grips (geometry, optional)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.rudder_pedal_brakes",
+   "label": "feature rudder_pedal_brakes (geometry, required)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.door_seals_and_latches_interior",
+   "label": "feature door_seals_and_latches_interior (geometry, optional)",
+   "limit": 2,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.tail_navigation_light",
+   "label": "feature tail_navigation_light (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.static_wicks",
+   "label": "feature static_wicks (geometry, optional)",
+   "limit": 4,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": false,
+   "id": "F2.feature.fin_dorsal_and_rudder_balance",
+   "label": "feature fin_dorsal_and_rudder_balance (geometry, required)",
+   "limit": 1,
+   "op": "present",
+   "reason": "no probe box defined yet",
+   "status": "fail",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F2.required",
+   "label": "required features present (0 of 28)",
+   "limit": 1.0,
+   "op": ">=",
+   "status": "fail",
+   "unit": "frac",
+   "value": 0.0
+  },
+  {
+   "hard": false,
+   "id": "F2.optional",
+   "label": "optional features present (0 of 13)",
+   "limit": 0.75,
+   "op": ">=",
+   "status": "fail",
+   "unit": "frac",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F3.cowl_lip.ratio",
+   "label": "cowl_lip width/height",
+   "limit": [
+    1.17,
+    1.43
+   ],
+   "op": "in",
+   "status": "fail",
+   "unit": "ratio",
+   "value": 1.061
+  },
+  {
+   "hard": true,
+   "id": "F3.cowl_lip.fill",
+   "label": "cowl_lip fill ratio",
+   "limit": 0.76,
+   "op": ">=",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.869
+  },
+  {
+   "hard": true,
+   "id": "F3.cowl_lip.radius",
+   "label": "cowl_lip tightest corner",
+   "limit": [
+    15,
+    90
+   ],
+   "op": "in",
+   "status": "fail",
+   "unit": "mm",
+   "value": 188.5
+  },
+  {
+   "hard": true,
+   "id": "F3.firewall.ratio",
+   "label": "firewall width/height",
+   "limit": [
+    0.9,
+    1.05
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.983
+  },
+  {
+   "hard": true,
+   "id": "F3.firewall.fill",
+   "label": "firewall fill ratio",
+   "limit": 0.8,
+   "op": ">=",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.892
+  },
+  {
+   "hard": true,
+   "id": "F3.firewall.flat",
+   "label": "firewall side flatness",
+   "limit": 25,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 5.8
+  },
+  {
+   "hard": true,
+   "id": "F3.firewall.radius",
+   "label": "firewall tightest corner",
+   "limit": [
+    50,
+    250
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "mm",
+   "value": 172.9
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_door.ratio",
+   "label": "cabin_door width/height",
+   "limit": [
+    0.62,
+    0.72
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.69
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_door.fill",
+   "label": "cabin_door fill ratio",
+   "limit": 0.84,
+   "op": ">=",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.921
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_door.flat",
+   "label": "cabin_door side flatness",
+   "limit": 12,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 4.4
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_door.radius",
+   "label": "cabin_door tightest corner",
+   "limit": [
+    60,
+    250
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "mm",
+   "value": 180.1
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_rear.ratio",
+   "label": "cabin_rear width/height",
+   "limit": [
+    0.68,
+    0.8
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.713
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_rear.fill",
+   "label": "cabin_rear fill ratio",
+   "limit": 0.82,
+   "op": ">=",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.909
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_rear.flat",
+   "label": "cabin_rear side flatness",
+   "limit": 15,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 4.2
+  },
+  {
+   "hard": true,
+   "id": "F3.cabin_rear.radius",
+   "label": "cabin_rear tightest corner",
+   "limit": [
+    60,
+    250
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "mm",
+   "value": 186.8
+  },
+  {
+   "hard": true,
+   "id": "F3.tail_cone.ratio",
+   "label": "tail_cone width/height",
+   "limit": [
+    0.79,
+    0.97
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "ratio",
+   "value": 0.862
+  },
+  {
+   "hard": true,
+   "id": "F3.tail_cone.fill",
+   "label": "tail_cone fill ratio",
+   "limit": 0.76,
+   "op": ">=",
+   "status": "fail",
+   "unit": "ratio",
+   "value": 0.759
+  },
+  {
+   "hard": true,
+   "id": "F3.tail_cone.radius",
+   "label": "tail_cone tightest corner",
+   "limit": [
+    80,
+    300
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "mm",
+   "value": 149.4
+  },
+  {
+   "hard": true,
+   "id": "F4.glb_bytes",
+   "label": "file size (textured family)",
+   "limit": 25165824,
+   "op": "<=",
+   "status": "pass",
+   "unit": "bytes",
+   "value": 1201916
+  },
+  {
+   "hard": true,
+   "id": "F4.primitive_vertices",
+   "label": "largest primitive (vertices)",
+   "limit": 65535,
+   "op": "<=",
+   "status": "pass",
+   "unit": "count",
+   "value": 6875
+  },
+  {
+   "detail": [
+    "aileron_l:paint",
+    "aileron_r:paint",
+    "cockpit:dark",
+    "cockpit:light",
+    "cockpit:metal",
+    "door_l:dark",
+    "door_l:paint",
+    "door_r:dark",
+    "door_r:paint",
+    "elevator:paint",
+    "flap_l:paint",
+    "flap_r:paint",
+    "fuselage:dark",
+    "fuselage:light",
+    "fuselage:metal",
+    "fuselage:paint",
+    "gear:dark",
+    "gear:metal",
+    "gear:paint",
+    "propeller:metal"
+   ],
+   "hard": true,
+   "id": "F4.maps",
+   "label": "visible primitives with base colour, normal and ORM maps",
+   "limit": 28,
+   "op": "==",
+   "reason": "28 of 28 lack them; the file has no textures",
+   "status": "fail",
+   "unit": "count",
+   "value": 0
+  },
+  {
+   "detail": [
+    "aileron_l:paint",
+    "aileron_r:paint",
+    "cockpit:dark",
+    "cockpit:light",
+    "cockpit:metal",
+    "door_l:dark",
+    "door_l:paint",
+    "door_r:dark",
+    "door_r:paint",
+    "elevator:paint",
+    "flap_l:paint",
+    "flap_r:paint",
+    "fuselage:dark",
+    "fuselage:light",
+    "fuselage:metal",
+    "fuselage:paint",
+    "gear:dark",
+    "gear:metal",
+    "gear:paint",
+    "propeller:metal"
+   ],
+   "hard": true,
+   "id": "F4.uvs",
+   "label": "visible primitives with TEXCOORD_0",
+   "limit": 28,
+   "op": "==",
+   "reason": "28 of 28 have no UVs",
+   "status": "fail",
+   "unit": "count",
+   "value": 0
+  },
+  {
+   "hard": true,
+   "id": "F4.colour_double_tint",
+   "label": "textured primitives that also carry COLOR_0",
+   "limit": 0,
+   "op": "==",
+   "status": "pass",
+   "unit": "count",
+   "value": 0
+  },
+  {
+   "detail": [],
+   "hard": true,
+   "id": "F4.sizes",
+   "label": "texture sizes power of two and within the limit",
+   "limit": 0,
+   "op": "==",
+   "reason": "no textures",
+   "status": "na",
+   "unit": "count",
+   "value": 0
+  },
+  {
+   "hard": true,
+   "id": "F4.gpu_bytes",
+   "label": "uncompressed RGBA8 with mips",
+   "limit": 268435456,
+   "op": "<=",
+   "status": "pass",
+   "unit": "bytes",
+   "value": 0
+  },
+  {
+   "hard": true,
+   "id": "F4.spread",
+   "label": "texel density spread",
+   "limit": null,
+   "op": "",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.uv_range",
+   "label": "UVs inside 0..1",
+   "limit": null,
+   "op": "",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.overlap",
+   "label": "UV overlap",
+   "limit": null,
+   "op": "",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.padding",
+   "label": "island padding",
+   "limit": null,
+   "op": "",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.density.small_parts",
+   "label": "texel density p5, small_parts",
+   "limit": 250,
+   "op": ">=",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "px/m",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.density.panel_faces",
+   "label": "texel density p5, panel_faces",
+   "limit": 1500,
+   "op": ">=",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "px/m",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.density.airframe",
+   "label": "texel density p5, airframe",
+   "limit": 400,
+   "op": ">=",
+   "reason": "the model has no UVs",
+   "status": "na",
+   "unit": "px/m",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.normal_length",
+   "label": "normal vector length",
+   "limit": null,
+   "op": "",
+   "reason": "no decodable textures",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.metallic_binary",
+   "label": "metallic channel binary",
+   "limit": null,
+   "op": "",
+   "reason": "no decodable textures",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.base_colour_range",
+   "label": "base colour range",
+   "limit": null,
+   "op": "",
+   "reason": "no decodable textures",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F4.bleed",
+   "label": "edge bleed",
+   "limit": null,
+   "op": "",
+   "reason": "no decodable textures",
+   "status": "na",
+   "unit": "",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F5.wing_trailing_edge.radius",
+   "label": "wing_trailing_edge edge radius (worst of 2)",
+   "limit": [
+    1.0,
+    3.0
+   ],
+   "op": "in",
+   "reason": "2 probe(s) with fewer than 3 mesh segments",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F5.wing_trailing_edge.thickness",
+   "label": "wing_trailing_edge edge thickness (worst)",
+   "limit": [
+    1.5,
+    5.0
+   ],
+   "op": "in",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.3
+  },
+  {
+   "hard": true,
+   "id": "F5.control_surface_edges.radius",
+   "label": "control_surface_edges edge radius (worst of 2)",
+   "limit": [
+    2.0,
+    6.0
+   ],
+   "op": "in",
+   "reason": "2 probe(s) with fewer than 3 mesh segments",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F5.door_frame.radius",
+   "label": "door_frame edge radius (worst of 1)",
+   "limit": [
+    2.0,
+    6.0
+   ],
+   "op": "in",
+   "reason": "1 probe(s) with fewer than 3 mesh segments",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F5.window_frames.radius",
+   "label": "window_frames edge radius",
+   "limit": [
+    3.0,
+    8.0
+   ],
+   "op": "in",
+   "reason": "no probe defined yet",
+   "status": "fail",
+   "unit": "mm",
+   "value": null
+  },
+  {
+   "hard": true,
+   "id": "F5.cowl_lip.radius",
+   "label": "cowl_lip edge radius (worst of 1)",
+   "limit": [
+    8.0,
+    20.0
+   ],
+   "op": "in",
+   "reason": "1 probe(s) with fewer than 3 mesh segments",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F5.tailplane_and_fin_tips.radius",
+   "label": "tailplane_and_fin_tips edge radius (worst of 1)",
+   "limit": [
+    3.0,
+    10.0
+   ],
+   "op": "in",
+   "reason": "1 probe(s) with fewer than 3 mesh segments",
+   "status": "fail",
+   "unit": "mm",
+   "value": 0.0
+  },
+  {
+   "hard": true,
+   "id": "F5.fin_leading_edge.radius",
+   "label": "fin_leading_edge edge radius (worst of 1)",
+   "limit": [
+    4.0,
+    15.0
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "mm",
+   "value": 4.24
+  },
+  {
+   "hard": true,
+   "id": "F5.max_radius",
+   "label": "largest measured named-edge radius",
+   "limit": 40,
+   "op": "<=",
+   "status": "pass",
+   "unit": "mm",
+   "value": 4.24
+  },
+  {
+   "hard": true,
+   "id": "F5.hard_creases",
+   "label": "share of edge length with a >30 degree crease",
+   "limit": [
+    0.03,
+    0.08
+   ],
+   "op": "in",
+   "status": "pass",
+   "unit": "frac",
+   "value": 0.0466
+  }
+ ],
+ "inputs": {
+  "config": {
+   "file": "cessna_fidelity.toml",
+   "sha256": "dc646014a332c9abf937a46b00ef0695e78ad2a7178569a1175a59630f15b8e3",
+   "status": "CALIBRATED, pending user approval"
+  },
+  "family": "textured",
+  "model": {
+   "bytes": 1201916,
+   "file": "cessna.glb",
+   "sha256": "fc5a6a5617ea5000b933f4ef8e38d41812df5e47a1a56b9683f3e97e1af89d6e"
+  }
+ },
+ "model": {
+  "has_uvs": false,
+  "images": 0,
+  "materials": 6,
+  "nodes": 17,
+  "primitives": 32,
+  "triangles": 39062
+ },
+ "summary": {
+  "by_group": {
+   "F1": {
+    "pass": 6,
+    "total": 29
+   },
+   "F2": {
+    "pass": 0,
+    "total": 43
+   },
+   "F3": {
+    "pass": 15,
+    "total": 18
+   },
+   "F4": {
+    "pass": 4,
+    "total": 18
+   },
+   "F5": {
+    "pass": 3,
+    "total": 10
+   }
+  },
+  "failed": 78,
+  "gates": 118,
+  "hard_failed": 48,
+  "not_applicable": 12,
+  "passed": 28
+ },
+ "tool": {
+  "name": "fidelity_audit",
+  "version": 1
+ },
+ "warnings": []
+}

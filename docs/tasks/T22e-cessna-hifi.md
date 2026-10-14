@@ -130,3 +130,85 @@ proposed 24 MB hard / 16 MB aim); colour decision (`cessna.glb` textured without
 Determinism finding: Cycles AO bakes byte-identical (also 1 thread vs auto); `uv.smart_project` and
 Displace-modifier meshes are NOT deterministic, so the generator must build bake meshes and UVs
 itself. Waiting for the user: reference choice, file cap, texture plan, colour scheme, gate values.
+
+**2026-10-14 — Phase 1 (fidelity checker; no modelling).** Built by a separate agent from the
+modellers, as required. **User decisions of 2026-10-14 (recorded here):** (1) reference = drawing A
+(`tools/models/reference/cessna_172_skyhawk_line_drawing.svg`, public domain; the planner checked it
+is a modern 172: swept fin, dorsal fin, rear window); it is hand-drawn and its side view has no wing,
+so F1 side leaves the wing band out and the wing outline is checked in the front and top views;
+(2) textured `cessna.glb` <= 24 MB hard / 16 MB aim, `cessna_vc*.glb` keeps 10 MB, 3 sheets x 3 maps at
+2048 px, airframe >= 400 px/m, the textured `.glb` is committed only at CP3; (3) colour fix = two
+families: `cessna.glb` (+LODs) textured PBR without COLOR_0, `cessna_vc.glb` (+LODs) today's
+vertex-colour file; (4) F1-F5 as proposed are the starting values, Phase 1 calibrates them and every
+change goes to the user for approval.
+
+*What exists.* `tools/models/fidelity_audit.py` (+ `fidelity_model/outline/section/tex/features.py`,
+`raster_util.py`, `png_io.py`; `glb_io.py` gained UV, COLOR_0, image and texture support, additions
+only), config `tools/models/audit/cessna_fidelity.toml`, wrapper `scripts/fidelity_audit.sh`,
+`tools/models/fidelity_noise.py` (noise floor), `tools/models/bake_determinism_check.py`, reference
+masks and `make_reference_masks.py` (command in `tools/models/reference/README.md`), known-answer
+tests `tools/models/test_fidelity.py` (40 tests; also `blender -b --python`). Pure Python + numpy: the
+report is the same bytes under python3 3.14 / numpy 2.4 and Blender's 3.13 / numpy 2.3. No scipy.
+Run: `scripts/fidelity_audit.sh --images --out DIR` (exit 1 = a hard gate failed or could not be
+measured; 2 = bad input).
+
+*How each gate is measured.* **F1:** triangles of the exterior (not `cockpit`, `prop_disc`, propeller
+blades) are rasterised as silhouettes on a 5 mm grid; the reference masks are scaled on each axis to
+the published length / span / height (no best fit) and anchored at the model's spinner tip, lowest
+point and x = 0; IoU, model-to-reference outline distance (p95, max) and 20 named stations (extreme
+or scan operators applied identically to both masks). **F2:** a feature needs a probe box in the
+config (empty until CP2 = absent); geometry features count triangles in the box and their relief along
+the box's thin axis, texture features count groove marks in the normal map (or colour regions) through
+the UVs. **F3:** plane cut, outline = farthest point per 0.125 degree sector from the centre (an open
+roof or door gap becomes a chord and is ignored for the radius; a thin fin is ignored for the radius),
+width / height, fill, side flatness, tightest radius (24 mm arc: radii under about 15 mm are not
+resolved). **F4:** needs no textures for the UV gates (assumed 2048 sheet): texel density per group, spread,
+UV range, overlap (exact x -> -x mirror pairs allowed), island padding (square window); with maps:
+sizes, normal length, metallic binary, base-colour range, edge bleed; always: file size by family,
+vertex limit, no COLOR_0 on textured primitives. A model with no UVs / textures (T22d) FAILs
+`F4.maps` / `F4.uvs` and reports the dependent gates N.A. (counted as hard failures). **F5:** exact
+section polylines; a bevel's radius from its own turning vertices (needs >= 3 segments unless
+< 2 mm), thickness 1 mm behind the tip, hard-crease share (> 30 degrees).
+
+*Determinism.* Two runs: byte-identical JSON, Markdown and overlay PNGs, also python3 vs Blender;
+`bake_determinism_check.py -- --twice` (AO and tangent-space normal bake of a bmesh mesh, no
+modifiers, own UVs, Cycles CPU, seed 7, 48 samples, no denoise, 1 thread): the hashes of both
+float images and PNGs were identical in 4 of 4 repeats (8 bakes, separate processes).
+
+*Noise floor* (`docs/guide/img/models/audit/cessna/fidelity_noise.md`): raster pitch 2.5 / 5 / 10 mm
+moves IoU by <= 0.003 and p95 by <= 6 mm (one 10 mm outlier of 84 mm on the discrete p95 of the side
+view); re-extracting the drawing (render scale 2-4, bridge radius, stroke half-width) moves IoU by
+<= 0.009 (top) and p95 by <= 5 mm, stations by <= 19 mm (tailplane_te 27 mm). **The drawing itself is
+the larger uncertainty:** scaled to the published size on each axis, its views disagree by 5.4 %
+(length, side vs top), 1.3 % (span) and 4.4 % (height), and its inboard wing chord measures about
+1.9 m against 1.63 m for the T22d model, so the top-view wing edges follow the drawing, not
+necessarily the aircraft.
+
+*Calibration (every change from the proposal, for the user's approval).* (a) `iou_min` 0.94 / 0.94 /
+0.90 -> **0.92 / 0.95 / 0.72** (side / top / front): an IoU gate must not be stricter than the
+outline gate; each value is the IoU of a uniform 30 mm error (the p95 gate), measured by offsetting
+the reference (noise study 3: 0.9226 / 0.9523 / 0.7240, rounded down); the thin wing makes the front
+view 3x as sensitive. (b) F3 `cowl_lip` ratio 1.00-1.20 -> **1.17-1.43** (reference: 0.857 m wide /
+0.660 m high = 1.30, +-10 %). (c) F3 `tail_cone` ratio 0.80-1.00 -> **0.79-0.97** (reference 0.88
++-10 %; T22d measures 0.862). Kept with data behind them: `outline_p95_mm` 30 and `outline_max_mm` 80
+(processing noise <= 10 mm), `station_tol_mm` 40 (noise <= 27 mm, usually <= 12). Kept, **not calibratable here**:
+F2 counts, F3 firewall / cabin ranges and all radii, every F4 value (no textured sample until
+CP2 / CP3: only the known-answer tests back them), F5 radii, `hard_crease_fraction` (T22d is
+already inside the band at 4.66 %, so it cannot discriminate). **Flagged:** F3 `cowl_lip` radius
+[15, 90] mm looks like the lip-edge bevel, not a section corner (T22d: 189 mm; a 90 mm limit asks for
+a nearly square cowl); `cabin_door` ratio [0.62, 0.72] vs 0.72-0.78 read from neighbouring reference
+stations; F3 `tail_cone` fill 0.76 is met by T22d with 0.759 (borderline).
+
+*Baseline* (T22d `cessna.glb`, `docs/guide/img/models/audit/cessna/p1_baseline_cessna_fidelity.md`,
+overlays `..._f1_{side,top,front}.png`): 28 of 118 gates pass, 78 fail, 12 N.A. (48 hard failures); exit 1. F1 side IoU
+0.702 / p95 534 mm, top 0.739 / 480 mm, front 0.255 / 535 mm; passes only the anchored stations
+(spinner tip, rudder TE, fin top, wing tip, main-wheel track) and wing TE root. Largest station
+errors: windscreen base 563 mm, wing LE tip 641 mm, wing TE tip 512 mm, wing top at mid-span 523 mm
+(model wing about 0.5 m higher than the drawing relative to the ground), cabin roof 203 mm, cowl front
+117 mm. F2 0 of 28 required. F3 15 of 18 (fails: cowl ratio 1.06, cowl radius 189 mm, tail fill 0.759). F4: maps
+and UVs FAIL (none), 12 gates N.A. F5: trailing edge radius 0 mm / thickness 0.3 mm, control surfaces,
+door, cowl lip and tips all 0 mm; only the fin leading edge (4.2 mm) passes.
+
+*For the user:* approve or change the calibration list above; decide whether drawing A's wing chord
+(about 1.9 m scaled) is acceptable as the top-view target or whether F1 top should use the published
+wing planform (or reference B) for the wing edges; confirm the F3 flags. Waiting for approval before CP1.
